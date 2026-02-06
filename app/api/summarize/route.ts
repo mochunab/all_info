@@ -15,8 +15,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServiceClient();
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    const result = await processArticleSummary(supabase, articleId);
+    const result = await processArticleSummary(supabase, articleId, supabaseKey);
 
     if (!result.success) {
       return NextResponse.json(
