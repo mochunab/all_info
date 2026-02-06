@@ -1,0 +1,94 @@
+name: Daily Crawler
+
+on:
+  # 매일 오전 9시(KST) = UTC 00:00
+  schedule:
+    - cron: '0 0 * * *'
+
+  # 수동 실행 지원
+  workflow_dispatch:
+    inputs:
+      source_id:
+        description: 'Source ID to crawl (leave empty for all)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (no DB writes)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Puppeteer 의존성 (SPA 크롤링용)
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgbm-dev \
+            libasound2 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libxkbcommon0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libnss3 \
+            libxss1
+
+      - name: Run crawler
+        run: |
+          if [ -n "${{ github.event.inputs.source_id }}" ]; then
+            FLAGS="--source=${{ github.event.inputs.source_id }}"
+          else
+            FLAGS=""
+          fi
+
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+
+          npm run crawl -- $FLAGS --verbose
+
+      - name: Send notification on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Alert] Crawler failed at ${new Date().toISOString()}`,
+              body: `The daily crawler workflow failed.
+
+              **Run ID**: ${context.runId}
+              **Run URL**: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+              Please check the logs for details.`,
+              labels: ['bug', 'crawler']
+            });
+            console.log(`Created issue #${issue.data.number}`);
