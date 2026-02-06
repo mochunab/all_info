@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { processArticleSummary } from '@/lib/ai/batch-summarizer';
+import { verifyCronAuth } from '@/lib/auth';
 
-// POST - Generate summary for a single article
+// POST - Generate summary for a single article (requires cron auth)
 export async function POST(request: NextRequest) {
   try {
+    if (!verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { articleId } = await request.json();
 
     if (!articleId) {
