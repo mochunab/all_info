@@ -23,8 +23,8 @@ interface ArticleRow {
   summary_tags?: string[];
 }
 
-// Feature flag: Edge Function 사용 여부
-const USE_EDGE_FUNCTION = process.env.USE_EDGE_FUNCTION === 'true';
+// Edge Function 우선 사용 (USE_EDGE_FUNCTION=false로 명시해야 로컬 OpenAI 직접 호출)
+const USE_EDGE_FUNCTION = process.env.USE_EDGE_FUNCTION !== 'false';
 
 // Edge Function URL (Supabase project URL 기반)
 const EDGE_FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -244,7 +244,8 @@ export async function processPendingSummaries(
 // Process a single article
 export async function processArticleSummary(
   supabase: SupabaseClient<Database>,
-  articleId: string
+  articleId: string,
+  supabaseKey?: string
 ): Promise<{ success: boolean; summary?: string; error?: string }> {
   try {
     // Fetch article
@@ -271,11 +272,30 @@ export async function processArticleSummary(
       return { success: false, error: 'No content available' };
     }
 
-    // Generate AI summary (1-line + 3 tags)
-    const aiResult = await generateAISummary(
-      article.title,
-      article.content_preview
-    );
+    // Generate AI summary (Edge Function 우선, 실패 시 로컬 fallback)
+    const key = supabaseKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    let aiResult;
+
+    if (USE_EDGE_FUNCTION && key) {
+      console.log(`[AI] Using Edge Function for: ${article.title.substring(0, 40)}...`);
+      aiResult = await generateAISummaryViaEdgeFunction(
+        article.title,
+        article.content_preview,
+        key
+      );
+      if (!aiResult.success) {
+        console.log(`[AI] Edge Function failed, falling back to local: ${aiResult.error}`);
+        aiResult = await generateAISummary(
+          article.title,
+          article.content_preview
+        );
+      }
+    } else {
+      aiResult = await generateAISummary(
+        article.title,
+        article.content_preview
+      );
+    }
 
     if (!aiResult.success) {
       return { success: false, error: aiResult.error };
