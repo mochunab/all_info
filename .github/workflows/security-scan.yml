@@ -1,0 +1,65 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high || true
+
+  code-pattern-check:
+    name: Code Pattern Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for exposed secrets in NEXT_PUBLIC vars
+        run: |
+          echo "Checking for NEXT_PUBLIC_*SECRET* patterns..."
+          if grep -rn 'NEXT_PUBLIC_.*SECRET' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' .; then
+            echo "::error::Found NEXT_PUBLIC_ variables containing SECRET - these are exposed to the client!"
+            exit 1
+          fi
+          echo "No exposed secret patterns found."
+
+      - name: Check for hardcoded API keys
+        run: |
+          echo "Checking for hardcoded API key patterns..."
+          if grep -rn "sk-[a-zA-Z0-9]\{20,\}" --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' .; then
+            echo "::error::Found hardcoded API key pattern!"
+            exit 1
+          fi
+          if grep -rn "eyJhbGc" --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' .; then
+            echo "::error::Found hardcoded JWT token!"
+            exit 1
+          fi
+          echo "No hardcoded key patterns found."

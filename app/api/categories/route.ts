@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
 // Default categories if the table doesn't exist or is empty
 const DEFAULT_CATEGORIES = ['비즈니스', '소비 트렌드'];
@@ -54,9 +55,17 @@ export async function GET() {
   }
 }
 
-// POST /api/categories - Add a new category
+// POST /api/categories - Add a new category (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    // Require same-origin (browser) or cron auth (server)
+    if (!verifySameOrigin(request) && !verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const supabase = await createClient();
     const body = await request.json();
     const { name } = body;

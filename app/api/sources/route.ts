@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { inferCrawlerType } from '@/lib/crawlers/strategies';
+import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
 // GET /api/sources - Get all crawl sources
 export async function GET() {
@@ -28,9 +29,17 @@ export async function GET() {
   }
 }
 
-// POST /api/sources - Add new crawl sources
+// POST /api/sources - Add new crawl sources (requires auth)
 export async function POST(request: NextRequest) {
   try {
+    // Require same-origin (browser) or cron auth (server)
+    if (!verifySameOrigin(request) && !verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const supabase = await createClient();
     const body = await request.json();
     const { sources } = body;
