@@ -102,11 +102,8 @@ export default function Home() {
   // Handle refresh - 자료 불러오기
   const handleRefresh = async () => {
     try {
-      const response = await fetch('/api/crawl/run', {
+      const response = await fetch('/api/crawl/trigger', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || 'insight-hub-cron-secret-2024'}`,
-        },
       });
 
       if (response.ok) {
