@@ -21,6 +21,7 @@ const parser = new Parser({
 
 // 네이버 블로그 ID 추출 정규식
 const NAVER_BLOG_ID_REGEX = /blog\.naver\.com\/([^/?]+)/;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const NAVER_POST_ID_REGEX = /logNo=(\d+)/;
 
 export class NaverStrategy implements CrawlStrategy {
@@ -77,6 +78,7 @@ export class NaverStrategy implements CrawlStrategy {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlViaRSS(blogId: string, config: CrawlConfig): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
     const rssUrl = `https://rss.blog.naver.com/${blogId}.xml`;
@@ -140,6 +142,7 @@ export class NaverStrategy implements CrawlStrategy {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlViaHTML(baseUrl: string, config: CrawlConfig): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
 

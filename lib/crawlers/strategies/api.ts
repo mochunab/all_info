@@ -62,6 +62,7 @@ export class APIStrategy implements CrawlStrategy {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<string> {
     // API 전략에서는 일반적으로 목록에서 이미 content를 가져옴
     // 필요한 경우 상세 API 호출

@@ -58,13 +58,6 @@ export interface CrawlLog {
   created_at: string;
 }
 
-// SummaryResult - AI 요약 결과
-export interface SummaryResult {
-  lines: string[];
-  success: boolean;
-  error?: string;
-}
-
 // ArticleFilter - 게시글 필터링 옵션
 export interface ArticleFilter {
   search?: string;

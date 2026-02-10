@@ -2,26 +2,24 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import {
   generateAISummary,
-  summarizeArticle,
-  generateFallbackSummary,
   type AISummaryResult,
 } from './summarizer';
 
-interface BatchResult {
+type BatchResult = {
   processed: number;
   success: number;
   failed: number;
   errors: string[];
-}
+};
 
-interface ArticleRow {
+type ArticleRow = {
   id: string;
   title: string;
   content_preview: string | null;
   summary?: string | null;
   ai_summary?: string | null;
   summary_tags?: string[];
-}
+};
 
 // Edge Function 우선 사용 (USE_EDGE_FUNCTION=false로 명시해야 로컬 OpenAI 직접 호출)
 const USE_EDGE_FUNCTION = process.env.USE_EDGE_FUNCTION !== 'false';
@@ -41,6 +39,7 @@ async function generateAISummaryViaEdgeFunction(
     return {
       summary: '',
       summary_tags: [],
+      detailed_summary: '',
       success: false,
       error: 'Edge Function URL not configured',
     };
@@ -62,6 +61,7 @@ async function generateAISummaryViaEdgeFunction(
       return {
         summary: '',
         summary_tags: [],
+        detailed_summary: '',
         success: false,
         error: `Edge Function error: ${response.status}`,
       };
@@ -73,12 +73,14 @@ async function generateAISummaryViaEdgeFunction(
       return {
         summary: result.summary || '',
         summary_tags: result.summary_tags || [],
+        detailed_summary: result.detailed_summary || '',
         success: true,
       };
     } else {
       return {
         summary: '',
         summary_tags: [],
+        detailed_summary: '',
         success: false,
         error: result.error || 'Unknown Edge Function error',
       };
@@ -88,13 +90,14 @@ async function generateAISummaryViaEdgeFunction(
     return {
       summary: '',
       summary_tags: [],
+      detailed_summary: '',
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
 
-// Process pending summaries in batches (uses new 1-line summary + tags)
+// Process pending summaries in batches (1회 호출로 summary + ai_summary + tags 생성)
 export async function processPendingSummaries(
   supabase: SupabaseClient<Database>,
   batchSize = 20,
@@ -144,7 +147,7 @@ export async function processPendingSummaries(
           continue;
         }
 
-        // Generate AI summary (1-line + 3 tags)
+        // Generate AI summary (1-line + 3 tags + detailed summary)
         // Edge Function 사용 시 서버에서 GPT-5-nano 호출
         let aiResult;
         if (USE_EDGE_FUNCTION && supabaseKey) {
@@ -169,41 +172,14 @@ export async function processPendingSummaries(
           );
         }
 
-        // Also generate legacy 3-line summary for backward compatibility
-        const legacyResult = await summarizeArticle(
-          article.title,
-          article.content_preview
-        );
-
-        let summaryText: string;
-        let aiSummary: string = '';
-        let summaryTags: string[] = [];
-
-        if (aiResult.success) {
-          aiSummary = aiResult.summary;
-          summaryTags = aiResult.summary_tags;
-        }
-
-        if (legacyResult.success && legacyResult.lines.length > 0) {
-          summaryText = legacyResult.lines.join('\n');
-        } else {
-          // Use fallback summary
-          console.log(`Using fallback summary for: ${article.title}`);
-          const fallbackLines = generateFallbackSummary(
-            article.title,
-            article.content_preview
-          );
-          summaryText = fallbackLines.join('\n');
-        }
-
-        // Update article with both summaries
+        // Update article with unified summary result
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: updateError } = await (supabase as any)
           .from('articles')
           .update({
-            summary: article.summary || summaryText,
-            ai_summary: aiSummary || null,
-            summary_tags: summaryTags.length > 0 ? summaryTags : [],
+            ai_summary: aiResult.summary || null,
+            summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
+            summary: aiResult.detailed_summary || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', article.id);
@@ -308,6 +284,7 @@ export async function processArticleSummary(
       .update({
         ai_summary: aiResult.summary,
         summary_tags: aiResult.summary_tags,
+        summary: aiResult.detailed_summary || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', articleId);

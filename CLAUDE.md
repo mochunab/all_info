@@ -4,14 +4,20 @@
 
 ## 프로젝트 개요
 
-**Insight Hub**는 다양한 비즈니스 콘텐츠 소스를 크롤링하고, OpenAI API를 활용해 요약 및 태그를 생성하는 자동화된 인사이트 큐레이션 플랫폼입니다.
+**Insight Hub**는 다양한 비즈니스 콘텐츠 소스를 크롤링하고, Supabase Edge Function (GPT-5-nano) 또는 로컬 OpenAI API (GPT-4o-mini)를 활용해 1줄 요약 및 태그를 자동 생성하는 인사이트 큐레이션 플랫폼입니다.
 
 ### 핵심 기능
-- 📰 다중 소스 자동 크롤링 (정적 페이지, SPA, RSS, 플랫폼 특화)
-- 🤖 OpenAI 기반 AI 요약 및 태그 자동 생성
-- 🔍 실시간 검색 및 카테고리 필터링
-- 📱 반응형 UI (Desktop, Tablet, Mobile)
-- ⏰ 매일 아침 9시 자동 크롤링 (Vercel Cron)
+- 다중 소스 자동 크롤링 (정적 페이지, SPA, RSS, 플랫폼 특화 등 7가지 전략)
+- AI 요약 및 태그 자동 생성 (Edge Function 우선, 로컬 fallback)
+- 실시간 검색 및 카테고리 필터링
+- 반응형 UI (Desktop, Tablet, Mobile)
+- 매일 아침 9시 자동 크롤링 (Vercel Cron)
+- 이미지 프록시 (Hotlinking 방지, SSRF 차단)
+
+### GitHub Repository
+```
+https://github.com/mochunab/all_info.git
+```
 
 ---
 
@@ -24,12 +30,18 @@
 | Styling | Tailwind CSS v3 + CSS Variables |
 | State | React 18 Hooks (useState, useEffect, useCallback) |
 | Database | Supabase (PostgreSQL) |
-| Auth | Supabase SSR (@supabase/ssr) |
-| AI | OpenAI API (GPT-4o-mini / GPT-5-nano) |
-| Edge Functions | Supabase Edge Functions (Deno) |
+| Auth | 커스텀 인증 (`lib/auth.ts` - Bearer Token / Same-Origin 검증) |
+| AI (Edge Function) | Supabase Edge Function (Deno) → OpenAI GPT-5-nano |
+| AI (Local Fallback) | OpenAI API 직접 호출 → GPT-4o-mini |
 | Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability |
-| Deployment | Vercel (Cron: 매일 00:00 UTC = 09:00 KST) |
+| Middleware | Next.js Middleware (Rate Limiting, CORS, Security Headers) |
+| Deployment | Vercel Serverless (Cron: 매일 00:00 UTC = 09:00 KST) |
+| Server | 별도 백엔드 서버 없음 — Next.js API Routes가 Vercel Serverless Functions로 실행 |
 | Font | Pretendard (본문), Outfit (로고) |
+
+> **참고**: 사용자 로그인 시스템 없음. Supabase Auth 미사용. 모든 인증은 서버 간 Bearer Token 기반.
+> **서버 구성 상세**: [PROJECT_CONTEXT.md → 서버 구성](./key_docs/PROJECT_CONTEXT.md#서버-구성) 참조
+> **크롤링 플로우 상세**: [PROJECT_CONTEXT.md → 크롤링 플로우](./key_docs/PROJECT_CONTEXT.md#1-크롤링-플로우-자료-불러오기-버튼--cron) 참조
 
 ---
 
@@ -37,56 +49,88 @@
 
 ```
 insight-hub/
-├── app/                    # Next.js App Router
-│   ├── api/               # API Routes
-│   │   ├── articles/      # 아티클 조회 API
-│   │   ├── sources/       # 크롤링 소스 관리
-│   │   ├── crawl/         # 크롤링 트리거
-│   │   ├── summarize/     # AI 요약 생성
-│   │   └── categories/    # 카테고리 관리
-│   ├── sources/           # 소스 관리 페이지
-│   ├── layout.tsx         # 전역 레이아웃
-│   └── page.tsx           # 메인 페이지
+├── app/                          # Next.js App Router
+│   ├── api/                      # API Routes
+│   │   ├── articles/             # 아티클 조회 API
+│   │   │   ├── route.ts          # GET - 아티클 목록 (검색/필터/페이지네이션)
+│   │   │   └── sources/route.ts  # GET - 소스별 아티클
+│   │   ├── sources/route.ts      # GET/POST - 크롤링 소스 CRUD
+│   │   ├── crawl/                # 크롤링 관련
+│   │   │   ├── run/route.ts      # POST - 전체 크롤링 실행 (Cron/Bearer Auth)
+│   │   │   ├── trigger/route.ts  # POST - 프론트엔드 트리거 (CRON_SECRET 노출 방지 프록시)
+│   │   │   └── status/route.ts   # GET - 크롤링 상태 조회
+│   │   ├── summarize/            # AI 요약 관련
+│   │   │   ├── route.ts          # POST - 단건 요약 (Bearer Auth)
+│   │   │   └── batch/route.ts    # POST - 일괄 요약 (Bearer Auth)
+│   │   ├── categories/route.ts   # GET/POST - 카테고리 관리
+│   │   └── image-proxy/route.ts  # GET - 이미지 프록시 (Hotlinking/SSRF 방지)
+│   ├── sources/                  # 소스 관리 페이지
+│   ├── layout.tsx                # 전역 레이아웃 (Pretendard + Outfit 폰트)
+│   ├── page.tsx                  # 메인 페이지
+│   └── globals.css               # CSS Variables + Tailwind 설정
 │
-├── components/            # React 컴포넌트
-│   ├── ArticleCard.tsx    # 아티클 카드
-│   ├── ArticleGrid.tsx    # 아티클 그리드 + 무한스크롤
-│   ├── FilterBar.tsx      # 검색/필터 UI
-│   ├── Header.tsx         # 헤더 (자료 불러오기 버튼)
-│   ├── Toast.tsx          # 토스트 알림
-│   └── Skeleton.tsx       # 로딩 스켈레톤
+├── components/                   # React 컴포넌트 (Client Components)
+│   ├── ArticleCard.tsx           # 아티클 카드 (이미지 프록시, ai_summary 표시)
+│   ├── ArticleGrid.tsx           # 아티클 그리드 + 무한 스크롤
+│   ├── FilterBar.tsx             # 검색/카테고리 필터 UI
+│   ├── Header.tsx                # 헤더 (자료 불러오기 버튼 → /api/crawl/trigger)
+│   ├── Toast.tsx                 # 토스트 알림
+│   ├── Skeleton.tsx              # 로딩 스켈레톤
+│   └── index.ts                  # Barrel export
 │
-├── lib/                   # 유틸리티 및 비즈니스 로직
-│   ├── supabase/          # Supabase 클라이언트
-│   │   ├── client.ts      # 브라우저 클라이언트
-│   │   └── server.ts      # 서버 클라이언트 (SSR)
-│   ├── crawlers/          # 크롤링 로직
-│   │   ├── base.ts        # 공통 유틸 (저장, 날짜 파싱)
-│   │   ├── types.ts       # 크롤러 타입 정의
-│   │   ├── strategies/    # 크롤러 전략 (Strategy Pattern)
-│   │   │   ├── index.ts   # 전략 팩토리 (getStrategy)
-│   │   │   ├── static.ts  # 정적 페이지 크롤러
-│   │   │   ├── spa.ts     # SPA 크롤러 (Puppeteer)
-│   │   │   ├── rss.ts     # RSS 피드 크롤러
-│   │   │   ├── naver.ts   # 네이버 블로그 특화
-│   │   │   ├── kakao.ts   # 카카오 브런치 특화
-│   │   │   ├── newsletter.ts # 뉴스레터 크롤러
-│   │   │   └── api.ts     # API 크롤러
-│   │   └── sites/         # 사이트별 커스텀 크롤러
-│   └── utils.ts           # 공통 유틸 함수
+├── lib/                          # 유틸리티 및 비즈니스 로직
+│   ├── auth.ts                   # 인증 함수 (verifyCronAuth, verifySameOrigin)
+│   ├── utils.ts                  # 공통 유틸 (cn, fetchWithTimeout 등)
+│   ├── supabase/                 # Supabase 클라이언트
+│   │   ├── client.ts             # 브라우저 클라이언트
+│   │   └── server.ts             # 서버 클라이언트 (SSR) + Service Client (Admin)
+│   ├── ai/                       # AI 요약 로직
+│   │   ├── summarizer.ts         # 로컬 OpenAI 직접 호출 (GPT-4o-mini)
+│   │   └── batch-summarizer.ts   # 배치 요약 (Edge Function 우선 → 로컬 fallback)
+│   └── crawlers/                 # 크롤링 로직
+│       ├── index.ts              # 오케스트레이터 (runCrawler, runAllCrawlers)
+│       ├── base.ts               # 공통 유틸 (saveArticles, isWithinDays, parseDate)
+│       ├── types.ts              # 크롤러 타입 정의
+│       ├── content-extractor.ts  # 본문 추출 (Readability → 셀렉터 → body 순)
+│       ├── date-parser.ts        # 날짜 파싱 (한글 상대 날짜 지원)
+│       ├── cheerio-crawler.ts    # Cheerio 기반 크롤러
+│       ├── playwright-crawler.ts # Puppeteer/Playwright 기반 크롤러
+│       ├── strategies/           # 크롤러 전략 (Strategy Pattern)
+│       │   ├── index.ts          # 전략 팩토리 (getStrategy, inferCrawlerType)
+│       │   ├── static.ts         # STATIC: 정적 페이지 (Cheerio + 페이지네이션)
+│       │   ├── spa.ts            # SPA: 동적 페이지 (Puppeteer)
+│       │   ├── rss.ts            # RSS: 피드 파서 (rss-parser)
+│       │   ├── naver.ts          # PLATFORM_NAVER: 네이버 블로그 특화
+│       │   ├── kakao.ts          # PLATFORM_KAKAO: 카카오 브런치 특화
+│       │   ├── newsletter.ts     # NEWSLETTER: 뉴스레터 크롤러
+│       │   └── api.ts            # API: REST API 엔드포인트
+│       └── sites/                # 사이트별 커스텀 크롤러
+│           ├── stonebc.ts
+│           ├── retailtalk.ts
+│           ├── iconsumer.ts
+│           ├── brunch.ts
+│           ├── wiseapp.ts
+│           ├── openads.ts
+│           └── buybrand.ts
 │
-├── types/                 # TypeScript 타입 정의
-│   ├── database.ts        # Supabase Database 타입
-│   └── index.ts           # 공통 타입 (Article, CrawlSource 등)
+├── types/                        # TypeScript 타입 정의
+│   ├── database.ts               # Supabase Database 타입
+│   └── index.ts                  # 공통 타입 (Article, CrawlSource 등)
 │
-├── scripts/               # CLI 스크립트
-│   └── crawl.ts           # 크롤링 CLI (npx tsx)
+├── scripts/                      # CLI 스크립트
+│   └── crawl.ts                  # 크롤링 CLI (npx tsx)
 │
-├── supabase/              # Supabase 설정
-│   └── functions/         # Edge Functions
-│       └── summarize-article/ # AI 요약 Edge Function
+├── supabase/                     # Supabase 설정
+│   ├── functions/                # Edge Functions
+│   │   └── summarize-article/    # AI 요약 Edge Function (Deno, GPT-5-nano)
+│   │       └── index.ts
+│   └── migrations/               # DB 마이그레이션
+│       ├── 001_initial_schema.sql
+│       └── 002_add_ai_summary_tags.sql
 │
-└── .env.local             # 환경변수 (로컬)
+├── middleware.ts                  # Next.js Middleware (Rate Limit, CORS, Security Headers)
+├── vercel.json                   # Vercel 배포 설정 (Cron, maxDuration, Security Headers)
+└── .env.local                    # 환경변수 (로컬)
 ```
 
 ---
@@ -110,37 +154,112 @@ const strategy = getStrategy(source.crawler_type);
 const items = await strategy.crawlList(source);
 ```
 
-**지원 크롤러 타입**:
-- `STATIC`: 정적 페이지 (Cheerio)
-- `SPA`: SPA/동적 페이지 (Puppeteer)
-- `RSS`: RSS 피드 (rss-parser)
-- `PLATFORM_NAVER`: 네이버 블로그
-- `PLATFORM_KAKAO`: 카카오 브런치
-- `NEWSLETTER`: 뉴스레터 플랫폼
-- `API`: REST API 엔드포인트
+**지원 크롤러 타입 (7종)**:
+| 타입 | 엔진 | 용도 |
+|------|------|------|
+| `STATIC` | Cheerio | 정적 HTML (페이지네이션 지원) |
+| `SPA` | Puppeteer | JS 렌더링 필요한 동적 페이지 |
+| `RSS` | rss-parser | RSS/Atom 피드 |
+| `PLATFORM_NAVER` | Cheerio | 네이버 블로그 특화 |
+| `PLATFORM_KAKAO` | Cheerio | 카카오 브런치 특화 |
+| `NEWSLETTER` | Cheerio | 뉴스레터 플랫폼 |
+| `API` | fetch | REST API 엔드포인트 |
 
-### 2. 중복 방지 및 날짜 필터링
+**크롤러 타입 자동 추론**: `inferCrawlerType(url)` — URL 패턴 기반으로 `crawler_type` 자동 결정
 
-- **중복 방지**: `source_id` (URL 기반 해시)로 이미 존재하는 아티클 필터링
-- **날짜 필터링**: 최근 N일 이내의 콘텐츠만 수집 (기본 7일)
-- **한글 상대 날짜 지원**: "3시간 전", "2일 전" 등 한국어 날짜 표현 파싱
+### 2. 2단계 데이터 파이프라인
 
-### 3. AI 요약 생성 (2단계)
+```
+[Stage 1: 크롤링]
+  크롤러 → HTML 파싱 → Readability 본문 추출 → content_preview (최대 500자)
 
-1. **크롤링 시**: 본문 추출 → OpenAI API 요약 생성
-2. **배치 처리**: 요약 없는 기존 아티클 일괄 요약 (`/api/summarize/batch`)
+[Stage 2: AI 요약 (배치)]
+  content_preview → Edge Function (GPT-5-nano) → ai_summary + summary_tags
+                    └→ 실패 시 → 로컬 OpenAI (GPT-4o-mini) → ai_summary + summary_tags
+```
+
+**중요**: `content_preview`는 크롤링 시 웹페이지에서 직접 추출한 원문 텍스트이며, AI 생성물이 아닙니다.
+
+### 3. AI 요약 생성 (Edge Function 우선)
+
+```
+USE_EDGE_FUNCTION 환경변수 (기본값: true)
+├── true (기본): Supabase Edge Function → GPT-5-nano
+│   └── 실패 시: 로컬 OpenAI API → GPT-4o-mini (자동 fallback)
+└── false (명시): 로컬 OpenAI API → GPT-4o-mini (직접 호출)
+```
 
 **요약 형식**:
-- 1줄 핵심 요약 (`ai_summary`)
-- 3개 태그 (`summary_tags`)
+- 1줄 핵심 요약 (`ai_summary`): 80자 이내, 구어체, 이모지/마크다운 금지
+- 3개 태그 (`summary_tags`): 각 7자 내외
+
+**관련 파일**:
+- `supabase/functions/summarize-article/index.ts` — Edge Function (Deno, GPT-5-nano)
+- `lib/ai/summarizer.ts` — 로컬 OpenAI 직접 호출 (GPT-4o-mini)
+- `lib/ai/batch-summarizer.ts` — 배치 요약 오케스트레이터 (Edge Function 우선 로직)
+
+### 4. 인증 시스템 (`lib/auth.ts`)
+
+> **사용자 로그인 없음** — 모든 인증은 서버 간 통신용
+
+| 함수 | 용도 | 사용처 |
+|------|------|--------|
+| `verifyCronAuth(request)` | Bearer Token 검증 (`CRON_SECRET`) | `/api/crawl/run`, `/api/summarize`, `/api/summarize/batch` |
+| `verifySameOrigin(request)` | CSRF 방어 (Origin/Referer ↔ Host 비교) | 프론트엔드 호출 API |
+
+**프론트엔드 → 크롤링 트리거 흐름**:
+```
+Header.tsx "자료 불러오기" 버튼
+  → POST /api/crawl/trigger (인증 불필요, rate limit 30초)
+    → 서버 내부에서 POST /api/crawl/run + Bearer CRON_SECRET (서버→서버)
+```
+이 패턴은 `CRON_SECRET`이 클라이언트에 노출되지 않도록 합니다.
+
+### 5. Middleware (`middleware.ts`)
+
+| 기능 | 대상 | 설명 |
+|------|------|------|
+| Rate Limiting | `POST /api/crawl/trigger` | 30초 쿨다운 (429 Too Many Requests) |
+| CORS | 모든 요청 | `ALLOWED_ORIGINS` 화이트리스트 기반 |
+| Security Headers | 모든 응답 | X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy |
+| OPTIONS Preflight | CORS 사전 요청 | Access-Control-Allow-Methods/Headers |
+
+### 6. 이미지 프록시 (`/api/image-proxy`)
+
+외부 이미지 핫링킹 방지 + SSRF 차단:
+
+| 보안 레이어 | 설명 |
+|-------------|------|
+| **도메인 화이트리스트** | `pstatic.net`, `stibee.com`, `daumcdn.net` 등 허용 도메인만 |
+| **SSRF 차단** | Private IP (127.x, 10.x, 192.168.x, localhost 등) 접근 차단 |
+| **프로토콜 제한** | HTTPS만 허용 |
+| **리다이렉트 차단** | `redirect: 'error'` 설정으로 SSRF 우회 방지 |
+| **크기 제한** | 최대 10MB |
+| **Content-Type 검증** | `image/*` 타입만 허용 |
+| **Referer 스푸핑** | 네이버 → `blog.naver.com`, 카카오 → `brunch.co.kr` |
+
+---
+
+## API Routes 전체 맵
+
+| Endpoint | Method | Auth | 용도 | maxDuration |
+|----------|--------|------|------|-------------|
+| `/api/articles` | GET | 없음 | 아티클 목록 (검색, 필터, 페이지네이션) | 기본 |
+| `/api/articles/sources` | GET | 없음 | 소스별 아티클 조회 | 기본 |
+| `/api/sources` | GET/POST | Same-Origin | 크롤링 소스 CRUD | 기본 |
+| `/api/crawl/run` | POST | Bearer Token | 전체 크롤링 실행 + 배치 요약 | **300초** |
+| `/api/crawl/trigger` | POST | Rate Limit (30s) | 프론트엔드 → crawl/run 프록시 | 기본 |
+| `/api/crawl/status` | GET | 없음 | 크롤링 상태 조회 | 기본 |
+| `/api/summarize` | POST | Bearer Token | 단건 AI 요약 | 기본 |
+| `/api/summarize/batch` | POST | Bearer Token | 일괄 AI 요약 | **300초** |
+| `/api/categories` | GET/POST | 없음 | 카테고리 CRUD | 기본 |
+| `/api/image-proxy` | GET | 없음 | 이미지 프록시 | 기본 |
 
 ---
 
 ## 개발 규칙 (MUST FOLLOW)
 
 ### 1. TypeScript 코딩 컨벤션
-
-#### ✅ 반드시 지켜야 할 규칙
 
 ```typescript
 // ✅ GOOD: type 사용 (interface 대신)
@@ -170,12 +289,12 @@ import type { Database } from '@/types/database';
 import { createClient } from '../../lib/supabase/client';
 ```
 
-#### ✅ 네이밍 컨벤션
+### 네이밍 컨벤션
 
 ```typescript
-// 파일명: kebab-case
-article-card.tsx
-crawl-sources.ts
+// 파일명: kebab-case (유틸) / PascalCase (컴포넌트)
+batch-summarizer.ts
+ArticleCard.tsx
 
 // 컴포넌트: PascalCase
 export default function ArticleCard() {}
@@ -184,7 +303,7 @@ export default function ArticleCard() {}
 const fetchArticles = async () => {}
 const isLoading = true;
 
-// 타입/인터페이스: PascalCase
+// 타입: PascalCase
 type CrawlerType = 'STATIC' | 'SPA';
 type CrawlResult = { found: number; new: number };
 
@@ -195,53 +314,34 @@ const DEFAULT_HEADERS = { ... };
 
 ### 2. React 컴포넌트 규칙
 
-#### ✅ Client Components
-
 ```typescript
-'use client'; // 항상 맨 위에 선언
+// Client Components — 'use client' 필수
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 
 export default function MyComponent() {
-  // 1. useState (상태)
+  // 1. useState → 2. useCallback → 3. useEffect → 4. return
   const [data, setData] = useState<Type[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // 2. useCallback (함수 메모이제이션)
-  const handleChange = useCallback((value: string) => {
-    setValue(value);
-  }, []);
-
-  // 3. useEffect (사이드 이펙트)
-  useEffect(() => {
-    fetchData();
-  }, [dependency]);
-
-  // 4. 렌더링
+  const handleChange = useCallback((v: string) => setValue(v), []);
+  useEffect(() => { fetchData(); }, [dependency]);
   return <div>...</div>;
 }
-```
 
-#### ✅ Server Components (기본값)
-
-```typescript
-// 'use client' 선언 없음
+// Server Components — 'use client' 없음 (기본값)
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ServerPage() {
   const supabase = await createClient();
   const { data } = await supabase.from('articles').select('*');
-
   return <div>{/* ... */}</div>;
 }
 ```
 
 ### 3. Supabase 사용 규칙
 
-#### ✅ Client vs Server vs Admin 구분
-
 ```typescript
-// 브라우저 환경 (Client Components, API Routes)
+// 브라우저 환경 (Client Components)
 import { createClient } from '@/lib/supabase/client';
 const supabase = createClient();
 
@@ -249,96 +349,61 @@ const supabase = createClient();
 import { createClient } from '@/lib/supabase/server';
 const supabase = await createClient();
 
-// Admin 작업 (크롤링, 배치 요약 등 RLS 우회 필요 시)
+// Admin 작업 (크롤링, 배치 요약 등 — RLS 우회)
 import { createServiceClient } from '@/lib/supabase/server';
 const supabase = createServiceClient(); // Service Role Key 사용
 ```
 
-#### ✅ 타입 안전성
+### 4. 인증 패턴 (API Routes)
 
 ```typescript
-import type { Database } from '@/types/database';
+// 서버 간 인증 (Cron, 배치 등) — Bearer Token
+import { verifyCronAuth } from '@/lib/auth';
 
-// 타입 추론 활성화
-const supabase = createClient<Database>();
+export async function POST(request: NextRequest) {
+  if (!verifyCronAuth(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  // ... 비즈니스 로직
+}
 
-// 타입 안전한 쿼리
-const { data } = await supabase
-  .from('articles')
-  .select('*')
-  .eq('is_active', true);
+// 프론트엔드 호출 (CSRF 방어)
+import { verifySameOrigin } from '@/lib/auth';
+
+// 프론트엔드 → 서버 프록시 (CRON_SECRET 노출 방지)
+// /api/crawl/trigger → 내부에서 /api/crawl/run + Bearer 호출
 ```
 
-### 4. 크롤러 개발 규칙
-
-#### ✅ 새 크롤러 전략 추가 시
-
-1. `lib/crawlers/strategies/` 에 새 전략 파일 생성
-2. `CrawlStrategy` 인터페이스 구현
-3. `lib/crawlers/strategies/index.ts` 에 전략 등록
+### 5. 크롤러 개발 규칙
 
 ```typescript
-// 1. 새 전략 파일 생성 (example.ts)
+// 새 전략 추가: 3단계
+// 1. lib/crawlers/strategies/example.ts 생성
 export const exampleStrategy: CrawlStrategy = {
   type: 'EXAMPLE',
   async crawlList(source: CrawlSource): Promise<RawContentItem[]> {
-    // 크롤링 로직
     return items;
   },
 };
 
-// 2. index.ts에 등록
-import { exampleStrategy } from './example';
+// 2. lib/crawlers/strategies/index.ts 에 전략 등록
+// 3. types.ts의 CrawlerType에 타입 추가
 
-const strategies: Record<string, CrawlStrategy> = {
-  // ...
-  EXAMPLE: exampleStrategy,
-};
+// 필수 체크 사항:
+// - fetchWithTimeout(url, {}, 15000) — 15초 기본 타임아웃
+// - source_id 중복 체크 (URL 기반 해시)
+// - isWithinDays(date, 7) — 최근 7일 필터링
+// - DEFAULT_HEADERS 사용 (User-Agent 설정)
+// - maxPages 제한 필수 (무한 루프 방지)
+// - Puppeteer 사용 시 browser.close() 필수
 ```
 
-#### ✅ 크롤링 시 필수 체크
-
-```typescript
-// 1. Timeout 설정 (15초 기본)
-const response = await fetchWithTimeout(url, {}, 15000);
-
-// 2. 중복 체크
-const { data: existing } = await supabase
-  .from('articles')
-  .select('id')
-  .eq('source_id', article.source_id)
-  .single();
-
-if (existing) {
-  console.log('[DB] SKIP (already exists)');
-  continue;
-}
-
-// 3. 날짜 필터링
-if (!isWithinDays(article.published_at, 7, article.title)) {
-  console.log('[Filter] EXCLUDE (too old)');
-  continue;
-}
-
-// 4. 에러 핸들링
-try {
-  const items = await strategy.crawlList(source);
-} catch (error) {
-  console.error('[Crawler] Error:', error);
-  errors.push(error.message);
-}
-```
-
-### 5. API Routes 규칙
-
-#### ✅ 에러 핸들링 패턴
+### 6. 에러 핸들링 패턴
 
 ```typescript
 export async function GET(request: NextRequest) {
   try {
-    // 비즈니스 로직
     const data = await fetchData();
-
     return NextResponse.json({ data });
   } catch (error) {
     console.error('API error:', error);
@@ -348,51 +413,21 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
-// 인증 필요한 API (crawl/run, summarize/batch):
-// → verifyCronSecret() 사용
-// → Authorization: Bearer {CRON_SECRET}
 ```
 
-#### ✅ 페이지네이션
+### 7. 페이지네이션 패턴
 
 ```typescript
-// 쿼리 파라미터 파싱
 const page = parseInt(searchParams.get('page') || '1', 10);
 const limit = Math.min(parseInt(searchParams.get('limit') || '12', 10), 50);
 const offset = (page - 1) * limit;
 
-// Supabase 페이지네이션
 const { data, count } = await supabase
   .from('articles')
   .select('*', { count: 'exact' })
   .range(offset, offset + limit - 1);
 
 const hasMore = offset + limit < (count || 0);
-```
-
-### 6. 날짜 처리 규칙
-
-#### ✅ 한글 상대 날짜 파싱
-
-```typescript
-// "3시간 전", "2일 전" 등 한국어 날짜 표현 지원
-const date = parseKoreanRelativeDate('3시간 전');
-
-// 다양한 날짜 형식 지원
-const date = parseDate('2024-01-15');       // ISO 8601
-const date = parseDate('2024.01.15');       // Dot format
-const date = parseDate('2024년 1월 15일');  // Korean format
-```
-
-#### ✅ 날짜 필터링
-
-```typescript
-// 최근 N일 이내 확인
-if (!isWithinDays(dateString, 7, title)) {
-  console.log('[Filter] EXCLUDE (too old)');
-  continue;
-}
 ```
 
 ---
@@ -402,82 +437,22 @@ if (!isWithinDays(dateString, 7, title)) {
 ### AI 요약 프롬프트 (절대 변경 금지)
 
 ```
-Edge Function 프롬프트 위치: supabase/functions/summarize-article/index.ts
-- 1줄 요약: 80자 이내, 이모지/마크다운 금지, 구어체
-- 태그 3개: 7자 내외
-- 출력: JSON { "summary": "...", "summary_tag": ["...", "...", "..."] }
-```
+프롬프트 위치:
+  - Edge Function: supabase/functions/summarize-article/index.ts
+  - 로컬: lib/ai/summarizer.ts (SUMMARY_PROMPT 상수)
 
-### ❌ 절대 하지 말아야 할 것들
-
-```typescript
-// ❌ interface 사용 금지 (type 사용)
-interface MyType { ... }
-
-// ❌ console.log 남발 금지 (의미 있는 로그만)
-console.log('test'); // 디버깅 후 제거 필수
-
-// ❌ any 타입 무분별 사용 금지
-const data: any = {}; // eslint-disable 주석 필수
-
-// ❌ 상대 경로 import 금지
-import { ... } from '../../lib/...'; // @ alias 사용
-
-// ❌ Supabase 클라이언트 혼용 금지
-// Client Component에서 server import 하거나
-// Server Component에서 client import 하는 것 금지
-
-// ❌ 하드코딩된 URL 금지
-const url = 'http://localhost:3000/api/...'; // 환경변수 사용
-
-// ❌ 민감 정보 코드에 포함 금지
-const apiKey = 'sk-...'; // 환경변수로만 관리
-
-// ❌ Puppeteer 브라우저 닫기 누락 금지
-const browser = await puppeteer.launch();
-// ... 작업
-// browser.close() 호출 필수!
-await browser.close();
-
-// ❌ fetch timeout 미설정 금지
-const response = await fetch(url); // fetchWithTimeout 사용
-
-// ❌ 크롤링 시 User-Agent 미설정 금지
-// DEFAULT_HEADERS 사용 필수
-```
-
-### ❌ 성능 관련 금지사항
-
-```typescript
-// ❌ 무한 루프 가능성 있는 크롤링 금지
-while (hasMore) {
-  // maxPages 제한 없음 → 위험!
-}
-
-// ✅ GOOD: maxPages 제한 필수
-const maxPages = config.pagination?.maxPages || 5;
-for (let page = 1; page <= maxPages; page++) {
-  // ...
-}
-
-// ❌ 동기식 대량 요청 금지
-for (const url of urls) {
-  await fetch(url); // 순차 처리 → 느림
-}
-
-// ✅ GOOD: 병렬 처리 (제한된 concurrency)
-const chunks = chunkArray(urls, 5);
-for (const chunk of chunks) {
-  await Promise.all(chunk.map(url => fetch(url)));
-}
+규칙:
+  - 1줄 요약: 80자 이내, 이모지/마크다운 금지, 구어체
+  - 태그 3개: 7자 내외
+  - 출력: JSON { "summary": "...", "summary_tag": ["...", "...", "..."] }
 ```
 
 ### 금지 사항 요약 테이블
 
 | 금지 | 이유 |
 |------|------|
-| `interface` 사용 | `type` 통일 |
-| `any` 주석 없이 사용 | eslint-disable 필수 |
+| `interface` 사용 | `type`으로 통일 |
+| `any` 주석 없이 사용 | eslint-disable 주석 필수 |
 | 상대 경로 import | `@/*` alias 사용 |
 | Supabase client/server 혼용 | 환경 분리 필수 |
 | 하드코딩 URL/API Key | 환경변수 사용 |
@@ -486,6 +461,8 @@ for (const chunk of chunks) {
 | AI 요약 프롬프트 수정 | 기획 확정된 프롬프트 |
 | console.log 디버깅 잔류 | 의미 있는 로그만 |
 | maxPages 제한 없는 크롤링 | 무한 루프 위험 |
+| 클라이언트에 CRON_SECRET 노출 | `/api/crawl/trigger` 프록시 패턴 사용 |
+| image-proxy 도메인 무분별 추가 | SSRF 위험, 화이트리스트만 |
 
 ---
 
@@ -497,28 +474,39 @@ for (const chunk of chunks) {
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGc... # 서버 전용
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...    # 서버 전용 (RLS 우회)
 
-# OpenAI
+# OpenAI (로컬 fallback용)
 OPENAI_API_KEY=sk-...
 
 # Cron 보안
 CRON_SECRET=random_secret_string
 
-# Edge Function 사용 여부
-USE_EDGE_FUNCTION=false # true면 Supabase Edge Function 사용
+# AI 요약 경로 선택 (기본값: true → Edge Function 우선)
+USE_EDGE_FUNCTION=true
+# false로 설정 시 로컬 OpenAI API 직접 호출
+
+# 사이트 URL (crawl/trigger 내부 호출용)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+### Supabase Secrets (Edge Function용)
+
+```bash
+# Supabase Dashboard → Edge Functions → Secrets
+# 또는 Management API로 설정됨
+OPENAI_API_KEY=sk-...    # Edge Function에서 GPT-5-nano 호출 시 사용
 ```
 
 ### Vercel 환경변수 (프로덕션)
 
 ```bash
-# Vercel Dashboard → Settings → Environment Variables 등록
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 OPENAI_API_KEY
 CRON_SECRET
-USE_EDGE_FUNCTION
+USE_EDGE_FUNCTION=true
 ```
 
 ---
@@ -549,47 +537,51 @@ npm run crawl
 
 # 6. 특정 소스만 크롤링
 npm run crawl -- --source=1
-# → 소스 ID 1만 크롤링
 ```
 
 ### 2. 새 크롤링 소스 추가
 
-1. **Supabase Dashboard**에서 `crawl_sources` 테이블에 새 레코드 추가
-2. 필요 시 커스텀 크롤러 전략 구현 (`lib/crawlers/strategies/`)
-3. 로컬에서 테스트: `npm run crawl:dry -- --source=<new_id> --verbose`
-4. 성공 시 활성화: `is_active = true`
+1. Supabase Dashboard → `crawl_sources` 테이블에 레코드 삽입
+2. `crawler_type` 설정 (또는 `inferCrawlerType(url)` 자동 추론)
+3. `config` JSON에 `selectors`, `pagination` 등 설정
+4. `npm run crawl:dry -- --source=<id> --verbose` 테스트
+5. 성공 시 `is_active = true` 활성화
 
 ### 3. AI 요약 생성
 
 ```bash
-# 1. 요약 없는 아티클 일괄 처리
-POST /api/summarize/batch
-# → OpenAI API로 모든 요약 없는 아티클 처리
+# 자동: /api/crawl/run 크롤링 완료 후 자동으로 배치 요약 실행
 
-# 2. 특정 아티클만 요약
+# 수동: 요약 없는 아티클 일괄 처리
+POST /api/summarize/batch
+Authorization: Bearer {CRON_SECRET}
+
+# 수동: 특정 아티클만 요약
 POST /api/summarize
-Body: { "articleId": "..." }
+Authorization: Bearer {CRON_SECRET}
+Body: { "articleId": "uuid" }
 ```
 
-### 4. 배포 (Vercel)
+### 4. Edge Function 배포
 
 ```bash
-# 1. Vercel CLI 설치
-npm install -g vercel
+# Supabase CLI
+supabase functions deploy summarize-article
 
-# 2. Vercel 프로젝트 연결
-vercel link
+# 또는 MCP (Supabase MCP 설정 시)
+# → mcp__supabase__deploy_edge_function
+```
 
-# 3. 환경변수 설정 (Vercel Dashboard)
-# → Settings → Environment Variables
+### 5. Git + 배포
 
-# 4. 배포
-vercel --prod
-# 또는 Git Push (자동 배포)
+```bash
+# Git
+git add <files>
+git commit -m "feat: 설명"
+git push origin main
 
-# 5. Cron Job 설정 (Vercel Dashboard)
-# → Settings → Cron Jobs
-# → 매일 9:00 AM (Asia/Seoul): /api/crawl/run
+# Vercel 자동 배포 (Git push 시)
+# Cron: 매일 00:00 UTC (09:00 KST) → /api/crawl/run
 ```
 
 ---
@@ -602,44 +594,60 @@ vercel --prod
 # 1. Dry-run으로 로그 확인
 npm run crawl:dry -- --source=<id> --verbose
 
-# 2. Puppeteer 디버깅 (SPA 크롤러)
+# 2. SPA 크롤러 디버깅 (Puppeteer)
 # lib/crawlers/strategies/spa.ts 수정:
 const browser = await puppeteer.launch({
-  headless: false, // 브라우저 UI 표시
-  devtools: true,  # DevTools 자동 열기
+  headless: false,
+  devtools: true,
 });
 
 # 3. 셀렉터 검증
-# Chrome DevTools에서 document.querySelectorAll('selector') 테스트
+# Chrome DevTools: document.querySelectorAll('selector')
 ```
 
 ### AI 요약 실패 시
 
 ```bash
-# 1. OpenAI API 키 확인
-echo $OPENAI_API_KEY
+# 1. Edge Function 경로 확인
+USE_EDGE_FUNCTION=true  →  Edge Function 호출 중인지 로그 확인
+# "[AI] Using Edge Function for: ..." 로그 존재 시 Edge Function 사용 중
+# "[AI] Edge Function failed, falling back to local: ..." → fallback 발생
 
-# 2. API 요청 로그 확인
-# app/api/summarize/route.ts 또는
-# supabase/functions/summarize-article/index.ts
+# 2. Edge Function 직접 테스트
+curl -X POST "${SUPABASE_URL}/functions/v1/summarize-article" \
+  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "테스트", "content": "테스트 본문"}'
 
-# 3. 토큰 제한 확인
-# 최대 8000 토큰 (GPT-4o-mini)
-# 본문이 너무 길면 자동 잘림
+# 3. 로컬 OpenAI 확인
+echo $OPENAI_API_KEY  # 키 설정 확인
+
+# 4. Supabase Secret 확인
+# Dashboard → Edge Functions → Secrets → OPENAI_API_KEY 존재 확인
 ```
 
-### Supabase 연결 실패 시
+### summary NULL 값 문제
 
 ```bash
-# 1. 환경변수 확인
-echo $NEXT_PUBLIC_SUPABASE_URL
-echo $NEXT_PUBLIC_SUPABASE_ANON_KEY
+# ai_summary가 NULL인 이유:
+# → 배치 요약이 아직 처리하지 못한 아티클
+# → 배치 크기: 20~30개씩 처리 (processPendingSummaries)
+# → /api/crawl/run 실행 시 크롤링 후 자동 배치 요약
 
-# 2. Supabase 프로젝트 상태 확인
-# https://supabase.com/dashboard/project/YOUR_PROJECT
+# 수동 배치 실행:
+curl -X POST "http://localhost:3000/api/summarize/batch" \
+  -H "Authorization: Bearer ${CRON_SECRET}"
+```
 
-# 3. RLS (Row Level Security) 확인
-# Supabase Dashboard → Authentication → Policies
+### Middleware / Rate Limit 문제
+
+```bash
+# /api/crawl/trigger 429 에러 시:
+# → 30초 쿨다운 대기 후 재시도
+# → middleware.ts TRIGGER_COOLDOWN_MS 값 확인
+
+# CORS 문제 시:
+# → middleware.ts ALLOWED_ORIGINS에 도메인 추가
 ```
 
 ---
@@ -649,41 +657,35 @@ echo $NEXT_PUBLIC_SUPABASE_ANON_KEY
 ### 1. 이미지 최적화
 
 ```typescript
-// ✅ Lazy Loading 적용
+// Lazy Loading + 이미지 프록시
 <img loading="lazy" />
 
-// ✅ 이미지 프록시 사용 (Hotlinking 방지)
+// 프록시 URL (Hotlinking 방지)
 const proxiedUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
 
-// ✅ 에러 시 Fallback
+// 에러 시 Fallback
 <img onError={() => setImageError(true)} />
 ```
 
 ### 2. 무한 스크롤
 
 ```typescript
-// ✅ 페이지 단위로 데이터 추가 (교체 아님)
+// 페이지 단위로 데이터 추가 (교체 아님)
 const handleLoadMore = () => {
   fetchArticles(page + 1, true); // append=true
 };
-
-// ✅ 중복 방지
-const [hasMore, setHasMore] = useState(false);
-if (!hasMore) return; // 더 이상 로드 안 함
 ```
 
 ### 3. 검색 디바운싱
 
 ```typescript
-// ✅ useCallback으로 함수 메모이제이션
 const handleSearchChange = useCallback((value: string) => {
   setSearch(value);
 }, []);
 
-// ✅ useEffect에서 dependency로 search 사용
 useEffect(() => {
   fetchArticles(1, false);
-}, [search]); // search 변경 시만 재호출
+}, [search]);
 ```
 
 ---
@@ -691,180 +693,102 @@ useEffect(() => {
 ## 트러블슈팅 FAQ
 
 ### Q1. 크롤링은 되는데 DB에 저장이 안 됩니다.
-
 **원인**: `source_id` 중복 또는 RLS 정책 문제
+**해결**: `npm run crawl:dry -- --source=<id> --verbose` → "[DB] SKIP" 로그 확인
 
+### Q2. AI 요약이 생성되지 않습니다.
+**원인**: Edge Function 미배포, OPENAI_API_KEY 미설정, content_preview 없음
 **해결**:
-```bash
-# 1. 중복 확인
-npm run crawl:dry -- --source=<id> --verbose
-# → "[DB] SKIP (already exists)" 로그 확인
+1. `USE_EDGE_FUNCTION` 환경변수 확인 (기본 `true`)
+2. Supabase Secrets에 `OPENAI_API_KEY` 확인
+3. `content_preview` 컬럼 NULL이면 크롤러 본문 추출 로직 확인
 
-# 2. RLS 정책 확인
-# Supabase Dashboard → Database → articles → Policies
-# → Service Role은 모든 권한 필요
-```
-
-### Q2. Puppeteer 크롤링이 너무 느립니다.
-
-**원인**: Headless 브라우저는 리소스 소비가 큼
-
-**해결**:
-```typescript
-// 1. 이미지/CSS 로딩 차단
-await page.setRequestInterception(true);
-page.on('request', (req) => {
-  if (['image', 'stylesheet'].includes(req.resourceType())) {
-    req.abort();
-  } else {
-    req.continue();
-  }
-});
-
-// 2. 대안: STATIC 크롤러로 전환 가능한지 확인
-// SPA가 아니면 Cheerio가 훨씬 빠름
-```
-
-### Q3. OpenAI API 요금이 너무 많이 나옵니다.
-
-**원인**: GPT-4o-mini 대신 비싼 모델 사용 또는 요청 과다
-
-**해결**:
-```typescript
-// 1. 모델 확인 (gpt-4o-mini 권장)
-model: 'gpt-4o-mini' // 가장 저렴
-
-// 2. 배치 요약 대신 선택적 요약
-// 요약 없는 아티클만 처리
-const { data } = await supabase
-  .from('articles')
-  .select('*')
-  .is('ai_summary', null)
-  .limit(100); // 한 번에 100개만
-
-// 3. Edge Function 사용 (GPT-5-nano, 더 저렴)
-USE_EDGE_FUNCTION=true
-```
-
-### Q4. Vercel에서 Puppeteer가 작동하지 않습니다.
-
+### Q3. Vercel에서 Puppeteer가 작동하지 않습니다.
 **원인**: Vercel Serverless는 Chrome 바이너리 포함 불가
+**해결**: `puppeteer-core` + `@sparticuz/chromium` 사용 또는 외부 Crawler 서버
 
-**해결**:
-```bash
-# 1. Vercel Functions 대신 외부 Crawler 서버 사용
-# → AWS EC2, GCP Compute Engine, Fly.io 등
+### Q4. image-proxy가 특정 이미지를 불러오지 못합니다.
+**원인**: 해당 도메인이 화이트리스트에 없음
+**해결**: `app/api/image-proxy/route.ts`의 `ALLOWED_DOMAINS` 배열에 도메인 추가
 
-# 2. 또는 puppeteer-core + @sparticuz/chromium 사용
-npm install puppeteer-core @sparticuz/chromium
-
-# lib/crawlers/strategies/spa.ts 수정:
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
-
-const browser = await puppeteer.launch({
-  args: chromium.args,
-  executablePath: await chromium.executablePath(),
-});
-```
+### Q5. /api/crawl/trigger 호출 시 429 에러
+**원인**: 30초 Rate Limit 쿨다운
+**해결**: 30초 대기 후 재시도. 변경 필요 시 `middleware.ts`의 `TRIGGER_COOLDOWN_MS`
 
 ---
 
 ## 작업 유형별 가이드
 
 ### 1. 버그 수정
-
 1. 에러 로그 확인 (브라우저 콘솔 / 서버 로그)
 2. 관련 파일 읽기 (API Route → lib → components 순)
-3. 수정 후 `npm run dev` 테스트
+3. `npm run dev` 테스트
 4. 크롤링 버그: `npm run crawl:dry -- --source=<id> --verbose`
 
 ### 2. 신규 기능 추가
-
 1. `types/index.ts` 또는 `types/database.ts` 타입 정의
 2. API Route 생성 (`app/api/{feature}/route.ts`)
-3. 필요 시 lib 유틸 함수 작성
+3. lib 유틸 함수 작성
 4. 컴포넌트 생성 → `components/index.ts` barrel export 추가
-5. 페이지에서 사용
+5. 인증 필요 시 `lib/auth.ts`의 `verifyCronAuth` 또는 `verifySameOrigin` 적용
 
 ### 3. UI 수정
-
 1. CSS Variables 확인 (`app/globals.css`)
 2. Tailwind 클래스 사용 (인라인 style 최소화)
-3. 반응형 확인: `sm:`, `lg:` 브레이크포인트
-4. `transition-colors` 또는 `transition-all` 적용
+3. 반응형: `sm:`, `lg:` 브레이크포인트
+4. 트랜지션: `transition-colors` 또는 `transition-all`
 
-### 4. DB 작업
-
-1. `types/database.ts` 타입 수정
-2. 관련 API Route 업데이트
-3. RLS 정책 확인 (Supabase Dashboard)
-4. Service Role 필요 시 `createServiceClient()` 사용
-
-### 5. 크롤러 추가/수정
-
+### 4. 크롤러 추가/수정
 1. 대상 사이트 분석 (HTML 구조, API 유무)
-2. 적합한 전략 선택 (STATIC/SPA/RSS/API 등)
+2. 적합한 전략 선택 또는 `inferCrawlerType()` 활용
 3. `lib/crawlers/strategies/` 또는 `lib/crawlers/sites/` 작성
 4. `npm run crawl:dry -- --source=<id> --verbose` 테스트
 
-### 6. 배포
+### 5. Edge Function 수정
+1. `supabase/functions/summarize-article/index.ts` 수정
+2. `supabase functions deploy summarize-article` 배포
+3. Supabase Dashboard → Functions → Logs 확인
 
+### 6. 배포
 1. `npm run build` 빌드 확인
 2. Git push → Vercel 자동 배포
-3. Vercel Dashboard에서 환경변수 확인
-4. Cron Job: `vercel.json` → `0 0 * * *` (매일 09:00 KST)
+3. Cron: `vercel.json` → `0 0 * * *` (매일 09:00 KST)
 
 ---
 
-## 핵심 시나리오
+## DB 스키마 요약
 
-### 시나리오 1: 새 크롤링 소스 추가
+### articles 테이블
 
-```
-1. Supabase > crawl_sources 테이블에 레코드 삽입
-2. crawler_type 설정 (STATIC/SPA/RSS/PLATFORM_NAVER/PLATFORM_KAKAO/NEWSLETTER/API)
-3. config JSON에 selectors, pagination 등 설정
-4. npm run crawl:dry -- --source=<id> --verbose 테스트
-5. is_active = true로 활성화
-```
+| 컬럼 | 타입 | 채워지는 시점 |
+|------|------|--------------|
+| `id` | uuid (PK) | INSERT 시 자동 생성 |
+| `title` | text | 크롤링 시 |
+| `url` | text | 크롤링 시 |
+| `source_id` | text (UNIQUE) | 크롤링 시 (URL 기반 해시, 중복 방지) |
+| `content_preview` | text | 크롤링 시 (Readability 추출, 최대 500자) |
+| `image_url` | text | 크롤링 시 (썸네일) |
+| `published_at` | timestamptz | 크롤링 시 (원문 게시일) |
+| `crawled_at` | timestamptz | 크롤링 시 (수집 시각) |
+| `summary` | text | AI 배치 처리 시 (레거시 3줄 요약) |
+| `ai_summary` | text | AI 배치 처리 시 (1줄 요약, 80자 이내) |
+| `summary_tags` | text[] | AI 배치 처리 시 (태그 3개) |
+| `category` | text | 크롤링 시 (소스의 카테고리) |
+| `crawl_source_id` | integer (FK) | 크롤링 시 (crawl_sources.id) |
+| `is_active` | boolean | 기본 true |
 
-### 시나리오 2: AI 요약이 안 될 때
-
-```
-1. USE_EDGE_FUNCTION 환경변수 확인
-2. true → Supabase Edge Function 확인 (supabase functions deploy)
-3. false → OPENAI_API_KEY 확인
-4. 본문 추출 확인 (content_preview 컬럼)
-5. lib/ai/batch-summarizer.ts 로직 확인
-```
-
-### 시나리오 3: 이미지가 안 보일 때
-
-```
-1. Hotlinking 차단 여부 확인
-2. 네이버 이미지 → /api/image-proxy 프록시 경유
-3. components/ArticleCard.tsx > getProxiedImageUrl() 확인
-4. 새 도메인 → needsProxy 배열에 추가
-```
-
-### 시나리오 4: 카테고리 추가
-
-```
-1. UI: FilterBar 또는 AddSourcePage 드롭다운
-2. API: POST /api/categories { name: "새 카테고리" }
-3. DB: categories 테이블 자동 삽입
-4. 기본 카테고리: ['비즈니스', '소비 트렌드']
-```
-
-### 시나리오 5: Vercel 배포 후 크롤링 실패
-
-```
-1. Vercel Functions 타임아웃 확인 (maxDuration: 300초)
-2. Puppeteer → Vercel에서 미지원, puppeteer-core + @sparticuz/chromium 필요
-3. CRON_SECRET 환경변수 확인
-4. Vercel Logs에서 에러 확인
-```
+### crawl_sources 테이블
+| 컬럼 | 설명 |
+|------|------|
+| `id` | serial PK |
+| `name` | 소스 이름 |
+| `base_url` | 크롤링 대상 URL |
+| `crawler_type` | STATIC/SPA/RSS/PLATFORM_NAVER/PLATFORM_KAKAO/NEWSLETTER/API |
+| `config` | jsonb — selectors, pagination, content_selectors 등 |
+| `category` | 카테고리 |
+| `is_active` | 활성화 여부 |
+| `priority` | 크롤링 우선순위 |
+| `last_crawled_at` | 마지막 크롤링 시각 |
 
 ---
 
@@ -877,6 +801,7 @@ API Route: app/api/{feature}/route.ts
 타입: types/index.ts (공통) / types/database.ts (DB)
 크롤러: lib/crawlers/strategies/{name}.ts (전략) / lib/crawlers/sites/{name}.ts (사이트별)
 Supabase: lib/supabase/client.ts (브라우저) / lib/supabase/server.ts (서버)
+인증: lib/auth.ts (verifyCronAuth, verifySameOrigin)
 ```
 
 ---
@@ -925,6 +850,15 @@ crawl: 크롤러 관련 변경
 ---
 
 ## 버전 히스토리
+
+### v1.1.0 (2025-02)
+- Edge Function 기본 활성화 (USE_EDGE_FUNCTION 기본값 true)
+- Supabase Edge Function에 OPENAI_API_KEY Secret 설정
+- lib/auth.ts 인증 모듈 추가 (verifyCronAuth, verifySameOrigin)
+- middleware.ts 추가 (Rate Limiting, CORS, Security Headers)
+- /api/crawl/trigger 프록시 엔드포인트 추가
+- 이미지 프록시 SSRF 방어 강화
+- vercel.json Security Headers 추가
 
 ### v1.0.0 (2025-01-25)
 - 7가지 크롤러 전략 구현

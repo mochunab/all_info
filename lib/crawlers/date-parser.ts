@@ -326,6 +326,7 @@ function parseFixedFormats(dateStr: string): Date | null {
 export function isWithinDays(
   dateStr: string | Date | null | undefined,
   days: number = 7,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   title?: string
 ): boolean {
   // 날짜가 없으면 일단 수집 (true 반환)

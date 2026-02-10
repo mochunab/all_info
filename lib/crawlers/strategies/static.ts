@@ -5,8 +5,8 @@ import * as cheerio from 'cheerio';
 import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig } from '../types';
 import { parseConfig } from '../types';
-import { extractContent, generatePreview, extractMetadata } from '../content-extractor';
-import { parseDate, isWithinDays } from '../date-parser';
+import { extractContent, generatePreview } from '../content-extractor';
+import { isWithinDays } from '../date-parser';
 
 // 기본 헤더
 const DEFAULT_HEADERS = {
@@ -81,6 +81,7 @@ export class StaticStrategy implements CrawlStrategy {
   private async crawlPage(
     url: string,
     config: CrawlConfig,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sourceName: string
   ): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
@@ -127,7 +128,8 @@ export class StaticStrategy implements CrawlStrategy {
 
   private parseItem(
     $: cheerio.CheerioAPI,
-    $el: ReturnType<typeof $.root>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    $el: cheerio.Cheerio<any>,
     selectors: SelectorConfig,
     baseUrl: string,
     config: CrawlConfig
