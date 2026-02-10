@@ -204,10 +204,11 @@ async function handleCrawlRun(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[CRAWL RUN ERROR]:', error);
-    console.error('[CRAWL RUN ERROR] Stack:', error instanceof Error ? error.stack : 'N/A');
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[CRAWL RUN ERROR]:', message, stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: message, detail: stack?.split('\n').slice(0, 3).join(' | ') },
       { status: 500 }
     );
   }

@@ -121,9 +121,11 @@ export async function POST() {
       },
     });
   } catch (error) {
-    console.error('[TRIGGER] Error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[TRIGGER] Error:', message, stack);
     return NextResponse.json(
-      { error: 'Failed to trigger crawl' },
+      { error: message, detail: stack?.split('\n').slice(0, 3).join(' | ') },
       { status: 500 }
     );
   }

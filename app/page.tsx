@@ -106,28 +106,34 @@ export default function Home() {
         method: 'POST',
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const totalNew = data.results?.reduce(
-          (sum: number, r: { new?: number }) => sum + (r.new || 0),
-          0
-        );
+      const data = await response.json();
 
-        setToastMessage(
-          totalNew > 0
-            ? `${totalNew}개의 새 인사이트를 불러왔습니다.`
-            : '새로운 인사이트가 없습니다.'
-        );
+      if (!response.ok) {
+        const detail = data.error || `HTTP ${response.status}`;
+        setToastMessage(`불러오기 실패: ${detail}`);
         setShowToast(true);
-
-        // Refresh articles list
-        setPage(1);
-        fetchArticles(1, false);
-        setLastUpdated(new Date().toISOString());
+        return;
       }
+
+      const totalNew = data.results?.reduce(
+        (sum: number, r: { new?: number }) => sum + (r.new || 0),
+        0
+      );
+
+      setToastMessage(
+        totalNew > 0
+          ? `${totalNew}개의 새 인사이트를 불러왔습니다.`
+          : '새로운 인사이트가 없습니다.'
+      );
+      setShowToast(true);
+
+      // Refresh articles list
+      setPage(1);
+      fetchArticles(1, false);
+      setLastUpdated(new Date().toISOString());
     } catch (error) {
       console.error('Error refreshing:', error);
-      setToastMessage('인사이트 불러오기에 실패했습니다.');
+      setToastMessage(`네트워크 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
       setShowToast(true);
     }
   };
