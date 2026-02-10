@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { inferCrawlerType } from '@/lib/crawlers/infer-type';
+import { analyzePageStructure } from '@/lib/crawlers/auto-detect';
+import type { AnalysisResult } from '@/lib/crawlers/auto-detect';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
 // GET /api/sources - Get all crawl sources
@@ -69,30 +71,64 @@ export async function POST(request: NextRequest) {
     }
 
     const results = [];
+    const analysisResults: { url: string; method: string; confidence: number; crawlerType: string; spaDetected: boolean }[] = [];
+
+    // 모든 소스에 대해 병렬로 auto-detect 실행
+    const analysisMap = new Map<string, AnalysisResult>();
+    const urlsToAnalyze = sources.filter((s: { url?: string }) => s.url).map((s: { url: string }) => s.url);
+
+    const analyses = await Promise.allSettled(
+      urlsToAnalyze.map((url: string) => analyzePageStructure(url))
+    );
+
+    urlsToAnalyze.forEach((url: string, i: number) => {
+      const result = analyses[i];
+      if (result.status === 'fulfilled') {
+        analysisMap.set(url, result.value);
+      }
+    });
 
     for (const source of sources) {
       const { url, name, category } = source;
 
       if (!url) continue;
 
+      const analysis = analysisMap.get(url);
+
       // Check if source already exists
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: existing } = await (supabase as any)
         .from('crawl_sources')
-        .select('id, config')
+        .select('id, config, crawler_type')
         .eq('base_url', url)
         .single();
 
       if (existing) {
-        // Update existing source (merge config to preserve selectors, pagination, etc.)
+        // Update existing source — selectors가 없으면 분석 결과 적용
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existingConfig = (existing.config as Record<string, unknown>) || {};
+        const hasSelectors = existingConfig.selectors && typeof existingConfig.selectors === 'object';
+
+        const updatedConfig = {
+          ...existingConfig,
+          category,
+          // selectors가 없고 분석 성공 시 적용
+          ...(!hasSelectors && analysis?.selectors && { selectors: analysis.selectors }),
+          ...(!hasSelectors && analysis?.pagination && { pagination: analysis.pagination }),
+        };
+
+        // SPA 감지 시 crawler_type 업데이트
+        const crawlerTypeUpdate = analysis?.spaDetected && existing.crawler_type === 'STATIC'
+          ? { crawler_type: 'SPA' as const }
+          : {};
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
           .from('crawl_sources')
           .update({
             name: name || extractDomainName(url),
-            config: { ...existingConfig, category },
+            config: updatedConfig,
+            ...crawlerTypeUpdate,
           })
           .eq('id', existing.id)
           .select()
@@ -101,10 +137,22 @@ export async function POST(request: NextRequest) {
         if (!error && data) {
           results.push(data);
         }
+
+        if (analysis) {
+          analysisResults.push({
+            url,
+            method: analysis.method,
+            confidence: analysis.confidence,
+            crawlerType: crawlerTypeUpdate.crawler_type || existing.crawler_type,
+            spaDetected: analysis.spaDetected,
+          });
+        }
       } else {
-        // Insert new source with auto-detected crawler type
+        // Insert new source with auto-detected crawler type + selectors
         const detectedType = inferCrawlerType(url);
-        console.log(`[SOURCES] New source: ${url} -> crawler_type: ${detectedType}`);
+        const crawlerType = analysis?.spaDetected ? 'SPA' : detectedType;
+
+        console.log(`[SOURCES] New source: ${url} -> crawler_type: ${crawlerType} (analysis: ${analysis?.method || 'none'}, confidence: ${analysis?.confidence || 0})`);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
@@ -112,8 +160,12 @@ export async function POST(request: NextRequest) {
           .insert({
             name: name || extractDomainName(url),
             base_url: url,
-            crawler_type: detectedType,
-            config: { category },
+            crawler_type: crawlerType,
+            config: {
+              category,
+              ...(analysis?.selectors && { selectors: analysis.selectors }),
+              ...(analysis?.pagination && { pagination: analysis.pagination }),
+            },
             is_active: true,
             priority: 1,
           })
@@ -123,12 +175,23 @@ export async function POST(request: NextRequest) {
         if (!error && data) {
           results.push(data);
         }
+
+        if (analysis) {
+          analysisResults.push({
+            url,
+            method: analysis.method,
+            confidence: analysis.confidence,
+            crawlerType,
+            spaDetected: analysis.spaDetected,
+          });
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
       sources: results,
+      analysis: analysisResults,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

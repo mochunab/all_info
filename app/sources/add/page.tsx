@@ -221,7 +221,19 @@ export default function AddSourcePage() {
       const data = await response.json();
 
       if (response.ok) {
-        setToastMessage('저장되었습니다.');
+        // 분석 결과를 토스트 메시지에 포함
+        let message = '저장되었습니다.';
+        if (data.analysis && data.analysis.length > 0) {
+          const ruleCount = data.analysis.filter((a: { method: string }) => a.method === 'rule').length;
+          const aiCount = data.analysis.filter((a: { method: string }) => a.method === 'ai').length;
+          const parts: string[] = [];
+          if (ruleCount > 0) parts.push(`${ruleCount} rule`);
+          if (aiCount > 0) parts.push(`${aiCount} AI`);
+          if (parts.length > 0) {
+            message = `${data.sources?.length || allSources.length}개 소스 저장 (자동분석: ${parts.join(' / ')})`;
+          }
+        }
+        setToastMessage(message);
         setShowToast(true);
         setTimeout(() => {
           router.push('/');
