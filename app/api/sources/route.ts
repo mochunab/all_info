@@ -21,9 +21,11 @@ export async function GET() {
 
     return NextResponse.json({ sources: data || [] });
   } catch (error) {
-    console.error('Error in GET /api/sources:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[GET /api/sources] Error:', message, stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: message, detail: stack?.split('\n').slice(0, 3).join(' | ') },
       { status: 500 }
     );
   }
@@ -129,9 +131,11 @@ export async function POST(request: NextRequest) {
       sources: results,
     });
   } catch (error) {
-    console.error('Error in POST /api/sources:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[POST /api/sources] Error:', message, stack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: message, detail: stack?.split('\n').slice(0, 3).join(' | ') },
       { status: 500 }
     );
   }

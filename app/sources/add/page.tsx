@@ -218,14 +218,23 @@ export default function AddSourcePage() {
         body: JSON.stringify({ sources: allSources }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
         setToastMessage('저장되었습니다.');
         setShowToast(true);
         setTimeout(() => {
           router.push('/');
         }, 2200);
+      } else {
+        const detail = data.error || `HTTP ${response.status}`;
+        setToastMessage(`저장 실패: ${detail}`);
+        setShowToast(true);
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : '알 수 없는 오류';
+      setToastMessage(`네트워크 오류: ${msg}`);
+      setShowToast(true);
       console.error('Error saving sources:', error);
     } finally {
       setIsSaving(false);
