@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { inferCrawlerType } from '@/lib/crawlers/strategies';
+import { createServiceClient } from '@/lib/supabase/server';
+import { inferCrawlerType } from '@/lib/crawlers/infer-type';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
 // GET /api/sources - Get all crawl sources
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
