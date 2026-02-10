@@ -91,6 +91,7 @@ insight-hub/
 │       ├── index.ts              # 오케스트레이터 (runCrawler, runAllCrawlers)
 │       ├── base.ts               # 공통 유틸 (saveArticles, isWithinDays, parseDate)
 │       ├── types.ts              # 크롤러 타입 정의
+│       ├── auto-detect.ts        # CSS 셀렉터 자동 탐지 (rule-based + AI fallback)
 │       ├── content-extractor.ts  # 본문 추출 (Readability → 셀렉터 → body 순)
 │       ├── date-parser.ts        # 날짜 파싱 (한글 상대 날짜 지원)
 │       ├── cheerio-crawler.ts    # Cheerio 기반 크롤러
@@ -247,7 +248,7 @@ Header.tsx "자료 불러오기" 버튼
 |----------|--------|------|------|-------------|
 | `/api/articles` | GET | 없음 | 아티클 목록 (검색, 필터, 페이지네이션) | 기본 |
 | `/api/articles/sources` | GET | 없음 | 소스별 아티클 조회 | 기본 |
-| `/api/sources` | GET/POST | Same-Origin | 크롤링 소스 CRUD | 기본 |
+| `/api/sources` | GET/POST | Same-Origin | 크롤링 소스 CRUD (POST 시 auto-detect 셀렉터 분석) | 기본 |
 | `/api/crawl/run` | POST | Bearer Token | 전체 크롤링 실행 + 배치 요약 | **300초** |
 | `/api/crawl/trigger` | POST | Rate Limit (30s) | 프론트엔드 → crawl/run 프록시 | 기본 |
 | `/api/crawl/status` | GET | 없음 | 크롤링 상태 조회 | 기본 |
@@ -851,6 +852,15 @@ crawl: 크롤러 관련 변경
 ---
 
 ## 버전 히스토리
+
+### v1.3.0 (2026-02)
+- CSS 셀렉터 자동 탐지 모듈 추가 (`lib/crawlers/auto-detect.ts`)
+  - Rule-based: cheerio로 테이블/리스트/반복요소 패턴 매칭 (confidence 점수)
+  - AI fallback: GPT-5-nano → GPT-4o-mini (confidence < 0.5일 때만)
+  - SPA 감지: body 텍스트 + root div 기반 판별
+- POST `/api/sources` 응답에 `analysis` 배열 추가 (method, confidence, crawlerType)
+- 소스 저장 시 `config.selectors`에 자동 탐지 결과 저장
+- 토스트 메시지에 분석 결과 표시 ("3개 소스 저장 (자동분석: 2 rule / 1 AI)")
 
 ### v1.2.0 (2026-02)
 - AI 요약 배치 병렬 처리 (5개씩 동시 호출, Promise.allSettled)

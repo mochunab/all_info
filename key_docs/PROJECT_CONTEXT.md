@@ -87,6 +87,7 @@ app/api/crawl/status/route.ts         → GET - 크롤링 상태 조회
 lib/crawlers/index.ts                 → 크롤링 오케스트레이터 (runCrawler, runAllCrawlers)
 lib/crawlers/base.ts                  → 공통 유틸 (saveArticles, isWithinDays)
 lib/crawlers/types.ts                 → 크롤러 타입 정의 (CrawlStrategy, RawContentItem)
+lib/crawlers/auto-detect.ts           → CSS 셀렉터 자동 탐지 (rule-based + AI fallback)
 lib/crawlers/content-extractor.ts     → 본문 추출 (Readability → 셀렉터 → body)
 lib/crawlers/date-parser.ts           → 날짜 파싱 (한글 상대 날짜 지원)
 lib/crawlers/strategies/index.ts      → 전략 팩토리 (getStrategy, inferCrawlerType)
@@ -349,9 +350,14 @@ page.tsx (메인 페이지)
   └─ handleSave()
        └─ POST /api/sources
             ├─ verifySameOrigin() 또는 verifyCronAuth() 필수
+            ├─ 모든 URL에 대해 병렬로 analyzePageStructure() 실행
+            │   ├─ Rule-based: cheerio로 HTML 구조 패턴 매칭
+            │   ├─ AI fallback: GPT-5-nano/GPT-4o-mini (confidence < 0.5일 때)
+            │   └─ SPA 감지 시 crawler_type을 SPA로 override
             ├─ URL로 크롤러 타입 자동 추론 (inferCrawlerType)
-            ├─ 기존 소스 → UPDATE
-            └─ 신규 소스 → INSERT (is_active: true)
+            ├─ 기존 소스 → UPDATE (selectors 없으면 분석 결과 적용)
+            ├─ 신규 소스 → INSERT (config에 selectors 포함)
+            └─ 응답에 analysis 배열 포함 (method, confidence, crawlerType)
 ```
 
 ---
@@ -363,7 +369,7 @@ page.tsx (메인 페이지)
 | `/api/articles` | GET | 없음 | 아티클 목록 (페이지네이션, 검색, 필터) | 기본 |
 | `/api/articles/sources` | GET | 없음 | 활성 소스명 목록 (distinct) | 기본 |
 | `/api/sources` | GET | 없음 | 크롤 소스 목록 | 기본 |
-| `/api/sources` | POST | SameOrigin 또는 CRON | 소스 추가/수정 (upsert) | 기본 |
+| `/api/sources` | POST | SameOrigin 또는 CRON | 소스 추가/수정 (auto-detect 셀렉터 분석 포함) | 기본 |
 | `/api/categories` | GET | 없음 | 카테고리 목록 | 기본 |
 | `/api/categories` | POST | SameOrigin 또는 CRON | 카테고리 추가 | 기본 |
 | `/api/crawl/run` | POST | CRON_SECRET | 전체 크롤링 + 요약 배치 | 300초 |
@@ -415,6 +421,27 @@ URL 분석 → 최적 전략 자동 선택
   stibee.com      → NEWSLETTER
   기타            → STATIC (기본)
 ```
+
+### CSS 셀렉터 자동 탐지 (auto-detect.ts)
+
+소스 저장 시 (`POST /api/sources`) 페이지 HTML을 분석하여 최적의 셀렉터를 자동 감지:
+
+```
+analyzePageStructure(url)
+  ├─ 1. fetchPage(url) — 15초 타임아웃, Chrome UA 헤더
+  ├─ 2. SPA 감지 — body 텍스트 < 200자 + #root/#app → spaDetected: true
+  ├─ 3. Rule-based (detectByRules) — cheerio 패턴 매칭
+  │   ├─ 테이블 구조 (table > tbody > tr)
+  │   ├─ 리스트 구조 (ul > li, ol > li)
+  │   └─ 반복 요소 (동일 클래스 div/article/section)
+  │   → 점수: title+link=0.6, +date=+0.2, +thumbnail=+0.1, 5개이상=+0.1
+  └─ 4. AI fallback (confidence < 0.5일 때만)
+      ├─ HTML 정리 후 5000자 truncate
+      ├─ GPT-5-nano (responses API) 우선
+      └─ 404시 GPT-4o-mini (chat.completions) fallback
+```
+
+결과가 `crawl_sources.config.selectors`에 저장되어 크롤링 시 DEFAULT_SELECTORS 대신 사용됨.
 
 ### 크롤러 설정 구조 (crawl_sources.config JSONB)
 
