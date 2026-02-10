@@ -10,6 +10,9 @@
     "app/api/crawl/run/route.ts": {
       "maxDuration": 300
     },
+    "app/api/crawl/trigger/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/summarize/batch/route.ts": {
       "maxDuration": 300
     }
