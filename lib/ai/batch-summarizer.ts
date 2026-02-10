@@ -24,6 +24,26 @@ type ArticleRow = {
 // Edge Function 우선 사용 (USE_EDGE_FUNCTION=false로 명시해야 로컬 OpenAI 직접 호출)
 const USE_EDGE_FUNCTION = process.env.USE_EDGE_FUNCTION !== 'false';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+// 재시도 래퍼 (최대 3회, 1초 간격)
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string
+): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === MAX_RETRIES) throw error;
+      console.warn(`[AI] Retry ${attempt}/${MAX_RETRIES} for ${label}: ${error instanceof Error ? error.message : error}`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+    }
+  }
+  throw new Error(`Unreachable`);
+}
+
 // Edge Function URL (Supabase project URL 기반)
 const EDGE_FUNCTION_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
   ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/summarize-article`
@@ -134,77 +154,83 @@ export async function processPendingSummaries(
       return result;
     }
 
-    console.log(`Processing ${articles.length} articles for summarization`);
+    const CONCURRENCY = 5;
+    console.log(`Processing ${articles.length} articles for summarization (${CONCURRENCY} concurrent)`);
 
-    for (const article of articles) {
-      result.processed++;
+    // 5개씩 청크로 나누어 병렬 처리
+    for (let i = 0; i < articles.length; i += CONCURRENCY) {
+      const chunk = articles.slice(i, i + CONCURRENCY);
+      console.log(`[AI] Batch ${Math.floor(i / CONCURRENCY) + 1}: processing ${chunk.length} articles`);
 
-      try {
-        // Skip if no content
-        if (!article.content_preview) {
-          console.log(`Skipping ${article.title}: No content preview`);
-          result.failed++;
-          continue;
-        }
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (article) => {
+          if (!article.content_preview) {
+            console.log(`Skipping ${article.title}: No content preview`);
+            return { article, skipped: true } as const;
+          }
 
-        // Generate AI summary (1-line + 3 tags + detailed summary)
-        // Edge Function 사용 시 서버에서 GPT-5-nano 호출
-        let aiResult;
-        if (USE_EDGE_FUNCTION && supabaseKey) {
-          console.log(`[AI] Using Edge Function for: ${article.title.substring(0, 40)}...`);
-          aiResult = await generateAISummaryViaEdgeFunction(
-            article.title,
-            article.content_preview,
-            supabaseKey
-          );
-          // Edge Function 실패 시 로컬 fallback
-          if (!aiResult.success) {
-            console.log(`[AI] Edge Function failed, falling back to local: ${aiResult.error}`);
-            aiResult = await generateAISummary(
-              article.title,
-              article.content_preview
-            );
+          // Edge Function 우선, 실패 시 로컬 fallback (최대 3회 재시도)
+          const aiResult = await withRetry(async () => {
+            let res;
+            if (USE_EDGE_FUNCTION && supabaseKey) {
+              res = await generateAISummaryViaEdgeFunction(
+                article.title,
+                article.content_preview!,
+                supabaseKey
+              );
+              if (!res.success) {
+                console.log(`[AI] Edge Function failed, falling back to local: ${res.error}`);
+                res = await generateAISummary(
+                  article.title,
+                  article.content_preview!
+                );
+              }
+            } else {
+              res = await generateAISummary(
+                article.title,
+                article.content_preview!
+              );
+            }
+            if (!res.success) throw new Error(res.error || 'AI summary failed');
+            return res;
+          }, article.title.substring(0, 40));
+
+          // DB 업데이트
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: updateError } = await (supabase as any)
+            .from('articles')
+            .update({
+              ai_summary: aiResult.summary || null,
+              summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
+              summary: aiResult.detailed_summary || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', article.id);
+
+          if (updateError) {
+            throw new Error(`Update failed: ${article.title} - ${updateError.message}`);
+          }
+
+          console.log(`Summary generated for: ${article.title}`);
+          return { article, skipped: false } as const;
+        })
+      );
+
+      // 청크 결과 집계
+      for (const settled of chunkResults) {
+        result.processed++;
+        if (settled.status === 'fulfilled') {
+          if (settled.value.skipped) {
+            result.failed++;
+          } else {
+            result.success++;
           }
         } else {
-          aiResult = await generateAISummary(
-            article.title,
-            article.content_preview
-          );
-        }
-
-        // Update article with unified summary result
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: updateError } = await (supabase as any)
-          .from('articles')
-          .update({
-            ai_summary: aiResult.summary || null,
-            summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
-            summary: aiResult.detailed_summary || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', article.id);
-
-        if (updateError) {
-          console.error(
-            `Failed to update summary for ${article.title}:`,
-            updateError
-          );
           result.failed++;
-          result.errors.push(`Update failed: ${article.title}`);
-        } else {
-          console.log(`Summary generated for: ${article.title}`);
-          result.success++;
+          result.errors.push(settled.reason?.message || 'Unknown error');
+          console.error(`[AI] Error:`, settled.reason);
         }
-      } catch (error) {
-        console.error(`Error processing ${article.title}:`, error);
-        result.failed++;
-        result.errors.push(
-          error instanceof Error ? error.message : 'Unknown error'
-        );
       }
-
-      // API 호출 간격 (rate limit 방지)
-      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   } catch (error) {
     console.error('Batch summarization error:', error);
