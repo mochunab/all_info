@@ -133,24 +133,6 @@ export default function Home() {
   };
 
   // Handle add category
-  const handleAddCategory = async (newCategory: string) => {
-    if (categories.includes(newCategory)) return;
-
-    // Optimistically add to local state
-    setCategories((prev) => [...prev, newCategory]);
-
-    // Save to API
-    try {
-      await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newCategory }),
-      });
-    } catch (error) {
-      console.error('Error adding category:', error);
-    }
-  };
-
   return (
     <div className="min-h-screen">
       <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} />
@@ -164,7 +146,6 @@ export default function Home() {
             category={category}
             onCategoryChange={setCategory}
             categories={categories}
-            onAddCategory={handleAddCategory}
             totalCount={totalCount}
           />
         </div>
