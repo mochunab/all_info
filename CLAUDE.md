@@ -33,7 +33,7 @@ https://github.com/mochunab/all_info.git
 | Auth | 커스텀 인증 (`lib/auth.ts` - Bearer Token / Same-Origin 검증) |
 | AI (Edge Function) | Supabase Edge Function (Deno) → OpenAI GPT-5-nano |
 | AI (Local Fallback) | OpenAI API 직접 호출 → GPT-4o-mini |
-| Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability |
+| Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability, jsdom@24 |
 | Middleware | Next.js Middleware (Rate Limiting, CORS, Security Headers) |
 | Deployment | Vercel Serverless (Cron: 매일 00:00 UTC = 09:00 KST) |
 | Server | 별도 백엔드 서버 없음 — Next.js API Routes가 Vercel Serverless Functions로 실행 |
@@ -173,9 +173,10 @@ const items = await strategy.crawlList(source);
 [Stage 1: 크롤링]
   크롤러 → HTML 파싱 → Readability 본문 추출 → content_preview (최대 500자)
 
-[Stage 2: AI 요약 (배치)]
+[Stage 2: AI 요약 (배치, 5개 병렬)]
   content_preview → Edge Function (GPT-5-nano) → ai_summary + summary_tags
-                    └→ 실패 시 → 로컬 OpenAI (GPT-4o-mini) → ai_summary + summary_tags
+                    └→ 실패 시 → 로컬 OpenAI (GPT-4o-mini) (최대 3회 재시도)
+  ※ 5개씩 Promise.allSettled 병렬 처리, 실패 시 1s→2s→3s 백오프 재시도
 ```
 
 **중요**: `content_preview`는 크롤링 시 웹페이지에서 직접 추출한 원문 텍스트이며, AI 생성물이 아닙니다.
@@ -850,6 +851,12 @@ crawl: 크롤러 관련 변경
 ---
 
 ## 버전 히스토리
+
+### v1.2.0 (2026-02)
+- AI 요약 배치 병렬 처리 (5개씩 동시 호출, Promise.allSettled)
+- AI 요약 API 호출 실패 시 최대 3회 재시도 (백오프: 1s→2s→3s)
+- jsdom 27→24 다운그레이드 (Vercel ESM/CJS 호환성)
+- trigger 라우트 정적→동적 import 전환 (Vercel 405 수정)
 
 ### v1.1.0 (2025-02)
 - Edge Function 기본 활성화 (USE_EDGE_FUNCTION 기본값 true)

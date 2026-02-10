@@ -286,6 +286,8 @@ scripts/crawl.ts                      → 크롤링 CLI (npx tsx)
                     ┌─────────────────────────────────────────┐
                     │  batch-summarizer.ts                     │
                     │  processPendingSummaries()                │
+                    │  ※ 5개씩 병렬 처리 (Promise.allSettled)   │
+                    │  ※ 실패 시 최대 3회 재시도 (1s→2s→3s)     │
                     └────────────┬────────────────────────────┘
                                  │
                     USE_EDGE_FUNCTION !== 'false' (기본: true)
@@ -683,7 +685,8 @@ supabase functions deploy summarize-article
 | 크롤링 전체 소요 시간 | ~60-120초 (소스 수에 비례) |
 | AI 요약 1건 (Edge Function) | ~2-3초 |
 | AI 요약 1건 (로컬 OpenAI) | ~2-3초 |
-| 배치 요약 20건 | ~40-60초 (500ms 간격) |
+| 배치 요약 20건 | ~12초 (5개 병렬 × 4청크) |
+| AI 요약 재시도 | 최대 3회 (1s→2s→3s 백오프) |
 | Vercel maxDuration | 300초 |
 | fetch 타임아웃 | 15초 |
 | 페이지당 아티클 수 | 12개 |
