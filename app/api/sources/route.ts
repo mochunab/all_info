@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { inferCrawlerType } from '@/lib/crawlers/strategies';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
@@ -40,15 +40,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const body = await request.json();
-    const { sources } = body;
+    const { sources, deleteIds } = body;
 
     if (!sources || !Array.isArray(sources)) {
       return NextResponse.json(
         { error: 'Invalid sources data' },
         { status: 400 }
       );
+    }
+
+    // 삭제 요청된 소스 처리
+    if (deleteIds && Array.isArray(deleteIds) && deleteIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: deleteError } = await (supabase as any)
+        .from('crawl_sources')
+        .delete()
+        .in('id', deleteIds);
+
+      if (deleteError) {
+        console.error('Error deleting sources:', deleteError);
+      } else {
+        console.log(`[SOURCES] Deleted ${deleteIds.length} sources: ${deleteIds.join(', ')}`);
+      }
     }
 
     const results = [];
@@ -62,18 +77,20 @@ export async function POST(request: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: existing } = await (supabase as any)
         .from('crawl_sources')
-        .select('id')
+        .select('id, config')
         .eq('base_url', url)
         .single();
 
       if (existing) {
-        // Update existing source
+        // Update existing source (merge config to preserve selectors, pagination, etc.)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existingConfig = (existing.config as Record<string, unknown>) || {};
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
           .from('crawl_sources')
           .update({
             name: name || extractDomainName(url),
-            config: { category },
+            config: { ...existingConfig, category },
           })
           .eq('id', existing.id)
           .select()
