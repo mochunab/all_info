@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 
 // Default categories if the table doesn't exist or is empty
@@ -55,6 +55,80 @@ export async function GET() {
   }
 }
 
+// DELETE /api/categories - Delete a category and its sources (requires auth)
+export async function DELETE(request: NextRequest) {
+  try {
+    if (!verifySameOrigin(request) && !verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const supabase = createServiceClient();
+    const body = await request.json();
+    const { name } = body;
+
+    if (!name || typeof name !== 'string') {
+      return NextResponse.json(
+        { error: 'Category name is required' },
+        { status: 400 }
+      );
+    }
+
+    const trimmedName = name.trim();
+
+    // 1. Delete all crawl_sources with this category in config
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: sourcesToDelete } = await (supabase as any)
+      .from('crawl_sources')
+      .select('id')
+      .eq('config->>category', trimmedName);
+
+    let deletedSourceCount = 0;
+    if (sourcesToDelete && sourcesToDelete.length > 0) {
+      const ids = sourcesToDelete.map((s: { id: number }) => s.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: srcDeleteError } = await (supabase as any)
+        .from('crawl_sources')
+        .delete()
+        .in('id', ids);
+
+      if (srcDeleteError) {
+        console.error('Error deleting sources for category:', srcDeleteError);
+      } else {
+        deletedSourceCount = ids.length;
+      }
+    }
+
+    // 2. Delete the category itself
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: catDeleteError } = await (supabase as any)
+      .from('categories')
+      .delete()
+      .eq('name', trimmedName);
+
+    if (catDeleteError) {
+      console.error('Error deleting category:', catDeleteError);
+      return NextResponse.json({ error: catDeleteError.message }, { status: 500 });
+    }
+
+    console.log(`[CATEGORIES] Deleted category "${trimmedName}" with ${deletedSourceCount} sources`);
+
+    return NextResponse.json({
+      success: true,
+      deletedCategory: trimmedName,
+      deletedSourceCount,
+    });
+  } catch (error) {
+    console.error('Error in DELETE /api/categories:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/categories - Add a new category (requires auth)
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +140,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const body = await request.json();
     const { name } = body;
 
