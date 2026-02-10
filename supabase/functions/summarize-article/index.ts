@@ -70,6 +70,35 @@ interface SummaryResponse {
   error?: string;
 }
 
+// Responses API 응답에서 텍스트 추출
+function extractTextFromResponse(data: Record<string, unknown>): string {
+  // 1) output_text 편의 필드 (최신 API)
+  if (data.output_text && typeof data.output_text === 'string') {
+    return data.output_text;
+  }
+
+  // 2) output 배열에서 message content 추출
+  if (Array.isArray(data.output)) {
+    for (const item of data.output) {
+      if (item?.type === 'message' && Array.isArray(item.content)) {
+        for (const block of item.content) {
+          if (block?.type === 'output_text' && typeof block.text === 'string' && block.text) {
+            return block.text;
+          }
+        }
+      }
+    }
+  }
+
+  // 3) chat.completions 형식 (혹시 모를 호환)
+  const choiceContent = (data as any)?.choices?.[0]?.message?.content;
+  if (typeof choiceContent === 'string' && choiceContent) {
+    return choiceContent;
+  }
+
+  return '';
+}
+
 // GPT-5-nano responses.create() API 호출
 async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | null> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
@@ -107,7 +136,16 @@ async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | n
   }
 
   const data = await response.json();
-  return { output_text: data.output_text || data.choices?.[0]?.message?.content || '' };
+  const text = extractTextFromResponse(data);
+
+  // 텍스트 추출 실패 시 chat.completions fallback
+  if (!text) {
+    console.warn('[summarize-article] GPT-5-nano returned empty text, response keys:', Object.keys(data));
+    console.log('Falling back to chat.completions API due to empty response...');
+    return await fallbackToChatCompletions(prompt, apiKey);
+  }
+
+  return { output_text: text };
 }
 
 // Fallback: chat.completions API (gpt-4o-mini)
