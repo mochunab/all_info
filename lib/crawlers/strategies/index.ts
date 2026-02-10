@@ -2,6 +2,7 @@
 // getStrategy()로 crawler_type에 따른 전략 인스턴스 반환
 
 import type { CrawlerType, CrawlStrategy } from '../types';
+import { inferCrawlerType } from '../infer-type';
 
 // 전략 인스턴스들
 import { staticStrategy } from './static';
@@ -57,55 +58,8 @@ export function isValidCrawlerType(type: string): type is CrawlerType {
   return type in strategies;
 }
 
-/**
- * URL 패턴으로 적절한 크롤러 타입 추론
- * (crawl_sources.crawler_type이 없을 때 폴백용)
- */
-export function inferCrawlerType(url: string): CrawlerType {
-  const urlLower = url.toLowerCase();
-
-  // RSS 피드
-  if (
-    urlLower.includes('/rss') ||
-    urlLower.includes('/feed') ||
-    urlLower.includes('.xml') ||
-    urlLower.includes('atom')
-  ) {
-    return 'RSS';
-  }
-
-  // 네이버
-  if (urlLower.includes('blog.naver.com') || urlLower.includes('naver.com')) {
-    return 'PLATFORM_NAVER';
-  }
-
-  // 카카오 (브런치)
-  if (urlLower.includes('brunch.co.kr')) {
-    return 'PLATFORM_KAKAO';
-  }
-
-  // 뉴스레터 플랫폼
-  if (
-    urlLower.includes('stibee.com') ||
-    urlLower.includes('substack.com') ||
-    urlLower.includes('mailchimp.com') ||
-    urlLower.includes('campaign-archive')
-  ) {
-    return 'NEWSLETTER';
-  }
-
-  // API 엔드포인트
-  if (
-    urlLower.includes('/api/') ||
-    urlLower.includes('.json') ||
-    urlLower.includes('graphql')
-  ) {
-    return 'API';
-  }
-
-  // 기본값: STATIC
-  return 'STATIC';
-}
+// inferCrawlerType은 infer-type.ts에서 import하여 re-export
+export { inferCrawlerType };
 
 // Re-export for convenience
 export { closeBrowser };
