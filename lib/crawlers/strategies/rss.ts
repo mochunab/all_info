@@ -6,7 +6,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
-import { parseDate, isWithinDays } from '../date-parser';
+import { isWithinDays } from '../date-parser';
 
 // RSS 파서 인스턴스
 const parser = new Parser({

@@ -77,11 +77,14 @@ export interface CrawlConfig {
   category?: string;
 }
 
+// 본문 크롤링 결과 (콘텐츠 + 옵션 썸네일)
+export type ContentResult = string | { content: string; thumbnail?: string };
+
 // 전략 인터페이스
 export interface CrawlStrategy {
   readonly type: CrawlerType;
   crawlList(source: CrawlSource): Promise<RawContentItem[]>;
-  crawlContent?(url: string, config?: ContentSelectors): Promise<string>;
+  crawlContent?(url: string, config?: ContentSelectors): Promise<ContentResult>;
 }
 
 // 크롤링 결과

@@ -1,37 +1,36 @@
 export default function Skeleton() {
   return (
     <div className="card overflow-hidden">
-      {/* Thumbnail skeleton */}
-      <div className="aspect-[16/10] shimmer" />
+      <div className="p-4 sm:p-5 space-y-3">
+        {/* Source badge skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="h-5 w-16 shimmer rounded" />
+          <div className="w-7 h-7 shimmer rounded-full" />
+        </div>
 
-      {/* Content skeleton */}
-      <div className="p-4 sm:p-5 space-y-4">
         {/* Title skeleton */}
         <div className="space-y-2">
           <div className="h-5 shimmer rounded w-full" />
           <div className="h-5 shimmer rounded w-3/4" />
         </div>
 
-        {/* Summary skeleton */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 shimmer rounded" />
-            <div className="h-4 shimmer rounded flex-1" />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 shimmer rounded" />
-            <div className="h-4 shimmer rounded flex-1" />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 shimmer rounded" />
-            <div className="h-4 shimmer rounded w-4/5" />
-          </div>
+        {/* Summary box skeleton */}
+        <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 space-y-2">
+          <div className="h-4 shimmer rounded w-full" />
+          <div className="h-4 shimmer rounded w-full" />
+          <div className="h-4 shimmer rounded w-4/5" />
         </div>
 
-        {/* Meta skeleton */}
-        <div className="flex items-center justify-between pt-2">
+        {/* Tags skeleton */}
+        <div className="flex gap-1.5">
+          <div className="h-5 w-16 shimmer rounded" />
+          <div className="h-5 w-14 shimmer rounded" />
+          <div className="h-5 w-18 shimmer rounded" />
+        </div>
+
+        {/* Date skeleton */}
+        <div className="pt-2 border-t border-[var(--border)]">
           <div className="h-3 shimmer rounded w-20" />
-          <div className="h-3 shimmer rounded w-16" />
         </div>
       </div>
     </div>

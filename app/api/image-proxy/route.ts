@@ -7,6 +7,7 @@ const ALLOWED_DOMAINS = [
   'postfiles.pstatic.net',
   'mblogthumb-phinf.pstatic.net',
   'img.stibee.com',
+  'img2.stibee.com',
   'img1.daumcdn.net',
   't1.daumcdn.net',
   'brunch-phinf.pstatic.net',
