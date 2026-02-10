@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { runCrawler } from '@/lib/crawlers';
-import { processPendingSummaries } from '@/lib/ai/batch-summarizer';
 import type { CrawlSource } from '@/types';
 
 export async function POST() {
@@ -36,6 +34,10 @@ export async function POST() {
     }
 
     console.log(`[TRIGGER] Starting crawl for ${sources.length} sources`);
+
+    // 동적 import로 Puppeteer 번들 포함 방지 (Vercel Serverless 호환)
+    const { runCrawler } = await import('@/lib/crawlers');
+    const { processPendingSummaries } = await import('@/lib/ai/batch-summarizer');
 
     const results = [];
 
