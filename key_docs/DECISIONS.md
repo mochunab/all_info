@@ -188,6 +188,49 @@ mblogthumb-phinf.pstatic.net
 
 ---
 
+## ADR-009: jsdom 27→24 다운그레이드
+
+**일시**: 2026-02-10
+**상태**: 확정
+
+**결정**: jsdom을 v27.4.0에서 v24.1.3으로 다운그레이드한다.
+
+**이유**:
+- jsdom v27의 `html-encoding-sniffer@6` → `@exodus/bytes`가 ESM-only 패키지
+- Vercel Serverless Functions는 CJS 환경이라 `require()` 호출 시 런타임 에러 (500)
+- jsdom v24는 `html-encoding-sniffer@4`를 사용하여 CJS 호환
+
+**트레이드오프**:
+- jsdom 최신 버전의 기능/보안 패치를 받지 못함
+- Vercel이 ESM을 네이티브 지원하면 v27+로 복원 가능
+
+---
+
+## ADR-010: AI 요약 배치 병렬 처리 + 재시도 전략
+
+**일시**: 2026-02-10
+**상태**: 확정
+
+**결정**: AI 요약 배치를 5개씩 병렬 처리하고, 실패 시 최대 3회 재시도한다.
+
+**이유**:
+- 순차 처리 시 20건 ~40-60초 → 병렬 처리 시 ~12초 (약 4배 단축)
+- Edge Function / OpenAI API의 일시적 실패에 대한 복원력 확보
+- `Promise.allSettled`로 개별 실패가 전체 배치를 중단하지 않음
+- 백오프 간격 (1s→2s→3s)으로 API rate limit 회피
+
+**구현**:
+- 동시성: 5개 (`CONCURRENCY = 5`)
+- 재시도: 3회 (`MAX_RETRIES = 3`), 지수 백오프 (`RETRY_DELAY_MS * attempt`)
+- 파일: `lib/ai/batch-summarizer.ts`
+
+**대안 검토**:
+- 전체 병렬 (동시성 무제한): API rate limit 위험
+- 순차 처리 유지: Vercel 300초 maxDuration 내 처리량 제한
+- 10개 병렬: API 부하 우려, 5개가 안전한 균형점
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
