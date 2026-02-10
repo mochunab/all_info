@@ -16,12 +16,17 @@ function verifyCronSecret(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
+// Vercel Cron sends GET requests
+export async function GET(request: NextRequest) {
+  return handleCrawlRun(request);
+}
+
 export async function POST(request: NextRequest) {
+  return handleCrawlRun(request);
+}
+
+async function handleCrawlRun(request: NextRequest) {
   const runStartTime = Date.now();
-  console.log(`\n${'#'.repeat(70)}`);
-  console.log(`# CRAWL RUN STARTED`);
-  console.log(`# Time: ${new Date().toISOString()}`);
-  console.log(`${'#'.repeat(70)}\n`);
 
   try {
     // Verify authorization
@@ -32,18 +37,33 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    console.log('[AUTH] Authorization verified');
 
     const supabase = createServiceClient();
 
-    // Get all active crawl sources
-    console.log('[SOURCES] Fetching active crawl sources...');
+    // Check for sourceId query parameter (pg_cron per-source mode)
+    const { searchParams } = new URL(request.url);
+    const sourceId = searchParams.get('sourceId');
+    const skipSummary = searchParams.get('skipSummary') === 'true';
+
+    console.log(`\n${'#'.repeat(70)}`);
+    console.log(`# CRAWL RUN STARTED ${sourceId ? `(sourceId: ${sourceId})` : '(all sources)'}`);
+    console.log(`# Time: ${new Date().toISOString()}`);
+    console.log(`${'#'.repeat(70)}\n`);
+
+    // Fetch sources: single source or all active sources
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: sourcesData, error: sourcesError } = await (supabase as any)
+    let query = (supabase as any)
       .from('crawl_sources')
       .select('*')
-      .eq('is_active', true)
-      .order('priority', { ascending: false });
+      .eq('is_active', true);
+
+    if (sourceId) {
+      query = query.eq('id', parseInt(sourceId, 10));
+    } else {
+      query = query.order('priority', { ascending: false });
+    }
+
+    const { data: sourcesData, error: sourcesError } = await query;
 
     if (sourcesError) {
       console.error('[SOURCES] Error fetching sources:', sourcesError);
@@ -154,24 +174,28 @@ export async function POST(request: NextRequest) {
     console.log(`Failed sources: ${totalFailed}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    // After crawling, process pending summaries
-    console.log('[SUMMARIZE] Starting batch summarization...');
-    // Edge Function 호출 시 service role key 사용
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
-    console.log(`[SUMMARIZE] Complete: ${summaryResult.success}/${summaryResult.processed} successful`);
+    // After crawling, process pending summaries (skip if per-source mode with skipSummary)
+    let summaryResult = { processed: 0, success: 0, failed: 0 };
+    if (!skipSummary) {
+      console.log('[SUMMARIZE] Starting batch summarization...');
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
+      console.log(`[SUMMARIZE] Complete: ${summaryResult.success}/${summaryResult.processed} successful`);
+    } else {
+      console.log('[SUMMARIZE] Skipped (skipSummary=true, will run separately)');
+    }
 
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
     console.log(`\n${'#'.repeat(70)}`);
-    console.log(`# CRAWL RUN COMPLETE`);
+    console.log(`# CRAWL RUN COMPLETE ${sourceId ? `(sourceId: ${sourceId})` : ''}`);
     console.log(`# Duration: ${totalDuration}s`);
     console.log(`# New articles: ${totalNew}`);
     console.log(`${'#'.repeat(70)}\n`);
 
     return NextResponse.json({
       success: true,
-      message: `Crawled ${sources.length} sources`,
+      message: sourceId ? `Crawled source ${sourceId}` : `Crawled ${sources.length} sources`,
       results,
       summarization: {
         processed: summaryResult.processed,
