@@ -3,7 +3,7 @@
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import type { CrawlSource } from '@/types';
-import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig } from '../types';
+import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
@@ -113,7 +113,7 @@ export class SPAStrategy implements CrawlStrategy {
     }
   }
 
-  async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<string> {
+  async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<ContentResult> {
     const browser = await getBrowser();
     let page: Page | null = null;
 
@@ -132,7 +132,49 @@ export class SPAStrategy implements CrawlStrategy {
       // HTML 가져오기
       const html = await page.content();
       const content = await extractContent(html, url, config);
-      return generatePreview(content);
+      const contentText = generatePreview(content);
+
+      // 썸네일 추출 시도 (DOM 이미지 → 스크립트 내 이미지)
+      const thumbnail = await page.evaluate(() => {
+        // 1. DOM에서 큰 이미지 찾기 (프로필/아이콘 제외)
+        const imgs = Array.from(document.querySelectorAll('img'));
+        for (const img of imgs) {
+          if (
+            img.naturalWidth >= 200 &&
+            img.naturalHeight >= 150 &&
+            !img.alt?.includes('profile') &&
+            !img.src?.includes('icon') &&
+            !img.src?.includes('.svg')
+          ) {
+            return img.src;
+          }
+        }
+
+        // 2. 스크립트 태그에서 콘텐츠 이미지 추출 (stibee 등 SPA)
+        const scripts = document.querySelectorAll('script');
+        const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+        for (const s of scripts) {
+          const text = s.textContent || '';
+          const imgUrls = text.match(/https:\/\/img2\.stibee\.com\/\d+_\d+_[^"\\]+\.(jpg|jpeg|png|webp)/g);
+          if (imgUrls && imgUrls.length > 0) {
+            return imgUrls[0];
+          }
+        }
+
+        // 3. og:image 폴백 (프로필 이미지가 아닌 경우만)
+        if (ogImage && !ogImage.includes('profile')) {
+          return ogImage;
+        }
+
+        return null;
+      });
+
+      if (thumbnail) {
+        console.log(`[SPA] Extracted thumbnail: ${thumbnail.substring(0, 80)}...`);
+        return { content: contentText, thumbnail };
+      }
+
+      return contentText;
     } catch (error) {
       console.error(`[SPA] Content crawl error:`, error);
       return '';

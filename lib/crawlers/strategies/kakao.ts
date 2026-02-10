@@ -102,6 +102,7 @@ export class KakaoStrategy implements CrawlStrategy {
     return this.crawlBrunchHTML(url, config);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlViaRSS(rssUrl: string, config: CrawlConfig): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
 
@@ -187,6 +188,7 @@ export class KakaoStrategy implements CrawlStrategy {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlAuthorHTML(authorId: string, config: CrawlConfig): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
     const url = `https://brunch.co.kr/@${authorId}`;
@@ -223,7 +225,7 @@ export class KakaoStrategy implements CrawlStrategy {
 
           // 썸네일
           const $thumb = $el.find('img').first();
-          let thumbnail =
+          const thumbnail =
             $thumb.attr('src') || $thumb.attr('data-src') || null;
 
           // 날짜
@@ -254,6 +256,7 @@ export class KakaoStrategy implements CrawlStrategy {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlMagazineHTML(url: string, config: CrawlConfig): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
 
@@ -289,7 +292,7 @@ export class KakaoStrategy implements CrawlStrategy {
 
           // 썸네일
           const $thumb = $el.find('img').first();
-          let thumbnail = $thumb.attr('src') || $thumb.attr('data-src') || null;
+          const thumbnail = $thumb.attr('src') || $thumb.attr('data-src') || null;
 
           // 작성자
           const author = $el.find('.author, .writer').text().trim() || null;
@@ -322,6 +325,7 @@ export class KakaoStrategy implements CrawlStrategy {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async crawlBrunchHTML(url: string, config: CrawlConfig): Promise<RawContentItem[]> {
     // 일반적인 브런치 페이지 크롤링 (메인, 토픽 등)
     const items: RawContentItem[] = [];
@@ -360,7 +364,7 @@ export class KakaoStrategy implements CrawlStrategy {
 
           // 썸네일
           const $thumb = $el.find('img').first();
-          let thumbnail = $thumb.attr('src') || $thumb.attr('data-src') || null;
+          const thumbnail = $thumb.attr('src') || $thumb.attr('data-src') || null;
 
           // 작성자
           const author = $el.find('.name_author, .author').text().trim() || null;

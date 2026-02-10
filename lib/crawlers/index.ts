@@ -83,7 +83,18 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
     // 본문이 없고 crawlContent 메서드가 있으면 상세 페이지 크롤링
     if (!item.content && strategy.crawlContent) {
       try {
-        item.content = await strategy.crawlContent(item.link, config.content_selectors);
+        const result = await strategy.crawlContent(item.link, config.content_selectors);
+
+        // ContentResult 처리: string 또는 { content, thumbnail }
+        if (typeof result === 'string') {
+          item.content = result;
+        } else {
+          item.content = result.content;
+          // 썸네일이 없는 경우에만 상세 페이지에서 추출한 썸네일 사용
+          if (!item.thumbnail && result.thumbnail) {
+            item.thumbnail = result.thumbnail;
+          }
+        }
       } catch (error) {
         console.error(`[CRAWL] Content fetch error for ${item.link}:`, error);
       }
