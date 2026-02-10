@@ -24,6 +24,7 @@ export default function AddSourcePage() {
   const [toastMessage, setToastMessage] = useState('저장되었습니다.');
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,9 +171,15 @@ export default function AddSourcePage() {
   const handleSourceChange = (id: string, field: 'url' | 'name', value: string) => {
     setSourcesByCategory({
       ...sourcesByCategory,
-      [activeCategory]: currentSources.map((s) =>
-        s.id === id ? { ...s, [field]: value } : s
-      ),
+      [activeCategory]: currentSources.map((s) => {
+        if (s.id !== id) return s;
+        // 기존 소스의 URL 변경 시 → 기존 소스는 삭제 대상에 추가, 새 소스로 전환
+        if (field === 'url' && s.isExisting) {
+          setPendingDeleteIds((prev) => [...prev, parseInt(s.id, 10)]);
+          return { ...s, [field]: value, isExisting: false, id: `new-${Date.now()}` };
+        }
+        return { ...s, [field]: value };
+      }),
     });
   };
 
@@ -187,6 +194,10 @@ export default function AddSourcePage() {
   };
 
   const handleRemoveLink = (id: string) => {
+    const target = currentSources.find((s) => s.id === id);
+    if (target?.isExisting) {
+      setPendingDeleteIds((prev) => [...prev, parseInt(target.id, 10)]);
+    }
     setSourcesByCategory({
       ...sourcesByCategory,
       [activeCategory]: currentSources.filter((s) => s.id !== id),
@@ -215,7 +226,10 @@ export default function AddSourcePage() {
       const response = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sources: allSources }),
+        body: JSON.stringify({
+          sources: allSources,
+          ...(pendingDeleteIds.length > 0 && { deleteIds: pendingDeleteIds }),
+        }),
       });
 
       const data = await response.json();
@@ -233,6 +247,7 @@ export default function AddSourcePage() {
             message = `${data.sources?.length || allSources.length}개 소스 저장 (자동분석: ${parts.join(' / ')})`;
           }
         }
+        setPendingDeleteIds([]);
         setToastMessage(message);
         setShowToast(true);
         setTimeout(() => {
