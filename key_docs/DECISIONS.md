@@ -231,6 +231,38 @@ mblogthumb-phinf.pstatic.net
 
 ---
 
+## ADR-011: CSS 셀렉터 자동 탐지 (Auto-Detect)
+
+**일시**: 2026-02-10
+**상태**: 확정
+
+**결정**: 소스 저장 시 페이지 HTML을 자동 분석하여 CSS 셀렉터를 탐지하고 config에 저장한다.
+
+**이유**:
+- 소스 저장 시 `config: { category }` 만 저장되어 DEFAULT_SELECTORS에 의존 → 대부분 크롤링 실패
+- 사이트마다 HTML 구조가 달라 수동 셀렉터 설정은 비실용적
+- Rule-based 휴리스틱으로 대부분의 게시판/목록 사이트 자동 처리
+- 규칙 실패 시 GPT-5-nano/GPT-4o-mini로 HTML 구조 분석
+
+**구현**:
+- 파일: `lib/crawlers/auto-detect.ts`
+- 실행 위치: Vercel Serverless (POST `/api/sources` 내부)
+- 흐름: Rule-based (cheerio) → AI fallback (confidence < 0.5일 때만)
+- 점수 산정: title+link=0.6, +date=+0.2, +thumbnail=+0.1, 5개이상=+0.1
+- API 응답에 `analysis` 배열로 탐지 결과 포함
+
+**대안 검토**:
+- AI만 사용: 모든 요청에 API 호출, 비용 과다
+- Rule-based만 사용: 복잡한 사이트 처리 불가
+- Supabase Edge Function: cheerio가 Deno 미지원, 로직 분산 우려
+- 수동 입력: 사용자 경험 저하
+
+**트레이드오프**:
+- 소스 저장 시 각 URL을 fetch하므로 저장 시간 증가 (병렬 처리로 완화)
+- AI fallback 사용 시 OpenAI API 비용 발생 (GPT-5-nano $0.05/1M tokens)
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
