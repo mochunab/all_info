@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { processPendingSummaries } from '@/lib/ai/batch-summarizer';
+import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
 // Verify cron secret for scheduled runs
@@ -185,6 +186,9 @@ async function handleCrawlRun(request: NextRequest) {
     } else {
       console.log('[SUMMARIZE] Skipped (skipSummary=true, will run separately)');
     }
+
+    // 크롤링 완료 후 articles 캐시 무효화
+    invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
     console.log(`\n${'#'.repeat(70)}`);

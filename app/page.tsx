@@ -284,21 +284,30 @@ export default function Home() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Filter Bar */}
-        <div className="mb-6 sm:mb-8">
-          <FilterBar
-            search={search}
-            onSearchChange={handleSearchChange}
-            category={category}
-            onCategoryChange={setCategory}
-            categories={categories}
-            totalCount={totalCount}
-          />
+        {/* Top Bar: Filter + Language Switcher */}
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row gap-4 sm:items-start sm:justify-between">
+          <div className="flex-1">
+            <FilterBar
+              search={search}
+              onSearchChange={handleSearchChange}
+              category={category}
+              onCategoryChange={setCategory}
+              categories={categories}
+              totalCount={totalCount}
+            />
+          </div>
+          <div className="flex-shrink-0 sm:pt-1">
+            <LanguageSwitcher
+              currentLang={language}
+              onLanguageChange={handleLanguageChange}
+            />
+          </div>
         </div>
 
         {/* Article Grid */}
         <ArticleGrid
           articles={articles}
+          language={language}
           isLoading={isLoading}
           hasMore={hasMore}
           onLoadMore={handleLoadMore}

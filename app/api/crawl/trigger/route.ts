@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
 export async function POST() {
@@ -107,6 +108,9 @@ export async function POST() {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
+
+    // 크롤링 완료 후 articles 캐시 무효화
+    invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
     console.log(`[TRIGGER] Complete in ${totalDuration}s`);

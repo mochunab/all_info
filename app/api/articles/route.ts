@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getCache, setCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import type { ArticleListResponse } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -14,6 +15,23 @@ export async function GET(request: NextRequest) {
     const source = searchParams.get('source') || '';
 
     const offset = (page - 1) * limit;
+
+    // In-Memory cache — 검색 쿼리 없는 요청만 캐시 (검색은 변동성 높음)
+    const cacheKey = !search
+      ? `${CACHE_KEYS.ARTICLES_PREFIX}p=${page}&l=${limit}&c=${category}&s=${source}`
+      : null;
+
+    if (cacheKey) {
+      const cached = getCache<ArticleListResponse>(cacheKey);
+      if (cached) {
+        return NextResponse.json(cached, {
+          headers: {
+            'Cache-Control': 'private, max-age=15, stale-while-revalidate=30',
+            'X-Cache': 'HIT',
+          },
+        });
+      }
+    }
 
     const supabase = await createClient();
 
@@ -62,7 +80,19 @@ export async function GET(request: NextRequest) {
       hasMore,
     };
 
-    return NextResponse.json(response);
+    // 검색 없는 요청만 캐시 저장
+    if (cacheKey) {
+      setCache(cacheKey, response, CACHE_TTL.ARTICLES);
+    }
+
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': search
+          ? 'private, no-cache'
+          : 'private, max-age=15, stale-while-revalidate=30',
+        'X-Cache': 'MISS',
+      },
+    });
   } catch (error) {
     console.error('Articles API error:', error);
     return NextResponse.json(

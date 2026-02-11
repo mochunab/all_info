@@ -12,6 +12,11 @@ type SourceLink = {
   isExisting: boolean;
 };
 
+const STORAGE_KEY = {
+  SOURCES: 'ih:sources',
+  CATEGORIES: 'ih:categories',
+} as const;
+
 export default function AddSourcePage() {
   const router = useRouter();
   const [categories, setCategories] = useState<string[]>([]);
@@ -35,53 +40,83 @@ export default function AddSourcePage() {
     }
   }, [isAddingCategory]);
 
-  // Fetch existing sources and categories on mount
+  // Parse raw API responses into component state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parseData = (srcData: any, catData: any) => {
+    let cats: string[] = ['비즈니스', '소비 트렌드'];
+    const dbCatNames = new Set<string>();
+    if (catData?.categories?.length > 0) {
+      cats = catData.categories.map((c: { name: string }) => c.name);
+      cats.forEach((c) => dbCatNames.add(c));
+    }
+
+    const grouped: Record<string, SourceLink[]> = {};
+    for (const cat of cats) {
+      grouped[cat] = [];
+    }
+
+    if (srcData?.sources?.length > 0) {
+      for (const s of srcData.sources) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const srcCategory = (s.config as any)?.category || cats[0];
+        if (!grouped[srcCategory]) {
+          grouped[srcCategory] = [];
+          if (!cats.includes(srcCategory)) {
+            cats.push(srcCategory);
+          }
+        }
+        grouped[srcCategory].push({
+          id: s.id.toString(),
+          url: s.base_url,
+          name: s.name,
+          isExisting: true,
+        });
+      }
+    }
+
+    return { cats, grouped, dbCatNames };
+  };
+
+  // Fetch with sessionStorage stale-while-revalidate
   useEffect(() => {
-    async function fetchData() {
+    let cancelled = false;
+
+    // Layer 1: sessionStorage에서 즉시 로드 (stale data)
+    try {
+      const cachedSrc = sessionStorage.getItem(STORAGE_KEY.SOURCES);
+      const cachedCat = sessionStorage.getItem(STORAGE_KEY.CATEGORIES);
+      if (cachedSrc && cachedCat) {
+        const { cats, grouped } = parseData(JSON.parse(cachedSrc), JSON.parse(cachedCat));
+        setCategories(cats);
+        setSourcesByCategory(grouped);
+        setActiveCategory((prev) => prev || cats[0] || '');
+      }
+    } catch {
+      // sessionStorage 실패 시 무시
+    }
+
+    // Layer 2: API에서 최신 데이터로 리밸리데이트
+    async function revalidate() {
       try {
         const [sourcesRes, categoriesRes] = await Promise.all([
           fetch('/api/sources'),
           fetch('/api/categories'),
         ]);
 
-        // Parse categories
-        let cats: string[] = ['비즈니스', '소비 트렌드'];
-        const dbCatNames = new Set<string>();
-        if (categoriesRes.ok) {
-          const catData = await categoriesRes.json();
-          if (catData.categories && catData.categories.length > 0) {
-            cats = catData.categories.map((c: { name: string }) => c.name);
-            cats.forEach((c) => dbCatNames.add(c));
-          }
+        if (cancelled) return;
+
+        const srcData = sourcesRes.ok ? await sourcesRes.json() : null;
+        const catData = categoriesRes.ok ? await categoriesRes.json() : null;
+
+        // sessionStorage 업데이트
+        try {
+          if (srcData) sessionStorage.setItem(STORAGE_KEY.SOURCES, JSON.stringify(srcData));
+          if (catData) sessionStorage.setItem(STORAGE_KEY.CATEGORIES, JSON.stringify(catData));
+        } catch {
+          // quota 초과 시 무시
         }
 
-        // Parse sources and group by category
-        const grouped: Record<string, SourceLink[]> = {};
-        for (const cat of cats) {
-          grouped[cat] = [];
-        }
-
-        if (sourcesRes.ok) {
-          const srcData = await sourcesRes.json();
-          if (srcData.sources && srcData.sources.length > 0) {
-            for (const s of srcData.sources) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const srcCategory = (s.config as any)?.category || cats[0];
-              if (!grouped[srcCategory]) {
-                grouped[srcCategory] = [];
-                if (!cats.includes(srcCategory)) {
-                  cats.push(srcCategory);
-                }
-              }
-              grouped[srcCategory].push({
-                id: s.id.toString(),
-                url: s.base_url,
-                name: s.name,
-                isExisting: true,
-              });
-            }
-          }
-        }
+        const { cats, grouped, dbCatNames } = parseData(srcData, catData);
 
         // crawl_sources에서 발견된 카테고리 중 DB categories 테이블에 없는 것 동기화
         for (const cat of cats) {
@@ -94,15 +129,18 @@ export default function AddSourcePage() {
           }
         }
 
-        setCategories(cats);
-        setSourcesByCategory(grouped);
-        setActiveCategory(cats[0] || '');
+        if (!cancelled) {
+          setCategories(cats);
+          setSourcesByCategory(grouped);
+          setActiveCategory((prev) => prev || cats[0] || '');
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       }
     }
 
-    fetchData();
+    revalidate();
+    return () => { cancelled = true; };
   }, []);
 
   const currentSources = sourcesByCategory[activeCategory] || [];
@@ -146,6 +184,12 @@ export default function AddSourcePage() {
       });
 
       if (response.ok) {
+        // sessionStorage 캐시 무효화
+        try {
+          sessionStorage.removeItem(STORAGE_KEY.SOURCES);
+          sessionStorage.removeItem(STORAGE_KEY.CATEGORIES);
+        } catch { /* ignore */ }
+
         const newCategories = categories.filter((c) => c !== deletingCategory);
         const newSourcesByCategory = { ...sourcesByCategory };
         delete newSourcesByCategory[deletingCategory];
@@ -235,6 +279,12 @@ export default function AddSourcePage() {
       const data = await response.json();
 
       if (response.ok) {
+        // 저장 성공 시 sessionStorage 캐시 무효화
+        try {
+          sessionStorage.removeItem(STORAGE_KEY.SOURCES);
+          sessionStorage.removeItem(STORAGE_KEY.CATEGORIES);
+        } catch { /* ignore */ }
+
         // 분석 결과를 토스트 메시지에 포함
         let message = '저장되었습니다.';
         if (data.analysis && data.analysis.length > 0) {

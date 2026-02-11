@@ -1,13 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
+import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 // Default categories if the table doesn't exist or is empty
 const DEFAULT_CATEGORIES = ['비즈니스', '소비 트렌드'];
 
-// GET /api/categories - Get all categories
+type CategoryResponse = {
+  categories: { id: number; name: string; is_default: boolean }[];
+};
+
+const defaultCategoryResponse: CategoryResponse = {
+  categories: DEFAULT_CATEGORIES.map((name, index) => ({
+    id: index + 1,
+    name,
+    is_default: true,
+  })),
+};
+
+// GET /api/categories - Get all categories (In-Memory cached)
 export async function GET() {
   try {
+    // Layer 1: In-Memory cache
+    const cached = getCache<CategoryResponse>(CACHE_KEYS.CATEGORIES);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+
     const supabase = await createClient();
 
     // Try to fetch from categories table
@@ -19,39 +43,26 @@ export async function GET() {
       .order('name');
 
     if (error) {
-      // Table might not exist, return default categories
       console.log('Categories table not found, using defaults');
-      return NextResponse.json({
-        categories: DEFAULT_CATEGORIES.map((name, index) => ({
-          id: index + 1,
-          name,
-          is_default: true,
-        })),
-      });
+      return NextResponse.json(defaultCategoryResponse);
     }
 
-    // If no categories, return defaults
     if (!data || data.length === 0) {
-      return NextResponse.json({
-        categories: DEFAULT_CATEGORIES.map((name, index) => ({
-          id: index + 1,
-          name,
-          is_default: true,
-        })),
-      });
+      return NextResponse.json(defaultCategoryResponse);
     }
 
-    return NextResponse.json({ categories: data });
+    const body: CategoryResponse = { categories: data };
+    setCache(CACHE_KEYS.CATEGORIES, body, CACHE_TTL.CATEGORIES);
+
+    return NextResponse.json(body, {
+      headers: {
+        'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+        'X-Cache': 'MISS',
+      },
+    });
   } catch (error) {
     console.error('Error in GET /api/categories:', error);
-    // Return default categories on error
-    return NextResponse.json({
-      categories: DEFAULT_CATEGORIES.map((name, index) => ({
-        id: index + 1,
-        name,
-        is_default: true,
-      })),
-    });
+    return NextResponse.json(defaultCategoryResponse);
   }
 }
 
@@ -114,6 +125,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(`[CATEGORIES] Deleted category "${trimmedName}" with ${deletedSourceCount} sources`);
+
+    // 캐시 무효화
+    invalidateCache(CACHE_KEYS.CATEGORIES);
+    invalidateCache(CACHE_KEYS.SOURCES);
 
     return NextResponse.json({
       success: true,
@@ -189,6 +204,9 @@ export async function POST(request: NextRequest) {
       console.error('Error creating category:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // 캐시 무효화
+    invalidateCache(CACHE_KEYS.CATEGORIES);
 
     return NextResponse.json({ category: data });
   } catch (error) {
