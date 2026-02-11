@@ -4,10 +4,22 @@ import { inferCrawlerType } from '@/lib/crawlers/infer-type';
 import { analyzePageStructure } from '@/lib/crawlers/auto-detect';
 import type { AnalysisResult } from '@/lib/crawlers/auto-detect';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
+import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
-// GET /api/sources - Get all crawl sources
+// GET /api/sources - Get all crawl sources (In-Memory cached)
 export async function GET() {
   try {
+    // Layer 1: In-Memory cache
+    const cached = getCache<{ sources: unknown[] }>(CACHE_KEYS.SOURCES);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+
     const supabase = createServiceClient();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,7 +33,15 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ sources: data || [] });
+    const body = { sources: data || [] };
+    setCache(CACHE_KEYS.SOURCES, body, CACHE_TTL.SOURCES);
+
+    return NextResponse.json(body, {
+      headers: {
+        'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+        'X-Cache': 'MISS',
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const stack = error instanceof Error ? error.stack : undefined;
@@ -73,20 +93,23 @@ export async function POST(request: NextRequest) {
     const results = [];
     const analysisResults: { url: string; method: string; confidence: number; crawlerType: string; spaDetected: boolean }[] = [];
 
-    // 모든 소스에 대해 병렬로 auto-detect 실행
+    // 모든 URL에 대해 분석 실행 (SPA 감지는 항상 필요)
     const analysisMap = new Map<string, AnalysisResult>();
-    const urlsToAnalyze = sources.filter((s: { url?: string }) => s.url).map((s: { url: string }) => s.url);
+    const allUrls = sources.filter((s: { url?: string }) => s.url).map((s: { url: string }) => s.url);
+    const urlsToAnalyze = allUrls;
 
-    const analyses = await Promise.allSettled(
-      urlsToAnalyze.map((url: string) => analyzePageStructure(url))
-    );
+    if (urlsToAnalyze.length > 0) {
+      const analyses = await Promise.allSettled(
+        urlsToAnalyze.map((url: string) => analyzePageStructure(url))
+      );
 
-    urlsToAnalyze.forEach((url: string, i: number) => {
-      const result = analyses[i];
-      if (result.status === 'fulfilled') {
-        analysisMap.set(url, result.value);
-      }
-    });
+      urlsToAnalyze.forEach((url: string, i: number) => {
+        const result = analyses[i];
+        if (result.status === 'fulfilled') {
+          analysisMap.set(url, result.value);
+        }
+      });
+    }
 
     for (const source of sources) {
       const { url, name, category } = source;
@@ -187,6 +210,9 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    // 변경 후 캐시 무효화
+    invalidateCache(CACHE_KEYS.SOURCES);
 
     return NextResponse.json({
       success: true,
