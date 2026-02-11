@@ -1,11 +1,12 @@
 'use client';
 
-import { Article } from '@/types';
+import type { Article, Language } from '@/types';
 import ArticleCard from './ArticleCard';
 import Skeleton from './Skeleton';
 
 interface ArticleGridProps {
   articles: Article[];
+  language: Language;
   isLoading?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -13,6 +14,7 @@ interface ArticleGridProps {
 
 export default function ArticleGrid({
   articles,
+  language,
   isLoading = false,
   hasMore = false,
   onLoadMore,
@@ -51,7 +53,7 @@ export default function ArticleGrid({
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
         {articles.map((article) => (
-          <ArticleCard key={article.id} article={article} />
+          <ArticleCard key={article.id} article={article} language={language} />
         ))}
 
         {/* Loading skeletons */}

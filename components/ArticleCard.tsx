@@ -1,17 +1,65 @@
 'use client';
 
-import { Article, SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
+import { useState, useEffect } from 'react';
+import type { Article, Language } from '@/types';
+import { SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
 import { formatDistanceToNow } from '@/lib/utils';
+import { getCachedTranslation, setCachedTranslation, translateTexts } from '@/lib/translation';
 
 type ArticleCardProps = {
   article: Article;
+  language: Language;
 };
 
-export default function ArticleCard({ article }: ArticleCardProps) {
+export default function ArticleCard({ article, language }: ArticleCardProps) {
   const sourceColor = SOURCE_COLORS[article.source_name] || DEFAULT_SOURCE_COLOR;
+  const [translatedTitle, setTranslatedTitle] = useState(article.title);
+  const [translatedSummary, setTranslatedSummary] = useState(article.ai_summary || article.content_preview);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   // 태그 3개 (ai에서 생성된 것 또는 빈 배열)
   const tags = article.summary_tags?.length > 0 ? article.summary_tags : [];
+
+  useEffect(() => {
+    // 한국어면 번역 불필요
+    if (language === 'ko') {
+      setTranslatedTitle(article.title);
+      setTranslatedSummary(article.ai_summary || article.content_preview);
+      return;
+    }
+
+    // 캐시 확인
+    const cached = getCachedTranslation(article.id, language);
+    if (cached) {
+      setTranslatedTitle(cached.title);
+      setTranslatedSummary(cached.ai_summary || cached.content_preview);
+      return;
+    }
+
+    // 번역 실행
+    setIsTranslating(true);
+    const textsToTranslate = [
+      article.title,
+      article.ai_summary || article.content_preview || '',
+    ];
+
+    translateTexts(textsToTranslate, language, 'ko')
+      .then(([title, summary]) => {
+        setTranslatedTitle(title);
+        setTranslatedSummary(summary);
+        // 캐시 저장
+        setCachedTranslation(article.id, language, title, summary, null);
+      })
+      .catch((err) => {
+        console.error('Translation failed:', err);
+        // 실패 시 원문 유지
+        setTranslatedTitle(article.title);
+        setTranslatedSummary(article.ai_summary || article.content_preview);
+      })
+      .finally(() => {
+        setIsTranslating(false);
+      });
+  }, [article, language]);
 
   const handleClick = () => {
     window.open(article.source_url, '_blank', 'noopener,noreferrer');
@@ -50,25 +98,20 @@ export default function ArticleCard({ article }: ArticleCardProps) {
           </div>
         </div>
 
-        {/* Title */}
+        {/* Title (with translation loading indicator) */}
         <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-3 group-hover:text-[var(--accent)] transition-colors">
-          {article.title}
+          {isTranslating && language !== 'ko' ? (
+            <span className="text-[var(--text-tertiary)] italic">Translating...</span>
+          ) : (
+            translatedTitle
+          )}
         </h3>
 
-        {/* Detailed Summary Box */}
-        {article.summary && (
-          <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 mb-3">
-            <p className="text-sm text-[var(--text-secondary)] whitespace-pre-line line-clamp-6 leading-relaxed">
-              {article.summary}
-            </p>
-          </div>
-        )}
-
-        {/* No summary - show AI 1-line or content preview */}
-        {!article.summary && (article.ai_summary || article.content_preview) && (
+        {/* Summary Box */}
+        {translatedSummary && (
           <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 mb-3">
             <p className="text-sm text-[var(--text-secondary)] line-clamp-3 leading-relaxed">
-              {article.ai_summary || article.content_preview}
+              {isTranslating && language !== 'ko' ? '...' : translatedSummary}
             </p>
           </div>
         )}
