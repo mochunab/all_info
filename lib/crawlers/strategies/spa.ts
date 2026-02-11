@@ -261,14 +261,17 @@ export class SPAStrategy implements CrawlStrategy {
     // 컨테이너 셀렉터
     const containerSelector = config.selectors?.container || 'body';
 
+    const linkTemplate = config.link_processing?.linkTemplate || null;
+
     const items = await page.evaluate(
       (params: {
         containerSelector: string;
         selectors: SelectorConfig;
         baseUrl: string;
         removeParams: string[];
+        linkTemplate: string | null;
       }) => {
-        const { containerSelector, selectors, baseUrl, removeParams } = params;
+        const { containerSelector, selectors, baseUrl, removeParams, linkTemplate } = params;
         const results: RawContentItem[] = [];
 
         const container = document.querySelector(containerSelector);
@@ -285,17 +288,40 @@ export class SPAStrategy implements CrawlStrategy {
 
             // 링크
             const linkEl = el.querySelector(selectors.link) as HTMLAnchorElement;
-            let href = linkEl?.href || (el as HTMLAnchorElement).href || el.querySelector('a')?.href;
+            let href = linkEl?.getAttribute('href') || (el as HTMLAnchorElement).getAttribute?.('href') || el.querySelector('a')?.getAttribute('href');
             if (!href) return;
 
-            // 절대 URL로 변환
-            try {
-              const url = new URL(href, baseUrl);
-              // 추적 파라미터 제거
-              removeParams.forEach((param) => url.searchParams.delete(param));
-              href = url.toString();
-            } catch {
-              // URL 파싱 실패시 원본 유지
+            // javascript: 링크 처리 (JSP/레거시 동적 페이지)
+            if (href.startsWith('javascript:')) {
+              if (linkTemplate) {
+                // 함수 인자 추출: javascript:go_view(12345) → ['12345']
+                const argsMatch = href.match(/\(([^)]*)\)/);
+                if (argsMatch) {
+                  const args = argsMatch[1].split(',').map(a => a.trim().replace(/['"]/g, ''));
+                  let resolvedUrl = linkTemplate;
+                  args.forEach((arg, i) => {
+                    resolvedUrl = resolvedUrl.replace(`{${i}}`, arg);
+                  });
+                  try {
+                    href = new URL(resolvedUrl, baseUrl).toString();
+                  } catch {
+                    href = `${baseUrl}${resolvedUrl}`;
+                  }
+                } else {
+                  return; // 인자 추출 실패 시 스킵
+                }
+              } else {
+                return; // linkTemplate 없으면 javascript: 링크 스킵
+              }
+            } else {
+              // 일반 링크: 절대 URL로 변환
+              try {
+                const url = new URL(href, baseUrl);
+                removeParams.forEach((param) => url.searchParams.delete(param));
+                href = url.toString();
+              } catch {
+                // URL 파싱 실패시 원본 유지
+              }
             }
 
             // 썸네일
@@ -344,6 +370,7 @@ export class SPAStrategy implements CrawlStrategy {
         containerSelector,
         selectors,
         baseUrl,
+        linkTemplate,
         removeParams: config.link_processing?.removeParams || [
           'utm_source',
           'utm_medium',

@@ -145,20 +145,50 @@ async function fetchPage(url: string): Promise<string | null> {
 }
 
 /**
- * SPA 감지: body 텍스트가 매우 적거나 root/app div + noscript 존재
+ * SPA 감지: React/Vue/Next.js + JSP/ASP 등 레거시 동적 페이지 지원
  */
 function detectSPA($: cheerio.CheerioAPI): boolean {
   const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
   const hasNoscript = $('noscript').length > 0;
   const hasRootDiv = $('#root').length > 0 || $('#app').length > 0 || $('#__next').length > 0;
 
-  // body 텍스트가 200자 미만이고 root div가 있으면 SPA
+  // 1. React/Vue/Next.js SPA 감지 (기존 로직)
   if (bodyText.length < 200 && hasRootDiv) {
     return true;
   }
-
-  // noscript 존재 + root div → SPA 가능성 높음
   if (hasNoscript && hasRootDiv && bodyText.length < 500) {
+    return true;
+  }
+
+  // 2. JSP/ASP 등 레거시 동적 페이지 감지
+
+  // 2-1. javascript: 링크가 주요 네비게이션인 경우 (go_view(), fn_view() 등)
+  const allLinkCount = $('a[href]').length;
+  const jsLinkCount = $('a[href^="javascript:"]').length;
+
+  if (allLinkCount > 0 && jsLinkCount >= 3 && jsLinkCount / allLinkCount >= 0.3) {
+    return true;
+  }
+
+  // 2-2. form 기반 페이지네이션 + javascript 링크 조합 (JSP 스타일)
+  const hasPaginationForm = $('form').filter((_, form) => {
+    const $form = $(form);
+    const hasPageInput = $form.find(
+      'input[name*="page"], input[name*="Page"], input[name*="pageNo"], input[name*="currentPage"], input[name*="pageIndex"]'
+    ).length > 0;
+    const hasHiddenInputs = $form.find('input[type="hidden"]').length >= 3;
+    return hasPageInput || hasHiddenInputs;
+  }).length > 0;
+
+  if (hasPaginationForm && jsLinkCount >= 2) {
+    return true;
+  }
+
+  // 2-3. body 텍스트 대비 script 비율이 높은 경우 (JS 렌더링 의존)
+  const scriptLength = $('script').text().replace(/\s+/g, '').length;
+  const bodyTextLength = bodyText.replace(/\s+/g, '').length;
+
+  if (bodyTextLength > 0 && bodyTextLength < 500 && scriptLength > bodyTextLength * 5) {
     return true;
   }
 
