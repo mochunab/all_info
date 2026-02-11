@@ -81,6 +81,9 @@ export interface CrawlStatus {
   isRunning: boolean;
   lastRun: string | null;
   recentLogs: CrawlLog[];
+  completedSources: number;
+  totalSources: number;
+  newArticles: number;
 }
 
 // 기본 카테고리 목록
@@ -112,3 +115,24 @@ export const SOURCE_COLORS: Record<string, string> = {
 
 // 기본 브랜드 컬러 (매핑되지 않은 출처용)
 export const DEFAULT_SOURCE_COLOR = '#6B7280';
+
+// 번역 관련 타입
+export type Language = 'ko' | 'en' | 'ja' | 'zh';
+
+export const LANGUAGES = {
+  ko: { code: 'ko', name: '한국어', flag: '🇰🇷', deepl: 'KO' },
+  en: { code: 'en', name: 'English', flag: '🇺🇸', deepl: 'EN' },
+  ja: { code: 'ja', name: '日本語', flag: '🇯🇵', deepl: 'JA' },
+  zh: { code: 'zh', name: '中文', flag: '🇨🇳', deepl: 'ZH' },
+} as const;
+
+export interface TranslationCache {
+  [articleId: string]: {
+    [lang: string]: {
+      title: string;
+      ai_summary: string | null;
+      content_preview: string | null;
+      cached_at: number; // timestamp
+    };
+  };
+}
