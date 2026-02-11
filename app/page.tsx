@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
-import { Article, ArticleListResponse, DEFAULT_CATEGORIES } from '@/types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Header, FilterBar, ArticleGrid, Toast, LanguageSwitcher } from '@/components';
+import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
+import { DEFAULT_CATEGORIES } from '@/types';
+
+const STORAGE_KEY = {
+  HOME_ARTICLES: 'ih:home:articles',
+  HOME_CATEGORIES: 'ih:home:categories',
+  LANGUAGE: 'ih:language',
+} as const;
 
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -16,10 +23,37 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<string | undefined>();
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isCrawling, setIsCrawling] = useState(false);
+  const [crawlProgress, setCrawlProgress] = useState('');
+  const [language, setLanguage] = useState<Language>('ko');
+  const initialLoadDone = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchRef = useRef(search);
+  const categoryRef = useRef(category);
+
+  // 언어 설정 초기화 (localStorage에서)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
+      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
+        setLanguage(saved as Language);
+      }
+    } catch { /* 무시 */ }
+  }, []);
+
+  // 언어 변경 핸들러
+  const handleLanguageChange = useCallback((lang: Language) => {
+    setLanguage(lang);
+    try {
+      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
+    } catch { /* 무시 */ }
+  }, []);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false) => {
-      setIsLoading(true);
+      // 초기 로드 시 sessionStorage stale 데이터가 이미 렌더됐으면 로딩 스피너 억제
+      const showLoader = !(pageNum === 1 && !append && articles.length > 0 && !initialLoadDone.current);
+      if (showLoader) setIsLoading(true);
 
       try {
         const params = new URLSearchParams();
@@ -41,6 +75,12 @@ export default function Home() {
           setArticles((prev) => [...prev, ...data.articles]);
         } else {
           setArticles(data.articles);
+          // 초기 로드 (page 1, 필터 없음) 시 sessionStorage에 캐시
+          if (pageNum === 1 && !search && category === '전체') {
+            try {
+              sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify(data));
+            } catch { /* quota 초과 시 무시 */ }
+          }
         }
 
         setHasMore(data.hasMore);
@@ -54,14 +94,40 @@ export default function Home() {
         console.error('Error fetching articles:', error);
       } finally {
         setIsLoading(false);
+        initialLoadDone.current = true;
       }
     },
-    [search, category, lastUpdated]
+    [search, category, lastUpdated, articles.length]
   );
 
-  // Fetch categories on mount
+  // sessionStorage에서 초기 데이터 즉시 로드 + categories 로드
   useEffect(() => {
-    async function fetchCategories() {
+    // 1. articles stale 데이터 즉시 렌더
+    try {
+      const cached = sessionStorage.getItem(STORAGE_KEY.HOME_ARTICLES);
+      if (cached) {
+        const data: ArticleListResponse = JSON.parse(cached);
+        setArticles(data.articles);
+        setHasMore(data.hasMore);
+        setTotalCount(data.total);
+        if (data.articles.length > 0) {
+          setLastUpdated(data.articles[0].crawled_at);
+        }
+        setIsLoading(false); // 스켈레톤 대신 캐시 데이터 즉시 표시
+      }
+    } catch { /* 무시 */ }
+
+    // 2. categories stale 데이터 즉시 렌더
+    try {
+      const cachedCats = sessionStorage.getItem(STORAGE_KEY.HOME_CATEGORIES);
+      if (cachedCats) {
+        const names: string[] = JSON.parse(cachedCats);
+        if (names.length > 0) setCategories(names);
+      }
+    } catch { /* 무시 */ }
+
+    // 3. categories API 리밸리데이트
+    async function revalidateCategories() {
       try {
         const response = await fetch('/api/categories');
         if (response.ok) {
@@ -71,6 +137,9 @@ export default function Home() {
               (c: { name: string }) => c.name
             );
             setCategories(categoryNames);
+            try {
+              sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify(categoryNames));
+            } catch { /* 무시 */ }
           }
         }
       } catch (error) {
@@ -78,7 +147,7 @@ export default function Home() {
       }
     }
 
-    fetchCategories();
+    revalidateCategories();
   }, []);
 
   // Fetch articles when filters change
@@ -99,49 +168,120 @@ export default function Home() {
     setSearch(value);
   }, []);
 
-  // Handle refresh - 자료 불러오기
-  const handleRefresh = async () => {
-    try {
-      const response = await fetch('/api/crawl/trigger', {
-        method: 'POST',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const detail = data.error || `HTTP ${response.status}`;
-        setToastMessage(`불러오기 실패: ${detail}`);
-        setShowToast(true);
-        return;
-      }
-
-      const totalNew = data.results?.reduce(
-        (sum: number, r: { new?: number }) => sum + (r.new || 0),
-        0
-      );
-
-      setToastMessage(
-        totalNew > 0
-          ? `${totalNew}개의 새 인사이트를 불러왔습니다.`
-          : '새로운 인사이트가 없습니다.'
-      );
-      setShowToast(true);
-
-      // Refresh articles list
-      setPage(1);
-      fetchArticles(1, false);
-      setLastUpdated(new Date().toISOString());
-    } catch (error) {
-      console.error('Error refreshing:', error);
-      setToastMessage(`네트워크 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-      setShowToast(true);
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
+  }, []);
+
+  // Keep refs in sync for polling closure
+  useEffect(() => { searchRef.current = search; }, [search]);
+  useEffect(() => { categoryRef.current = category; }, [category]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  // Handle refresh - 자료 불러오기 (폴링 기반 실시간 갱신)
+  const handleRefresh = () => {
+    if (isCrawling) return;
+
+    setIsCrawling(true);
+    setCrawlProgress('크롤링 시작...');
+
+    // 캐시 무효화
+    try {
+      sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
+    } catch { /* 무시 */ }
+
+    // 4초 간격으로 크롤링 상태 + 아티클 폴링
+    pollingRef.current = setInterval(async () => {
+      // 1. 크롤링 상태 확인 (진행률 표시)
+      try {
+        const statusRes = await fetch('/api/crawl/status');
+        if (statusRes.ok) {
+          const status: CrawlStatus = await statusRes.json();
+
+          if (status.totalSources > 0) {
+            const progress = status.newArticles > 0
+              ? `${status.completedSources}/${status.totalSources} 소스 완료 · ${status.newArticles}개 새 아티클`
+              : `${status.completedSources}/${status.totalSources} 소스 완료`;
+            setCrawlProgress(progress);
+          }
+        }
+      } catch { /* 무시 */ }
+
+      // 2. 아티클 목록 조용히 갱신 (로딩 스피너 없이)
+      try {
+        const params = new URLSearchParams();
+        params.set('page', '1');
+        params.set('limit', '12');
+        if (searchRef.current) params.set('search', searchRef.current);
+        if (categoryRef.current && categoryRef.current !== '전체') {
+          params.set('category', categoryRef.current);
+        }
+
+        const res = await fetch(`/api/articles?${params.toString()}`);
+        if (res.ok) {
+          const data: ArticleListResponse = await res.json();
+          setArticles(data.articles);
+          setHasMore(data.hasMore);
+          setTotalCount(data.total);
+        }
+      } catch { /* 무시 */ }
+    }, 4000);
+
+    // 트리거 호출 (완료 시 폴링 중단)
+    fetch('/api/crawl/trigger', { method: 'POST' })
+      .then((res) => res.json())
+      .then((data) => {
+        stopPolling();
+        setIsCrawling(false);
+        setCrawlProgress('');
+
+        if (data.error) {
+          setToastMessage(`불러오기 실패: ${data.error}`);
+          setShowToast(true);
+          return;
+        }
+
+        const totalNew = data.results?.reduce(
+          (sum: number, r: { new?: number }) => sum + (r.new || 0),
+          0
+        );
+
+        setToastMessage(
+          totalNew > 0
+            ? `${totalNew}개의 새 인사이트를 불러왔습니다.`
+            : '새로운 인사이트가 없습니다.'
+        );
+        setShowToast(true);
+
+        // 최종 갱신
+        setPage(1);
+        fetchArticles(1, false);
+        setLastUpdated(new Date().toISOString());
+      })
+      .catch((error) => {
+        stopPolling();
+        setIsCrawling(false);
+        setCrawlProgress('');
+        setToastMessage(`네트워크 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+        setShowToast(true);
+      });
   };
 
   // Handle add category
   return (
     <div className="min-h-screen">
-      <Header lastUpdated={lastUpdated} onRefresh={handleRefresh} />
+      <Header
+        lastUpdated={lastUpdated}
+        onRefresh={handleRefresh}
+        isCrawling={isCrawling}
+        crawlProgress={crawlProgress}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Filter Bar */}

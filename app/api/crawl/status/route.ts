@@ -49,10 +49,51 @@ export async function GET() {
 
     const recentLogs = (recentLogsData || []) as CrawlLog[];
 
+    // 소스별 진행률 집계
+    let completedSources = 0;
+    let totalSources = 0;
+    let newArticles = 0;
+
+    if (isRunning) {
+      const runningLog = runningLogs[0] as { started_at: string };
+
+      // 전체 활성 소스 수
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { count } = await (supabase as any)
+        .from('crawl_sources')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+
+      totalSources = count || 0;
+
+      // 현재 배치의 완료/실패 로그 집계
+      // running log 기준 1시간 이내 시작된 로그 = 같은 배치
+      const batchCutoff = new Date(
+        new Date(runningLog.started_at).getTime() - 60 * 60 * 1000
+      ).toISOString();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: batchLogs } = await (supabase as any)
+        .from('crawl_logs')
+        .select('articles_new, status')
+        .gte('started_at', batchCutoff)
+        .in('status', ['completed', 'failed']);
+
+      const batchLogList = (batchLogs || []) as { articles_new: number; status: string }[];
+      completedSources = batchLogList.length;
+      newArticles = batchLogList.reduce(
+        (sum: number, log: { articles_new: number }) => sum + (log.articles_new || 0),
+        0
+      );
+    }
+
     const status: CrawlStatus = {
       isRunning,
       lastRun,
       recentLogs,
+      completedSources,
+      totalSources,
+      newArticles,
     };
 
     return NextResponse.json(status);

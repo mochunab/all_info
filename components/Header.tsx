@@ -1,16 +1,20 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 
-interface HeaderProps {
+type HeaderProps = {
   lastUpdated?: string;
-  onRefresh?: () => Promise<void>;
-}
+  onRefresh?: () => void;
+  isCrawling?: boolean;
+  crawlProgress?: string;
+};
 
-export default function Header({ lastUpdated, onRefresh }: HeaderProps) {
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
+export default function Header({
+  lastUpdated,
+  onRefresh,
+  isCrawling = false,
+  crawlProgress,
+}: HeaderProps) {
   const getUpdateText = () => {
     if (!lastUpdated) return '업데이트 대기중';
 
@@ -30,15 +34,9 @@ export default function Header({ lastUpdated, onRefresh }: HeaderProps) {
     }
   };
 
-  const handleRefresh = async () => {
-    if (!onRefresh || isRefreshing) return;
-
-    setIsRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setIsRefreshing(false);
-    }
+  const handleRefresh = () => {
+    if (!onRefresh || isCrawling) return;
+    onRefresh();
   };
 
   return (
@@ -73,25 +71,25 @@ export default function Header({ lastUpdated, onRefresh }: HeaderProps) {
 
           {/* Right Side: Update Badge + Refresh Button */}
           <div className="flex items-center gap-3">
-            {/* Update Badge */}
+            {/* Update Badge / Crawl Progress */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] rounded-full border border-[var(--border)]">
               <span className="relative flex h-2 w-2">
-                <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                <span className={`pulse-dot absolute inline-flex h-full w-full rounded-full opacity-75 ${isCrawling ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${isCrawling ? 'bg-amber-500' : 'bg-green-500'}`}></span>
               </span>
               <span className="text-xs sm:text-sm text-[var(--text-secondary)] font-medium">
-                {getUpdateText()}
+                {isCrawling ? (crawlProgress || '크롤링 중...') : getUpdateText()}
               </span>
             </div>
 
             {/* Refresh Button - 자료 불러오기 */}
             <button
               onClick={handleRefresh}
-              disabled={isRefreshing}
+              disabled={isCrawling}
               className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg
-                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -104,7 +102,7 @@ export default function Header({ lastUpdated, onRefresh }: HeaderProps) {
                 />
               </svg>
               <span className="hidden sm:inline">
-                {isRefreshing ? '불러오는 중...' : '자료 불러오기'}
+                {isCrawling ? '불러오는 중...' : '자료 불러오기'}
               </span>
             </button>
           </div>
