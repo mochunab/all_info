@@ -160,35 +160,21 @@ function detectSPA($: cheerio.CheerioAPI): boolean {
     return true;
   }
 
-  // 2. JSP/ASP 등 레거시 동적 페이지 감지
-
-  // 2-1. javascript: 링크가 주요 네비게이션인 경우 (go_view(), fn_view() 등)
+  // 2. JSP/ASP 등 레거시 동적 페이지 감지 (보수적 기준)
   const allLinkCount = $('a[href]').length;
   const jsLinkCount = $('a[href^="javascript:"]').length;
 
-  if (allLinkCount > 0 && jsLinkCount >= 3 && jsLinkCount / allLinkCount >= 0.3) {
+  // 2-1. javascript: 링크가 지배적인 경우 (50% 이상, 최소 5개)
+  if (allLinkCount > 0 && jsLinkCount >= 5 && jsLinkCount / allLinkCount >= 0.5) {
     return true;
   }
 
-  // 2-2. form 기반 페이지네이션 + javascript 링크 조합 (JSP 스타일)
-  const hasPaginationForm = $('form').filter((_, form) => {
-    const $form = $(form);
-    const hasPageInput = $form.find(
-      'input[name*="page"], input[name*="Page"], input[name*="pageNo"], input[name*="currentPage"], input[name*="pageIndex"]'
-    ).length > 0;
-    const hasHiddenInputs = $form.find('input[type="hidden"]').length >= 3;
-    return hasPageInput || hasHiddenInputs;
-  }).length > 0;
-
-  if (hasPaginationForm && jsLinkCount >= 2) {
-    return true;
-  }
-
-  // 2-3. body 텍스트 대비 script 비율이 높은 경우 (JS 렌더링 의존)
+  // 2-2. script 비율이 매우 높고 javascript: 링크가 있는 경우
+  // (JS 렌더링 의존 페이지: script가 본문 텍스트의 5배 이상)
   const scriptLength = $('script').text().replace(/\s+/g, '').length;
   const bodyTextLength = bodyText.replace(/\s+/g, '').length;
 
-  if (bodyTextLength > 0 && bodyTextLength < 500 && scriptLength > bodyTextLength * 5) {
+  if (bodyTextLength > 0 && scriptLength > bodyTextLength * 5 && jsLinkCount >= 3) {
     return true;
   }
 
