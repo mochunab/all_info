@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Header, FilterBar, ArticleGrid, Toast, LanguageSwitcher } from '@/components';
+import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
 import { DEFAULT_CATEGORIES } from '@/types';
+import { t } from '@/lib/i18n';
 
 const STORAGE_KEY = {
   HOME_ARTICLES: 'ih:home:articles',
@@ -242,7 +243,7 @@ export default function Home() {
         setCrawlProgress('');
 
         if (data.error) {
-          setToastMessage(`불러오기 실패: ${data.error}`);
+          setToastMessage(t(language, 'toast.crawlFailed', { error: data.error }));
           setShowToast(true);
           return;
         }
@@ -254,8 +255,8 @@ export default function Home() {
 
         setToastMessage(
           totalNew > 0
-            ? `${totalNew}개의 새 인사이트를 불러왔습니다.`
-            : '새로운 인사이트가 없습니다.'
+            ? t(language, 'toast.crawlSuccess', { count: String(totalNew) })
+            : t(language, 'toast.noNewInsights')
         );
         setShowToast(true);
 
@@ -268,7 +269,9 @@ export default function Home() {
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');
-        setToastMessage(`네트워크 오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+        setToastMessage(t(language, 'toast.networkError', {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }));
         setShowToast(true);
       });
   };
@@ -281,27 +284,22 @@ export default function Home() {
         onRefresh={handleRefresh}
         isCrawling={isCrawling}
         crawlProgress={crawlProgress}
+        language={language}
+        onLanguageChange={handleLanguageChange}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Top Bar: Filter + Language Switcher */}
-        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row gap-4 sm:items-start sm:justify-between">
-          <div className="flex-1">
-            <FilterBar
-              search={search}
-              onSearchChange={handleSearchChange}
-              category={category}
-              onCategoryChange={setCategory}
-              categories={categories}
-              totalCount={totalCount}
-            />
-          </div>
-          <div className="flex-shrink-0 sm:pt-1">
-            <LanguageSwitcher
-              currentLang={language}
-              onLanguageChange={handleLanguageChange}
-            />
-          </div>
+        {/* Filter Bar */}
+        <div className="mb-6 sm:mb-8">
+          <FilterBar
+            search={search}
+            onSearchChange={handleSearchChange}
+            category={category}
+            onCategoryChange={setCategory}
+            categories={categories}
+            totalCount={totalCount}
+            language={language}
+          />
         </div>
 
         {/* Article Grid */}
@@ -341,7 +339,7 @@ export default function Home() {
               </span>
             </div>
             <p className="text-sm text-[var(--text-tertiary)]">
-              매일 아침 9시, 비즈니스 인사이트가 업데이트됩니다.
+              {t(language, 'footer.description')}
             </p>
           </div>
         </div>
