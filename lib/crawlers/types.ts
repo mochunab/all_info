@@ -47,6 +47,7 @@ export interface ContentSelectors {
 export interface LinkProcessing {
   baseUrl?: string;
   removeParams?: string[];
+  linkTemplate?: string; // javascript: 링크용 URL 템플릿 (예: "?schM=view&pbancSn={0}")
 }
 
 // 페이지네이션 설정
