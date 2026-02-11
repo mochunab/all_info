@@ -1,12 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import type { Language } from '@/types';
+import { t } from '@/lib/i18n';
+import LanguageSwitcher from './LanguageSwitcher';
 
 type HeaderProps = {
   lastUpdated?: string;
   onRefresh?: () => void;
   isCrawling?: boolean;
   crawlProgress?: string;
+  language?: Language;
+  onLanguageChange?: (lang: Language) => void;
 };
 
 export default function Header({
@@ -14,9 +19,11 @@ export default function Header({
   onRefresh,
   isCrawling = false,
   crawlProgress,
+  language = 'ko',
+  onLanguageChange,
 }: HeaderProps) {
   const getUpdateText = () => {
-    if (!lastUpdated) return '업데이트 대기중';
+    if (!lastUpdated) return t(language, 'header.updateWaiting');
 
     const date = new Date(lastUpdated);
     const now = new Date();
@@ -25,12 +32,15 @@ export default function Header({
     if (isToday) {
       const hours = date.getHours();
       const minutes = date.getMinutes().toString().padStart(2, '0');
-      return `오늘 ${hours}:${minutes} 업데이트`;
+      return t(language, 'header.updateToday', { time: `${hours}:${minutes}` });
     } else {
       const month = date.getMonth() + 1;
       const day = date.getDate();
       const hours = date.getHours();
-      return `${month}/${day} ${hours}시 업데이트`;
+      return t(language, 'header.updateDate', {
+        date: `${month}/${day}`,
+        hour: String(hours),
+      });
     }
   };
 
@@ -69,7 +79,7 @@ export default function Header({
             </div>
           </Link>
 
-          {/* Right Side: Update Badge + Refresh Button */}
+          {/* Right Side: Update Badge + Buttons */}
           <div className="flex items-center gap-3">
             {/* Update Badge / Crawl Progress */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] rounded-full border border-[var(--border)]">
@@ -78,15 +88,15 @@ export default function Header({
                 <span className={`relative inline-flex rounded-full h-2 w-2 ${isCrawling ? 'bg-amber-500' : 'bg-green-500'}`}></span>
               </span>
               <span className="text-xs sm:text-sm text-[var(--text-secondary)] font-medium">
-                {isCrawling ? (crawlProgress || '크롤링 중...') : getUpdateText()}
+                {isCrawling ? (crawlProgress || t(language, 'header.crawling')) : getUpdateText()}
               </span>
             </div>
 
-            {/* Refresh Button - 자료 불러오기 */}
+            {/* Refresh Button */}
             <button
               onClick={handleRefresh}
               disabled={isCrawling}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
             >
               <svg
                 className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
@@ -102,9 +112,17 @@ export default function Header({
                 />
               </svg>
               <span className="hidden sm:inline">
-                {isCrawling ? '불러오는 중...' : '자료 불러오기'}
+                {isCrawling ? t(language, 'header.refreshing') : t(language, 'header.refresh')}
               </span>
             </button>
+
+            {/* Language Switcher */}
+            {onLanguageChange && (
+              <LanguageSwitcher
+                currentLang={language}
+                onLanguageChange={onLanguageChange}
+              />
+            )}
           </div>
         </div>
       </div>

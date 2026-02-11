@@ -5,6 +5,7 @@ import type { Article, Language } from '@/types';
 import { SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
 import { formatDistanceToNow } from '@/lib/utils';
 import { getCachedTranslation, setCachedTranslation, translateTexts } from '@/lib/translation';
+import { t } from '@/lib/i18n';
 
 type ArticleCardProps = {
   article: Article;
@@ -101,7 +102,7 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
         {/* Title (with translation loading indicator) */}
         <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-3 group-hover:text-[var(--accent)] transition-colors">
           {isTranslating && language !== 'ko' ? (
-            <span className="text-[var(--text-tertiary)] italic">Translating...</span>
+            <span className="text-[var(--text-tertiary)] italic">{t(language, 'article.translating')}</span>
           ) : (
             translatedTitle
           )}
