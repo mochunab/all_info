@@ -4,3 +4,4 @@ export { default as ArticleGrid } from './ArticleGrid';
 export { default as FilterBar } from './FilterBar';
 export { default as Skeleton, SkeletonGrid } from './Skeleton';
 export { default as Toast } from './Toast';
+export { default as LanguageSwitcher } from './LanguageSwitcher';
