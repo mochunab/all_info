@@ -16,7 +16,7 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('전체');
+  const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -45,10 +45,18 @@ export default function Home() {
   // 언어 변경 핸들러
   const handleLanguageChange = useCallback((lang: Language) => {
     setLanguage(lang);
+    // 카테고리가 "전체"(번역된 값)면 빈 문자열로 리셋
+    setCategory((prev) => {
+      const prevAllCategory = t(language, 'filter.allCategory');
+      if (prev === prevAllCategory || !prev) {
+        return '';
+      }
+      return prev;
+    });
     try {
       localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
     } catch { /* 무시 */ }
-  }, []);
+  }, [language]);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false) => {
@@ -62,7 +70,8 @@ export default function Home() {
         params.set('limit', '12');
 
         if (search) params.set('search', search);
-        if (category !== '전체') params.set('category', category);
+        const allCategory = t(language, 'filter.allCategory');
+        if (category && category !== allCategory) params.set('category', category);
 
         const response = await fetch(`/api/articles?${params.toString()}`);
 
@@ -77,7 +86,8 @@ export default function Home() {
         } else {
           setArticles(data.articles);
           // 초기 로드 (page 1, 필터 없음) 시 sessionStorage에 캐시
-          if (pageNum === 1 && !search && category === '전체') {
+          const allCategory = t(language, 'filter.allCategory');
+          if (pageNum === 1 && !search && (!category || category === allCategory)) {
             try {
               sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify(data));
             } catch { /* quota 초과 시 무시 */ }

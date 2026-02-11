@@ -131,7 +131,7 @@ export default function FilterBar({
             onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors min-w-[140px]"
           >
-            <span className="font-medium">{category || '전체'}</span>
+            <span className="font-medium">{category || t(language, 'filter.allCategory')}</span>
             <svg
               className={`w-4 h-4 ml-auto transition-transform ${
                 isCategoryDropdownOpen ? 'rotate-180' : ''
@@ -153,21 +153,24 @@ export default function FilterBar({
           {isCategoryDropdownOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-lg z-50 overflow-hidden">
               <div className="py-1 max-h-64 overflow-y-auto custom-scrollbar">
-                {allCategories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      onCategoryChange(cat);
-                      setIsCategoryDropdownOpen(false);
-                    }}
-                    className={`w-full px-4 py-2.5 text-left text-sm hover:bg-[var(--bg-tertiary)] transition-colors flex items-center justify-between ${
-                      category === cat || (cat === '전체' && !category)
-                        ? 'bg-[var(--accent-light)] text-[var(--accent)]'
-                        : 'text-[var(--text-secondary)]'
-                    }`}
-                  >
-                    <span>{cat}</span>
-                    {(category === cat || (cat === '전체' && !category)) && (
+                {allCategories.map((cat) => {
+                  const isAllCategory = cat === t(language, 'filter.allCategory');
+                  const isActive = category === cat || (isAllCategory && !category);
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => {
+                        onCategoryChange(cat);
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left text-sm hover:bg-[var(--bg-tertiary)] transition-colors flex items-center justify-between ${
+                        isActive
+                          ? 'bg-[var(--accent-light)] text-[var(--accent)]'
+                          : 'text-[var(--text-secondary)]'
+                      }`}
+                    >
+                      <span>{cat}</span>
+                      {isActive && (
                       <svg
                         className="w-4 h-4"
                         fill="none"
@@ -183,7 +186,8 @@ export default function FilterBar({
                       </svg>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
