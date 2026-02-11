@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import type { Language } from '@/types';
+import { t } from '@/lib/i18n';
 
 type FilterBarProps = {
   search: string;
@@ -10,6 +12,7 @@ type FilterBarProps = {
   onCategoryChange: (category: string) => void;
   categories: string[];
   totalCount?: number;
+  language?: Language;
 };
 
 export default function FilterBar({
@@ -19,6 +22,7 @@ export default function FilterBar({
   onCategoryChange,
   categories,
   totalCount,
+  language = 'ko',
 }: FilterBarProps) {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -36,7 +40,7 @@ export default function FilterBar({
   }, []);
 
   // All categories including "전체"
-  const allCategories = ['전체', ...categories];
+  const allCategories = [t(language, 'filter.allCategory'), ...categories];
 
   return (
     <div className="space-y-4">
@@ -63,7 +67,7 @@ export default function FilterBar({
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="인사이트 검색..."
+            placeholder={t(language, 'filter.search')}
             className="input pl-12"
           />
           {search && (
@@ -106,7 +110,7 @@ export default function FilterBar({
               d="M12 4v16m8-8H4"
             />
           </svg>
-          <span className="hidden sm:inline">소스 추가하기</span>
+          <span className="hidden sm:inline">{t(language, 'filter.addSource')}</span>
         </Link>
       </div>
 
@@ -115,9 +119,9 @@ export default function FilterBar({
         {/* Content Count */}
         {totalCount !== undefined && (
           <p className="text-sm text-[var(--text-tertiary)]">
-            {search || category !== '전체'
-              ? `검색 결과: ${totalCount}개`
-              : `총 ${totalCount}개의 인사이트`}
+            {search || category !== t(language, 'filter.allCategory')
+              ? t(language, 'filter.searchResult', { count: String(totalCount) })
+              : t(language, 'filter.totalCount', { count: String(totalCount) })}
           </p>
         )}
 
