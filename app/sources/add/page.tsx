@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from '@/components';
+import type { Language } from '@/types';
+import { t } from '@/lib/i18n';
 
 type SourceLink = {
   id: string;
@@ -15,6 +17,7 @@ type SourceLink = {
 const STORAGE_KEY = {
   SOURCES: 'ih:sources',
   CATEGORIES: 'ih:categories',
+  LANGUAGE: 'ih:language',
 } as const;
 
 export default function AddSourcePage() {
@@ -26,12 +29,23 @@ export default function AddSourcePage() {
   const [newCategory, setNewCategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('저장되었습니다.');
+  const [toastMessage, setToastMessage] = useState('');
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
+  const [language, setLanguage] = useState<Language>('ko');
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize language from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
+      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
+        setLanguage(saved as Language);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Focus category input
   useEffect(() => {
@@ -201,7 +215,7 @@ export default function AddSourcePage() {
           setActiveCategory(newCategories[0] || '');
         }
 
-        setToastMessage(`'${deletingCategory}' 카테고리가 삭제되었습니다.`);
+        setToastMessage(t(language, 'sources.categoryDeleted', { name: deletingCategory }));
         setShowToast(true);
       }
     } catch (error) {
@@ -286,7 +300,7 @@ export default function AddSourcePage() {
         } catch { /* ignore */ }
 
         // 분석 결과를 토스트 메시지에 포함
-        let message = '저장되었습니다.';
+        let message = t(language, 'sources.saved');
         if (data.analysis && data.analysis.length > 0) {
           const ruleCount = data.analysis.filter((a: { method: string }) => a.method === 'rule').length;
           const aiCount = data.analysis.filter((a: { method: string }) => a.method === 'ai').length;
@@ -294,7 +308,10 @@ export default function AddSourcePage() {
           if (ruleCount > 0) parts.push(`${ruleCount} rule`);
           if (aiCount > 0) parts.push(`${aiCount} AI`);
           if (parts.length > 0) {
-            message = `${data.sources?.length || allSources.length}개 소스 저장 (자동분석: ${parts.join(' / ')})`;
+            message = t(language, 'sources.autoAnalysis', {
+              count: String(data.sources?.length || allSources.length),
+              methods: parts.join(' / '),
+            });
           }
         }
         setPendingDeleteIds([]);
@@ -305,12 +322,12 @@ export default function AddSourcePage() {
         }, 2200);
       } else {
         const detail = data.error || `HTTP ${response.status}`;
-        setToastMessage(`저장 실패: ${detail}`);
+        setToastMessage(t(language, 'toast.crawlFailed', { error: detail }));
         setShowToast(true);
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '알 수 없는 오류';
-      setToastMessage(`네트워크 오류: ${msg}`);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      setToastMessage(t(language, 'toast.networkError', { error: msg }));
       setShowToast(true);
       console.error('Error saving sources:', error);
     } finally {
@@ -354,7 +371,7 @@ export default function AddSourcePage() {
                   d="M15 19l-7-7 7-7"
                 />
               </svg>
-              <span>돌아가기</span>
+              <span>{t(language, 'sources.back')}</span>
             </Link>
           </div>
         </div>
@@ -363,10 +380,10 @@ export default function AddSourcePage() {
       {/* Main Content */}
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
-          소스 관리
+          {t(language, 'sources.title')}
         </h1>
         <p className="text-sm text-[var(--text-tertiary)] mb-8">
-          카테고리별로 크롤링할 웹사이트를 관리하세요.
+          {t(language, 'sources.subtitle')}
         </p>
 
         {/* Category Tabs (Chips) */}
@@ -414,14 +431,19 @@ export default function AddSourcePage() {
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
                   onKeyDown={handleCategoryKeyDown}
-                  placeholder="분류명 입력..."
+                  placeholder={
+                    language === 'ko' ? '분류명 입력...' :
+                    language === 'en' ? 'Enter category...' :
+                    language === 'ja' ? 'カテゴリ名を入力...' :
+                    '输入类别...'
+                  }
                   className="px-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--accent)] rounded-full focus:outline-none w-32"
                 />
                 <button
                   onClick={handleAddCategory}
                   className="px-3 py-2 text-xs font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)]"
                 >
-                  추가
+                  {language === 'ko' ? '추가' : language === 'en' ? 'Add' : language === 'ja' ? '追加' : '添加'}
                 </button>
                 <button
                   onClick={() => {
@@ -430,7 +452,7 @@ export default function AddSourcePage() {
                   }}
                   className="px-3 py-2 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-full border border-[var(--border)]"
                 >
-                  취소
+                  {t(language, 'sources.cancel')}
                 </button>
               </div>
             ) : (
@@ -460,7 +482,7 @@ export default function AddSourcePage() {
         {activeCategory && (
           <div className="mb-6">
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-              출처 링크
+              {t(language, 'sources.linkLabel')}
             </label>
             <div className="space-y-3">
               {currentSources.map((source) => (
@@ -470,7 +492,7 @@ export default function AddSourcePage() {
                       type="url"
                       value={source.url}
                       onChange={(e) => handleSourceChange(source.id, 'url', e.target.value)}
-                      placeholder="https://example.com/blog"
+                      placeholder={t(language, 'sources.urlPlaceholder')}
                       className="flex-1 px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
                     />
                     <button
@@ -497,7 +519,7 @@ export default function AddSourcePage() {
                       type="text"
                       value={source.name}
                       onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
-                      placeholder="소스 이름 (선택)"
+                      placeholder={t(language, 'sources.namePlaceholder')}
                       className="mt-2 w-full px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
                     />
                   )}
@@ -523,7 +545,7 @@ export default function AddSourcePage() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              <span>링크 추가하기</span>
+              <span>{t(language, 'sources.addLink')}</span>
             </button>
           </div>
         )}
@@ -537,7 +559,7 @@ export default function AddSourcePage() {
             disabled={!hasValidSources || isSaving}
             className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? '저장 중...' : '저장하기'}
+            {isSaving ? t(language, 'sources.saving') : t(language, 'sources.save')}
           </button>
         </div>
       </div>
@@ -548,14 +570,16 @@ export default function AddSourcePage() {
           <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-                카테고리 삭제
+                {t(language, 'sources.deleteCategory')}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                <span className="font-medium text-[var(--text-primary)]">&apos;{deletingCategory}&apos;</span> 카테고리를 삭제하시겠습니까?
+                {t(language, 'sources.deleteCategoryConfirm', { name: deletingCategory })}
               </p>
               {(sourcesByCategory[deletingCategory]?.filter((s) => s.isExisting).length || 0) > 0 && (
                 <p className="mt-2 text-sm text-red-500">
-                  저장한 링크 {sourcesByCategory[deletingCategory].filter((s) => s.isExisting).length}개가 함께 삭제됩니다.
+                  {t(language, 'sources.deleteWithLinks', {
+                    count: String(sourcesByCategory[deletingCategory].filter((s) => s.isExisting).length),
+                  })}
                 </p>
               )}
             </div>
@@ -565,7 +589,7 @@ export default function AddSourcePage() {
                 disabled={isDeleting}
                 className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
               >
-                취소
+                {t(language, 'sources.cancel')}
               </button>
               <div className="w-px bg-[var(--border)]" />
               <button
@@ -573,7 +597,7 @@ export default function AddSourcePage() {
                 disabled={isDeleting}
                 className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
               >
-                {isDeleting ? '삭제 중...' : '삭제'}
+                {isDeleting ? t(language, 'sources.deleting') : t(language, 'sources.delete')}
               </button>
             </div>
           </div>
