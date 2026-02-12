@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from '@/components';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
 
@@ -44,6 +45,14 @@ export default function AddSourcePage() {
       if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
         setLanguage(saved as Language);
       }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Language change handler
+  const handleLanguageChange = useCallback((lang: Language) => {
+    setLanguage(lang);
+    try {
+      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
     } catch { /* ignore */ }
   }, []);
 
@@ -353,7 +362,7 @@ export default function AddSourcePage() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center h-16">
+          <div className="flex items-center justify-between h-16">
             <Link
               href="/"
               className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
@@ -373,6 +382,11 @@ export default function AddSourcePage() {
               </svg>
               <span>{t(language, 'sources.back')}</span>
             </Link>
+
+            <LanguageSwitcher
+              currentLang={language}
+              onLanguageChange={handleLanguageChange}
+            />
           </div>
         </div>
       </header>
