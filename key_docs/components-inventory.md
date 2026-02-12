@@ -9,9 +9,9 @@
 | 분류 | 수량 | 위치 |
 |------|------|------|
 | 페이지 컴포넌트 | 2개 | `app/` |
-| 공통 UI 컴포넌트 | 7개 | `components/` |
+| 공통 UI 컴포넌트 | 8개 | `components/` |
 | Barrel Export | 1개 | `components/index.ts` |
-| **합계** | **9개** | |
+| **합계** | **10개** | |
 
 ---
 
@@ -113,6 +113,16 @@
 | **Props** | `count?: number` (기본 6) |
 | **특징** | ArticleGrid와 동일한 그리드 레이아웃 |
 
+### LanguageSwitcher
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `components/LanguageSwitcher.tsx` |
+| **타입** | Client Component |
+| **역할** | 언어 선택 드롭다운 (한국어, English, 日本語, 中文) |
+| **Props** | `currentLang: Language`, `onLanguageChange: (lang: Language) => void` |
+| **특징** | localStorage에 `ih:language` 저장, 국기 이모지 표시, 외부 클릭 닫기 |
+
 ---
 
 ## 3. Barrel Export
@@ -123,6 +133,7 @@ export { default as Header } from './Header';
 export { default as ArticleCard } from './ArticleCard';
 export { default as ArticleGrid } from './ArticleGrid';
 export { default as FilterBar } from './FilterBar';
+export { default as LanguageSwitcher } from './LanguageSwitcher';
 export { default as Skeleton, SkeletonGrid } from './Skeleton';
 export { default as Toast } from './Toast';
 ```
@@ -139,6 +150,7 @@ import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
 ```
 page.tsx (Home)
   ├── Header
+  │     └── LanguageSwitcher
   ├── FilterBar
   ├── ArticleGrid
   │     ├── ArticleCard (N개)
@@ -146,6 +158,7 @@ page.tsx (Home)
   └── Toast
 
 sources/add/page.tsx (AddSourcePage)
+  ├── LanguageSwitcher
   └── Toast
 ```
 

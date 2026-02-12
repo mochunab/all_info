@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
 
@@ -24,6 +24,7 @@ export default function FilterBar({
   totalCount,
   language = 'ko',
 }: FilterBarProps) {
+  const router = useRouter();
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -93,8 +94,8 @@ export default function FilterBar({
         </div>
 
         {/* Add Source Button */}
-        <Link
-          href="/sources/add"
+        <button
+          onClick={() => router.push('/sources/add')}
           className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap"
         >
           <svg
@@ -111,7 +112,7 @@ export default function FilterBar({
             />
           </svg>
           <span className="hidden sm:inline">{t(language, 'filter.addSource')}</span>
-        </Link>
+        </button>
       </div>
 
       {/* Second Row: Content Count (left) + Category Dropdown (right) */}

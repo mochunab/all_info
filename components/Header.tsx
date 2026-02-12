@@ -66,15 +66,18 @@ export default function Header({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                {/* Archive Box Icon */}
+                <path d="M3 6h18v2H3z" fill="currentColor" />
+                <rect x="4" y="8" width="16" height="12" rx="1" />
+                <path d="M9 12h6M9 15h4" strokeWidth="1.5" />
               </svg>
             </div>
             <div>
               <h1
                 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]"
-                style={{ fontFamily: 'Outfit, sans-serif' }}
+                style={{ fontFamily: 'Pretendard, sans-serif' }}
               >
-                Insight Hub
+                아카인포
               </h1>
             </div>
           </Link>

@@ -15,7 +15,8 @@ type ArticleCardProps = {
 export default function ArticleCard({ article, language }: ArticleCardProps) {
   const sourceColor = SOURCE_COLORS[article.source_name] || DEFAULT_SOURCE_COLOR;
   const [translatedTitle, setTranslatedTitle] = useState(article.title);
-  const [translatedSummary, setTranslatedSummary] = useState(article.ai_summary || article.content_preview);
+  const [translatedAiSummary, setTranslatedAiSummary] = useState(article.ai_summary || '');
+  const [translatedSummary, setTranslatedSummary] = useState(article.summary || '');
   const [isTranslating, setIsTranslating] = useState(false);
 
   // 태그 3개 (ai에서 생성된 것 또는 빈 배열)
@@ -25,7 +26,8 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
     // 한국어면 번역 불필요
     if (language === 'ko') {
       setTranslatedTitle(article.title);
-      setTranslatedSummary(article.ai_summary || article.content_preview);
+      setTranslatedAiSummary(article.ai_summary || '');
+      setTranslatedSummary(article.summary || '');
       return;
     }
 
@@ -33,7 +35,8 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
     const cached = getCachedTranslation(article.id, language);
     if (cached) {
       setTranslatedTitle(cached.title);
-      setTranslatedSummary(cached.ai_summary || cached.content_preview);
+      setTranslatedAiSummary(cached.ai_summary || '');
+      setTranslatedSummary(cached.summary || '');
       return;
     }
 
@@ -41,21 +44,24 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
     setIsTranslating(true);
     const textsToTranslate = [
       article.title,
-      article.ai_summary || article.content_preview || '',
+      article.ai_summary || '',
+      article.summary || '',
     ];
 
     translateTexts(textsToTranslate, language, 'ko')
-      .then(([title, summary]) => {
+      .then(([title, aiSummary, summary]) => {
         setTranslatedTitle(title);
+        setTranslatedAiSummary(aiSummary);
         setTranslatedSummary(summary);
         // 캐시 저장
-        setCachedTranslation(article.id, language, title, summary, null);
+        setCachedTranslation(article.id, language, title, aiSummary, summary, null);
       })
       .catch((err) => {
         console.error('Translation failed:', err);
         // 실패 시 원문 유지
         setTranslatedTitle(article.title);
-        setTranslatedSummary(article.ai_summary || article.content_preview);
+        setTranslatedAiSummary(article.ai_summary || '');
+        setTranslatedSummary(article.summary || '');
       })
       .finally(() => {
         setIsTranslating(false);
@@ -65,6 +71,17 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
   const handleClick = () => {
     window.open(article.source_url, '_blank', 'noopener,noreferrer');
   };
+
+  // summary를 헤드라인과 상세 설명으로 분리
+  const parseSummary = (summary: string | null) => {
+    if (!summary) return { headline: '', details: '' };
+    const parts = summary.split('\n\n');
+    const headline = parts[0] || '';
+    const details = parts.slice(1).join('\n\n') || '';
+    return { headline, details };
+  };
+
+  const { headline, details } = parseSummary(translatedSummary);
 
   return (
     <article
@@ -100,7 +117,7 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
         </div>
 
         {/* Title (with translation loading indicator) */}
-        <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-3 group-hover:text-[var(--accent)] transition-colors">
+        <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-2 group-hover:text-[var(--accent)] transition-colors">
           {isTranslating && language !== 'ko' ? (
             <span className="text-[var(--text-tertiary)] italic">{t(language, 'article.translating')}</span>
           ) : (
@@ -108,12 +125,34 @@ export default function ArticleCard({ article, language }: ArticleCardProps) {
           )}
         </h3>
 
-        {/* Summary Box */}
+        {/* AI Summary (Subtitle) */}
+        {translatedAiSummary && (
+          <p className="text-sm text-[var(--text-secondary)] line-clamp-2 mb-3 leading-relaxed">
+            {isTranslating && language !== 'ko' ? '...' : translatedAiSummary}
+          </p>
+        )}
+
+        {/* Summary Box (structured: headline + details) */}
         {translatedSummary && (
           <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 mb-3">
-            <p className="text-sm text-[var(--text-secondary)] line-clamp-3 leading-relaxed">
-              {isTranslating && language !== 'ko' ? '...' : translatedSummary}
-            </p>
+            {isTranslating && language !== 'ko' ? (
+              <p className="text-sm text-[var(--text-secondary)]">...</p>
+            ) : (
+              <>
+                {/* 헤드라인 (볼드, 강조) */}
+                {headline && (
+                  <p className="text-sm font-semibold text-[var(--text-primary)] mb-2 leading-relaxed">
+                    {headline}
+                  </p>
+                )}
+                {/* 상세 설명 (2~3문장, 전체 표시) */}
+                {details && (
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">
+                    {details}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 

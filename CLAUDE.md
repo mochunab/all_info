@@ -9,6 +9,7 @@
 ### 핵심 기능
 - 다중 소스 자동 크롤링 (정적 페이지, SPA, RSS, 플랫폼 특화 등 7가지 전략)
 - AI 요약 및 태그 자동 생성 (Edge Function 우선, 로컬 fallback)
+- 다국어 지원 (한국어, English, 日本語, 中文)
 - 실시간 검색 및 카테고리 필터링
 - 반응형 UI (Desktop, Tablet, Mobile)
 - 매일 아침 9시 자동 크롤링 (Vercel Cron)
@@ -29,6 +30,7 @@ https://github.com/mochunab/all_info.git
 | Language | TypeScript (strict mode) |
 | Styling | Tailwind CSS v3 + CSS Variables |
 | State | React 18 Hooks (useState, useEffect, useCallback) |
+| i18n | 커스텀 번역 시스템 (`lib/i18n.ts`, localStorage) |
 | Database | Supabase (PostgreSQL) |
 | Auth | 커스텀 인증 (`lib/auth.ts` - Bearer Token / Same-Origin 검증) |
 | AI (Edge Function) | Supabase Edge Function (Deno) → OpenAI GPT-5-nano |
@@ -74,12 +76,14 @@ insight-hub/
 │   ├── ArticleGrid.tsx           # 아티클 그리드 + 무한 스크롤
 │   ├── FilterBar.tsx             # 검색/카테고리 필터 UI
 │   ├── Header.tsx                # 헤더 (자료 불러오기 버튼 → /api/crawl/trigger)
+│   ├── LanguageSwitcher.tsx      # 언어 선택 드롭다운 (4개 언어)
 │   ├── Toast.tsx                 # 토스트 알림
 │   ├── Skeleton.tsx              # 로딩 스켈레톤
 │   └── index.ts                  # Barrel export
 │
 ├── lib/                          # 유틸리티 및 비즈니스 로직
 │   ├── auth.ts                   # 인증 함수 (verifyCronAuth, verifySameOrigin)
+│   ├── i18n.ts                   # 다국어 번역 시스템 (ko, en, ja, zh)
 │   ├── utils.ts                  # 공통 유틸 (cn, fetchWithTimeout 등)
 │   ├── supabase/                 # Supabase 클라이언트
 │   │   ├── client.ts             # 브라우저 클라이언트
@@ -431,6 +435,26 @@ const { data, count } = await supabase
 
 const hasMore = offset + limit < (count || 0);
 ```
+
+### 8. 다국어 (i18n) 규칙
+
+```typescript
+// 번역 키 사용 (lib/i18n.ts)
+import { t } from '@/lib/i18n';
+import type { Language } from '@/types';
+
+// 컴포넌트에서 사용
+const message = t(language, 'header.refresh');
+const dynamicMessage = t(language, 'toast.crawlSuccess', { count: String(5) });
+
+// 새 번역 키 추가 시 lib/i18n.ts의 translations 객체에 ko, en, ja, zh 모두 추가
+// 변수 치환: {변수명} 문법 사용, params로 전달
+```
+
+**번역 키 추가 절차**:
+1. `lib/i18n.ts` → `translations` 객체에 4개 언어 모두 추가
+2. TypeScript가 자동으로 타입 체크 (존재하지 않는 키 사용 시 에러)
+3. 변수 치환이 필요하면 `{name}`, `{count}` 형식 사용
 
 ---
 
