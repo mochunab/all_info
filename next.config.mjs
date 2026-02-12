@@ -37,7 +37,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com",
               "font-src 'self' cdn.jsdelivr.net fonts.gstatic.com",
               "img-src 'self' data: blob: *.pstatic.net *.supabase.co *.kakaocdn.net *.daumcdn.net stonebc.com *.stibee.com",
-              "connect-src 'self' *.supabase.co api.openai.com",
+              "connect-src 'self' *.supabase.co api.openai.com cdn.jsdelivr.net",
               "object-src 'none'",
               "frame-ancestors 'none'",
               "base-uri 'self'",

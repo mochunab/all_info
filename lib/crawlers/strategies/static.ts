@@ -19,7 +19,7 @@ const DEFAULT_HEADERS = {
 
 // 기본 셀렉터
 const DEFAULT_SELECTORS: SelectorConfig = {
-  item: 'article, .article, .post, .item, .card, .list-item, tr',
+  item: 'article, .article, .post, .item, .card, .list-item',
   title: 'h2, h3, h1, .title, .headline, a',
   link: 'a',
   thumbnail: 'img',

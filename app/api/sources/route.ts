@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { inferCrawlerType } from '@/lib/crawlers/infer-type';
-import { analyzePageStructure } from '@/lib/crawlers/auto-detect';
-import type { AnalysisResult } from '@/lib/crawlers/auto-detect';
+import { resolveStrategy } from '@/lib/crawlers/strategy-resolver';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
@@ -91,24 +89,50 @@ export async function POST(request: NextRequest) {
     }
 
     const results = [];
-    const analysisResults: { url: string; method: string; confidence: number; crawlerType: string; spaDetected: boolean }[] = [];
+    const analysisResults: {
+      url: string;
+      method: string;
+      confidence: number;
+      crawlerType: string;
+      spaDetected: boolean;
+      rssUrl?: string;
+    }[] = [];
 
-    // 모든 URL에 대해 분석 실행 (SPA 감지는 항상 필요)
-    const analysisMap = new Map<string, AnalysisResult>();
-    const allUrls = sources.filter((s: { url?: string }) => s.url).map((s: { url: string }) => s.url);
-    const urlsToAnalyze = allUrls;
+    // 모든 URL에 대해 통합 전략 해석 실행
+    const resolutionMap = new Map<
+      string,
+      Awaited<ReturnType<typeof resolveStrategy>>
+    >();
+    const allUrls = sources
+      .filter((s: { url?: string }) => s.url)
+      .map((s: { url: string }) => s.url);
 
-    if (urlsToAnalyze.length > 0) {
-      const analyses = await Promise.allSettled(
-        urlsToAnalyze.map((url: string) => analyzePageStructure(url))
+    if (allUrls.length > 0) {
+      console.log(`\n[POST /api/sources] 🚀 ${allUrls.length}개 소스 분석 시작...`);
+
+      const resolutions = await Promise.allSettled(
+        allUrls.map((url: string, index: number) => {
+          console.log(`[POST /api/sources] 📍 [${index + 1}/${allUrls.length}] 분석 중: ${url}`);
+          return resolveStrategy(url);
+        })
       );
 
-      urlsToAnalyze.forEach((url: string, i: number) => {
-        const result = analyses[i];
+      allUrls.forEach((url: string, i: number) => {
+        const result = resolutions[i];
         if (result.status === 'fulfilled') {
-          analysisMap.set(url, result.value);
+          resolutionMap.set(url, result.value);
+          console.log(
+            `[POST /api/sources] ✅ [${i + 1}/${allUrls.length}] 완료: ${result.value.primaryStrategy} (${result.value.detectionMethod})`
+          );
+        } else {
+          console.error(
+            `[POST /api/sources] ❌ [${i + 1}/${allUrls.length}] 실패: ${url}`,
+            result.reason
+          );
         }
       });
+
+      console.log(`[POST /api/sources] 🎉 ${allUrls.length}개 소스 분석 완료\n`);
     }
 
     for (const source of sources) {
@@ -116,7 +140,7 @@ export async function POST(request: NextRequest) {
 
       if (!url) continue;
 
-      const analysis = analysisMap.get(url);
+      const resolution = resolutionMap.get(url);
 
       // Check if source already exists
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,22 +151,35 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (existing) {
-        // Update existing source — selectors가 없으면 분석 결과 적용
+        // Update existing source — selectors가 없으면 해석 결과 적용
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existingConfig = (existing.config as Record<string, unknown>) || {};
-        const hasSelectors = existingConfig.selectors && typeof existingConfig.selectors === 'object';
+        const hasSelectors =
+          existingConfig.selectors && typeof existingConfig.selectors === 'object';
 
         const updatedConfig = {
           ...existingConfig,
           category,
-          // selectors가 없고 분석 성공 시 적용
-          ...(!hasSelectors && analysis?.selectors && { selectors: analysis.selectors }),
-          ...(!hasSelectors && analysis?.pagination && { pagination: analysis.pagination }),
+          // selectors가 없고 해석 성공 시 적용
+          ...(!hasSelectors && resolution?.selectors && { selectors: resolution.selectors }),
+          ...(!hasSelectors &&
+            resolution?.pagination && { pagination: resolution.pagination }),
+          ...(resolution?.rssUrl && {
+            crawl_config: { rssUrl: resolution.rssUrl },
+          }),
+          // 전략 해석 메타데이터 추가
+          ...(resolution && {
+            _detection: {
+              method: resolution.detectionMethod,
+              confidence: resolution.confidence,
+              fallbackStrategies: resolution.fallbackStrategies,
+            },
+          }),
         };
 
-        // SPA 감지 시 crawler_type 업데이트
-        const crawlerTypeUpdate = analysis?.spaDetected && existing.crawler_type === 'STATIC'
-          ? { crawler_type: 'SPA' as const }
+        // 해석 결과 crawler_type 업데이트
+        const crawlerTypeUpdate = resolution
+          ? { crawler_type: resolution.primaryStrategy }
           : {};
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,21 +198,29 @@ export async function POST(request: NextRequest) {
           results.push(data);
         }
 
-        if (analysis) {
+        if (resolution) {
           analysisResults.push({
             url,
-            method: analysis.method,
-            confidence: analysis.confidence,
-            crawlerType: crawlerTypeUpdate.crawler_type || existing.crawler_type,
-            spaDetected: analysis.spaDetected,
+            method: resolution.detectionMethod,
+            confidence: resolution.confidence,
+            crawlerType: resolution.primaryStrategy,
+            spaDetected: resolution.spaDetected,
+            ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
           });
         }
       } else {
-        // Insert new source with auto-detected crawler type + selectors
-        const detectedType = inferCrawlerType(url);
-        const crawlerType = analysis?.spaDetected ? 'SPA' : detectedType;
+        // Insert new source with resolved strategy
+        console.log(`\n🔍 [SOURCES DEBUG] URL: ${url}`);
+        console.log(`🔍 [SOURCES DEBUG] resolution 존재? ${!!resolution}`);
+        console.log(`🔍 [SOURCES DEBUG] resolution?.primaryStrategy: ${resolution?.primaryStrategy}`);
+        console.log(`🔍 [SOURCES DEBUG] resolution?.detectionMethod: ${resolution?.detectionMethod}`);
+        console.log(`🔍 [SOURCES DEBUG] resolution?.confidence: ${resolution?.confidence}`);
 
-        console.log(`[SOURCES] New source: ${url} -> crawler_type: ${crawlerType} (analysis: ${analysis?.method || 'none'}, confidence: ${analysis?.confidence || 0})`);
+        const crawlerType = resolution?.primaryStrategy || 'SPA'; // 기본값을 SPA로 변경!
+
+        console.log(
+          `[SOURCES] New source: ${url} -> crawler_type: ${crawlerType} (method: ${resolution?.detectionMethod || 'none'}, confidence: ${resolution?.confidence || 0})`
+        );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
@@ -186,8 +231,19 @@ export async function POST(request: NextRequest) {
             crawler_type: crawlerType,
             config: {
               category,
-              ...(analysis?.selectors && { selectors: analysis.selectors }),
-              ...(analysis?.pagination && { pagination: analysis.pagination }),
+              ...(resolution?.selectors && { selectors: resolution.selectors }),
+              ...(resolution?.pagination && { pagination: resolution.pagination }),
+              ...(resolution?.rssUrl && {
+                crawl_config: { rssUrl: resolution.rssUrl },
+              }),
+              // 전략 해석 메타데이터
+              ...(resolution && {
+                _detection: {
+                  method: resolution.detectionMethod,
+                  confidence: resolution.confidence,
+                  fallbackStrategies: resolution.fallbackStrategies,
+                },
+              }),
             },
             is_active: true,
             priority: 1,
@@ -199,13 +255,14 @@ export async function POST(request: NextRequest) {
           results.push(data);
         }
 
-        if (analysis) {
+        if (resolution) {
           analysisResults.push({
             url,
-            method: analysis.method,
-            confidence: analysis.confidence,
+            method: resolution.detectionMethod,
+            confidence: resolution.confidence,
             crawlerType,
-            spaDetected: analysis.spaDetected,
+            spaDetected: resolution.spaDetected,
+            ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
           });
         }
       }
@@ -213,6 +270,39 @@ export async function POST(request: NextRequest) {
 
     // 변경 후 캐시 무효화
     invalidateCache(CACHE_KEYS.SOURCES);
+
+    // 요약 로그
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`[POST /api/sources] 📊 소스 저장 완료 요약`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`총 소스: ${results.length}개`);
+
+    if (analysisResults.length > 0) {
+      console.log(`\n분석 결과:`);
+      const methodCount: Record<string, number> = {};
+      const typeCount: Record<string, number> = {};
+
+      analysisResults.forEach((result) => {
+        methodCount[result.method] = (methodCount[result.method] || 0) + 1;
+        typeCount[result.crawlerType] = (typeCount[result.crawlerType] || 0) + 1;
+      });
+
+      console.log(`감지 방법별:`);
+      Object.entries(methodCount).forEach(([method, count]) => {
+        console.log(`  - ${method}: ${count}개`);
+      });
+
+      console.log(`\n크롤러 타입별:`);
+      Object.entries(typeCount).forEach(([type, count]) => {
+        console.log(`  - ${type}: ${count}개`);
+      });
+
+      const avgConfidence =
+        analysisResults.reduce((sum, r) => sum + r.confidence, 0) / analysisResults.length;
+      console.log(`\n평균 신뢰도: ${(avgConfidence * 100).toFixed(1)}%`);
+    }
+
+    console.log(`${'='.repeat(60)}\n`);
 
     return NextResponse.json({
       success: true,

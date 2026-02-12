@@ -131,6 +131,7 @@ export interface TranslationCache {
     [lang: string]: {
       title: string;
       ai_summary: string | null;
+      summary: string | null;
       content_preview: string | null;
       cached_at: number; // timestamp
     };

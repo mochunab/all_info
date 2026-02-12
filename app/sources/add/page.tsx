@@ -1,12 +1,5 @@
-'use client';
-
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { Toast } from '@/components';
-import LanguageSwitcher from '@/components/LanguageSwitcher';
-import type { Language } from '@/types';
-import { t } from '@/lib/i18n';
+import { createServiceClient } from '@/lib/supabase/server';
+import SourcesPageClient from './SourcesPageClient';
 
 type SourceLink = {
   id: string;
@@ -15,616 +8,65 @@ type SourceLink = {
   isExisting: boolean;
 };
 
-const STORAGE_KEY = {
-  SOURCES: 'ih:sources',
-  CATEGORIES: 'ih:categories',
-  LANGUAGE: 'ih:language',
-} as const;
+type Category = {
+  id: number;
+  name: string;
+  is_default: boolean;
+};
 
-export default function AddSourcePage() {
-  const router = useRouter();
-  const [categories, setCategories] = useState<string[]>([]);
-  const [activeCategory, setActiveCategory] = useState('');
-  const [sourcesByCategory, setSourcesByCategory] = useState<Record<string, SourceLink[]>>({});
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
-  const [language, setLanguage] = useState<Language>('ko');
+export default async function AddSourcePage() {
+  const supabase = createServiceClient();
 
-  const categoryInputRef = useRef<HTMLInputElement>(null);
+  // 서버에서 직접 Supabase 병렬 조회 (API 라우트 경유 X)
+  const [sourcesResult, categoriesResult] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('crawl_sources').select('*').order('priority', { ascending: false }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('categories').select('*')
+      .order('display_order', { ascending: true, nullsFirst: false }).order('name'),
+  ]);
 
-  // Initialize language from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
-      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
-        setLanguage(saved as Language);
-      }
-    } catch { /* ignore */ }
-  }, []);
+  const sources = sourcesResult.data || [];
+  const categoriesRaw = categoriesResult.data || [];
 
-  // Language change handler
-  const handleLanguageChange = useCallback((lang: Language) => {
-    setLanguage(lang);
-    try {
-      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
-    } catch { /* ignore */ }
-  }, []);
+  // parseData 로직 (기존 page.tsx 168-201줄)
+  let cats: Category[] = [];
+  const dbCatNames = new Set<string>();
+  if (categoriesRaw.length > 0) {
+    cats = categoriesRaw;
+    cats.forEach((c: Category) => dbCatNames.add(c.name));
+  }
 
-  // Focus category input
-  useEffect(() => {
-    if (isAddingCategory && categoryInputRef.current) {
-      categoryInputRef.current.focus();
-    }
-  }, [isAddingCategory]);
+  const grouped: Record<string, SourceLink[]> = {};
+  for (const cat of cats) {
+    grouped[cat.name] = [];
+  }
 
-  // Parse raw API responses into component state
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parseData = (srcData: any, catData: any) => {
-    let cats: string[] = ['비즈니스', '소비 트렌드'];
-    const dbCatNames = new Set<string>();
-    if (catData?.categories?.length > 0) {
-      cats = catData.categories.map((c: { name: string }) => c.name);
-      cats.forEach((c) => dbCatNames.add(c));
-    }
-
-    const grouped: Record<string, SourceLink[]> = {};
-    for (const cat of cats) {
-      grouped[cat] = [];
-    }
-
-    if (srcData?.sources?.length > 0) {
-      for (const s of srcData.sources) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const srcCategory = (s.config as any)?.category || cats[0];
-        if (!grouped[srcCategory]) {
-          grouped[srcCategory] = [];
-          if (!cats.includes(srcCategory)) {
-            cats.push(srcCategory);
-          }
+  if (sources.length > 0) {
+    for (const s of sources) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const srcCategory = (s.config as any)?.category || (cats[0]?.name || '기타');
+      if (!grouped[srcCategory]) {
+        grouped[srcCategory] = [];
+        const existingCat = cats.find((c) => c.name === srcCategory);
+        if (!existingCat) {
+          cats.push({ id: Date.now(), name: srcCategory, is_default: false });
         }
-        grouped[srcCategory].push({
-          id: s.id.toString(),
-          url: s.base_url,
-          name: s.name,
-          isExisting: true,
-        });
       }
-    }
-
-    return { cats, grouped, dbCatNames };
-  };
-
-  // Fetch with sessionStorage stale-while-revalidate
-  useEffect(() => {
-    let cancelled = false;
-
-    // Layer 1: sessionStorage에서 즉시 로드 (stale data)
-    try {
-      const cachedSrc = sessionStorage.getItem(STORAGE_KEY.SOURCES);
-      const cachedCat = sessionStorage.getItem(STORAGE_KEY.CATEGORIES);
-      if (cachedSrc && cachedCat) {
-        const { cats, grouped } = parseData(JSON.parse(cachedSrc), JSON.parse(cachedCat));
-        setCategories(cats);
-        setSourcesByCategory(grouped);
-        setActiveCategory((prev) => prev || cats[0] || '');
-      }
-    } catch {
-      // sessionStorage 실패 시 무시
-    }
-
-    // Layer 2: API에서 최신 데이터로 리밸리데이트
-    async function revalidate() {
-      try {
-        const [sourcesRes, categoriesRes] = await Promise.all([
-          fetch('/api/sources'),
-          fetch('/api/categories'),
-        ]);
-
-        if (cancelled) return;
-
-        const srcData = sourcesRes.ok ? await sourcesRes.json() : null;
-        const catData = categoriesRes.ok ? await categoriesRes.json() : null;
-
-        // sessionStorage 업데이트
-        try {
-          if (srcData) sessionStorage.setItem(STORAGE_KEY.SOURCES, JSON.stringify(srcData));
-          if (catData) sessionStorage.setItem(STORAGE_KEY.CATEGORIES, JSON.stringify(catData));
-        } catch {
-          // quota 초과 시 무시
-        }
-
-        const { cats, grouped, dbCatNames } = parseData(srcData, catData);
-
-        // crawl_sources에서 발견된 카테고리 중 DB categories 테이블에 없는 것 동기화
-        for (const cat of cats) {
-          if (!dbCatNames.has(cat)) {
-            fetch('/api/categories', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: cat }),
-            }).catch((err) => console.error('Error syncing category:', err));
-          }
-        }
-
-        if (!cancelled) {
-          setCategories(cats);
-          setSourcesByCategory(grouped);
-          setActiveCategory((prev) => prev || cats[0] || '');
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      }
-    }
-
-    revalidate();
-    return () => { cancelled = true; };
-  }, []);
-
-  const currentSources = sourcesByCategory[activeCategory] || [];
-
-  const handleAddCategory = async () => {
-    const trimmed = newCategory.trim();
-    if (trimmed && !categories.includes(trimmed)) {
-      // DB에 카테고리 저장
-      fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
-      }).catch((err) => console.error('Error saving category:', err));
-
-      setCategories([...categories, trimmed]);
-      setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
-      setActiveCategory(trimmed);
-      setNewCategory('');
-      setIsAddingCategory(false);
-    }
-  };
-
-  const handleCategoryKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleAddCategory();
-    } else if (e.key === 'Escape') {
-      setIsAddingCategory(false);
-      setNewCategory('');
-    }
-  };
-
-  const handleDeleteCategory = async () => {
-    if (!deletingCategory) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await fetch('/api/categories', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: deletingCategory }),
+      grouped[srcCategory].push({
+        id: s.id.toString(),
+        url: s.base_url,
+        name: s.name,
+        isExisting: true,
       });
-
-      if (response.ok) {
-        // sessionStorage 캐시 무효화
-        try {
-          sessionStorage.removeItem(STORAGE_KEY.SOURCES);
-          sessionStorage.removeItem(STORAGE_KEY.CATEGORIES);
-        } catch { /* ignore */ }
-
-        const newCategories = categories.filter((c) => c !== deletingCategory);
-        const newSourcesByCategory = { ...sourcesByCategory };
-        delete newSourcesByCategory[deletingCategory];
-
-        setCategories(newCategories);
-        setSourcesByCategory(newSourcesByCategory);
-
-        if (activeCategory === deletingCategory) {
-          setActiveCategory(newCategories[0] || '');
-        }
-
-        setToastMessage(t(language, 'sources.categoryDeleted', { name: deletingCategory }));
-        setShowToast(true);
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error);
-    } finally {
-      setIsDeleting(false);
-      setDeletingCategory(null);
     }
-  };
-
-  const handleSourceChange = (id: string, field: 'url' | 'name', value: string) => {
-    setSourcesByCategory({
-      ...sourcesByCategory,
-      [activeCategory]: currentSources.map((s) => {
-        if (s.id !== id) return s;
-        // 기존 소스의 URL 변경 시 → 기존 소스는 삭제 대상에 추가, 새 소스로 전환
-        if (field === 'url' && s.isExisting) {
-          setPendingDeleteIds((prev) => [...prev, parseInt(s.id, 10)]);
-          return { ...s, [field]: value, isExisting: false, id: `new-${Date.now()}` };
-        }
-        return { ...s, [field]: value };
-      }),
-    });
-  };
-
-  const handleAddLink = () => {
-    setSourcesByCategory({
-      ...sourcesByCategory,
-      [activeCategory]: [
-        ...currentSources,
-        { id: `new-${Date.now()}`, url: '', name: '', isExisting: false },
-      ],
-    });
-  };
-
-  const handleRemoveLink = (id: string) => {
-    const target = currentSources.find((s) => s.id === id);
-    if (target?.isExisting) {
-      setPendingDeleteIds((prev) => [...prev, parseInt(target.id, 10)]);
-    }
-    setSourcesByCategory({
-      ...sourcesByCategory,
-      [activeCategory]: currentSources.filter((s) => s.id !== id),
-    });
-  };
-
-  const handleSave = async () => {
-    // Collect all valid sources from all categories
-    const allSources: { url: string; name: string; category: string }[] = [];
-    for (const [cat, sources] of Object.entries(sourcesByCategory)) {
-      for (const s of sources) {
-        if (s.url.trim()) {
-          allSources.push({
-            url: s.url.trim(),
-            name: s.name.trim() || extractDomainName(s.url),
-            category: cat,
-          });
-        }
-      }
-    }
-
-    if (allSources.length === 0) return;
-
-    setIsSaving(true);
-    try {
-      const response = await fetch('/api/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sources: allSources,
-          ...(pendingDeleteIds.length > 0 && { deleteIds: pendingDeleteIds }),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // 저장 성공 시 sessionStorage 캐시 무효화
-        try {
-          sessionStorage.removeItem(STORAGE_KEY.SOURCES);
-          sessionStorage.removeItem(STORAGE_KEY.CATEGORIES);
-        } catch { /* ignore */ }
-
-        // 분석 결과를 토스트 메시지에 포함
-        let message = t(language, 'sources.saved');
-        if (data.analysis && data.analysis.length > 0) {
-          const ruleCount = data.analysis.filter((a: { method: string }) => a.method === 'rule').length;
-          const aiCount = data.analysis.filter((a: { method: string }) => a.method === 'ai').length;
-          const parts: string[] = [];
-          if (ruleCount > 0) parts.push(`${ruleCount} rule`);
-          if (aiCount > 0) parts.push(`${aiCount} AI`);
-          if (parts.length > 0) {
-            message = t(language, 'sources.autoAnalysis', {
-              count: String(data.sources?.length || allSources.length),
-              methods: parts.join(' / '),
-            });
-          }
-        }
-        setPendingDeleteIds([]);
-        setToastMessage(message);
-        setShowToast(true);
-        setTimeout(() => {
-          router.push('/');
-        }, 2200);
-      } else {
-        const detail = data.error || `HTTP ${response.status}`;
-        setToastMessage(t(language, 'toast.crawlFailed', { error: detail }));
-        setShowToast(true);
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      setToastMessage(t(language, 'toast.networkError', { error: msg }));
-      setShowToast(true);
-      console.error('Error saving sources:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const extractDomainName = (url: string): string => {
-    try {
-      const domain = new URL(url).hostname.replace('www.', '');
-      return domain.split('.')[0];
-    } catch {
-      return url;
-    }
-  };
-
-  const hasValidSources = Object.values(sourcesByCategory).some((sources) =>
-    sources.some((s) => s.url.trim())
-  );
+  }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              <span>{t(language, 'sources.back')}</span>
-            </Link>
-
-            <LanguageSwitcher
-              currentLang={language}
-              onLanguageChange={handleLanguageChange}
-            />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
-          {t(language, 'sources.title')}
-        </h1>
-        <p className="text-sm text-[var(--text-tertiary)] mb-8">
-          {t(language, 'sources.subtitle')}
-        </p>
-
-        {/* Category Tabs (Chips) */}
-        <div className="mb-6">
-          <div className="flex flex-wrap items-center gap-2">
-            {categories.map((cat) => (
-              <div key={cat} className="relative group flex items-center">
-                <button
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    activeCategory === cat
-                      ? 'bg-[var(--accent)] text-white'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
-                  }`}
-                >
-                  {cat}
-                  {(sourcesByCategory[cat]?.length || 0) > 0 && (
-                    <span className={`ml-1.5 text-xs ${
-                      activeCategory === cat ? 'text-white/70' : 'text-[var(--text-tertiary)]'
-                    }`}>
-                      {sourcesByCategory[cat].length}
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeletingCategory(cat);
-                  }}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-tertiary)] hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-
-            {/* Add Category Button / Input */}
-            {isAddingCategory ? (
-              <div className="flex items-center gap-2">
-                <input
-                  ref={categoryInputRef}
-                  type="text"
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  onKeyDown={handleCategoryKeyDown}
-                  placeholder={
-                    language === 'ko' ? '분류명 입력...' :
-                    language === 'en' ? 'Enter category...' :
-                    language === 'ja' ? 'カテゴリ名を入力...' :
-                    '输入类别...'
-                  }
-                  className="px-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--accent)] rounded-full focus:outline-none w-32"
-                />
-                <button
-                  onClick={handleAddCategory}
-                  className="px-3 py-2 text-xs font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)]"
-                >
-                  {language === 'ko' ? '추가' : language === 'en' ? 'Add' : language === 'ja' ? '追加' : '添加'}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsAddingCategory(false);
-                    setNewCategory('');
-                  }}
-                  className="px-3 py-2 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-full border border-[var(--border)]"
-                >
-                  {t(language, 'sources.cancel')}
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsAddingCategory(true)}
-                className="flex items-center gap-1 px-3 py-2 rounded-full text-sm text-[var(--accent)] bg-[var(--bg-secondary)] border border-dashed border-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Source Links for Active Category */}
-        {activeCategory && (
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-              {t(language, 'sources.linkLabel')}
-            </label>
-            <div className="space-y-3">
-              {currentSources.map((source) => (
-                <div key={source.id} className="relative">
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={source.url}
-                      onChange={(e) => handleSourceChange(source.id, 'url', e.target.value)}
-                      placeholder={t(language, 'sources.urlPlaceholder')}
-                      className="flex-1 px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
-                    />
-                    <button
-                      onClick={() => handleRemoveLink(source.id)}
-                      className="px-3 py-3 text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  {source.url && (
-                    <input
-                      type="text"
-                      value={source.name}
-                      onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
-                      placeholder={t(language, 'sources.namePlaceholder')}
-                      className="mt-2 w-full px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Add Link Button */}
-            <button
-              onClick={handleAddLink}
-              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-[var(--border)] rounded-lg text-sm text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              <span>{t(language, 'sources.addLink')}</span>
-            </button>
-          </div>
-        )}
-      </main>
-
-      {/* Bottom Sticky Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-primary)] border-t border-[var(--border)] p-4">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={handleSave}
-            disabled={!hasValidSources || isSaving}
-            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? t(language, 'sources.saving') : t(language, 'sources.save')}
-          </button>
-        </div>
-      </div>
-
-      {/* Delete Category Confirmation Dialog */}
-      {deletingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-                {t(language, 'sources.deleteCategory')}
-              </h3>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                {t(language, 'sources.deleteCategoryConfirm', { name: deletingCategory })}
-              </p>
-              {(sourcesByCategory[deletingCategory]?.filter((s) => s.isExisting).length || 0) > 0 && (
-                <p className="mt-2 text-sm text-red-500">
-                  {t(language, 'sources.deleteWithLinks', {
-                    count: String(sourcesByCategory[deletingCategory].filter((s) => s.isExisting).length),
-                  })}
-                </p>
-              )}
-            </div>
-            <div className="flex border-t border-[var(--border)]">
-              <button
-                onClick={() => setDeletingCategory(null)}
-                disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
-              >
-                {t(language, 'sources.cancel')}
-              </button>
-              <div className="w-px bg-[var(--border)]" />
-              <button
-                onClick={handleDeleteCategory}
-                disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
-              >
-                {isDeleting ? t(language, 'sources.deleting') : t(language, 'sources.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast */}
-      <Toast
-        message={toastMessage}
-        isVisible={showToast}
-        onClose={() => setShowToast(false)}
-        duration={2200}
-      />
-    </div>
+    <SourcesPageClient
+      initialCategories={cats}
+      initialSourcesByCategory={grouped}
+      initialActiveCategory={cats[0]?.name || ''}
+    />
   );
 }

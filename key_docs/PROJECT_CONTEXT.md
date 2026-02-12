@@ -64,6 +64,7 @@ components/ArticleCard.tsx            → 아티클 카드 (텍스트 중심 UI,
 components/ArticleGrid.tsx            → 아티클 그리드 + 무한스크롤 (Intersection Observer)
 components/FilterBar.tsx              → 검색바 + 카테고리 필터 UI
 components/Header.tsx                 → 헤더 ("자료 불러오기" 버튼 → /api/crawl/trigger)
+components/LanguageSwitcher.tsx       → 언어 선택 드롭다운 (4개 언어: ko, en, ja, zh)
 components/Skeleton.tsx               → 로딩 스켈레톤 (카드 레이아웃)
 components/Toast.tsx                  → 토스트 알림
 app/api/articles/route.ts             → GET - 아티클 목록 (검색/필터/페이지네이션)
@@ -135,7 +136,8 @@ app/api/image-proxy/route.ts          → 이미지 프록시 (Hotlinking/SSRF �
 ```
 lib/supabase/client.ts                → 브라우저 Supabase 클라이언트
 lib/supabase/server.ts                → 서버 Supabase 클라이언트 (SSR) + Service Client
-types/index.ts                        → 공통 타입 (Article, CrawlSource, CrawlerType 등)
+lib/i18n.ts                           → 다국어 번역 시스템 (ko, en, ja, zh)
+types/index.ts                        → 공통 타입 (Article, CrawlSource, Language 등)
 types/database.ts                     → Supabase Database 타입
 supabase/migrations/001_initial_schema.sql         → 초기 스키마
 supabase/migrations/002_add_ai_summary_tags.sql    → AI 요약 컬럼 추가

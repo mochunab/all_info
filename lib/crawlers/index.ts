@@ -9,6 +9,7 @@ import { parseConfig } from './types';
 import { getStrategy, inferCrawlerType, closeBrowser, isValidCrawlerType } from './strategies';
 import { parseDateToISO } from './date-parser';
 import { generateSourceId } from '@/lib/utils';
+import { filterGarbageArticles, getQualityStats } from './quality-filter';
 
 // Legacy imports for backward compatibility
 import { crawlWithCheerio, fetchArticleContent } from './cheerio-crawler';
@@ -58,55 +59,247 @@ function convertToArticle(
 }
 
 /**
- * 전략 패턴 기반 크롤링 실행
+ * 크롤링 결과 품질 검증
  */
-async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]> {
-  // URL 기반 추론 우선, 레거시 타입은 폴백
-  const inferred = inferCrawlerType(source.base_url);
-  // 레거시 타입(static/dynamic)이면 URL 기반 추론 사용
-  const isLegacyType = source.crawler_type === 'static' || source.crawler_type === 'dynamic';
-  const crawlerType = isLegacyType ? inferred : ((source.crawler_type as CrawlerType) || inferred);
+type ValidationResult = {
+  passed: boolean;
+  reason?: string;
+  stats?: {
+    total: number;
+    valid: number;
+    garbageRatio: number;
+    uniqueTitles: number;
+    uniqueUrls: number;
+  };
+};
 
-  console.log(`[CRAWL] Strategy: ${crawlerType} (DB: ${source.crawler_type || 'none'}, inferred: ${inferred})`);
-
-  // 전략 가져오기
-  const strategy = getStrategy(crawlerType);
-  const config = parseConfig(source);
-
-  // 목록 크롤링
-  const rawItems = await strategy.crawlList(source);
-
-  // RawContentItem을 CrawledArticle로 변환
-  const articles: CrawledArticle[] = [];
-
-  for (const item of rawItems) {
-    // 본문이 없고 crawlContent 메서드가 있으면 상세 페이지 크롤링
-    if (!item.content && strategy.crawlContent) {
-      try {
-        const result = await strategy.crawlContent(item.link, config.content_selectors);
-
-        // ContentResult 처리: string 또는 { content, thumbnail }
-        if (typeof result === 'string') {
-          item.content = result;
-        } else {
-          item.content = result.content;
-          // 썸네일이 없는 경우에만 상세 페이지에서 추출한 썸네일 사용
-          if (!item.thumbnail && result.thumbnail) {
-            item.thumbnail = result.thumbnail;
-          }
-        }
-      } catch (error) {
-        console.error(`[CRAWL] Content fetch error for ${item.link}:`, error);
-      }
-
-      // 요청 간 딜레이
-      await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
-    }
-
-    articles.push(convertToArticle(item, source, config.category));
+function validateCrawlResults(items: RawContentItem[]): ValidationResult {
+  // 0건 → 실패
+  if (items.length === 0) {
+    return { passed: false, reason: 'No items found' };
   }
 
-  return articles;
+  // 품질 통계 계산
+  const qualityStats = getQualityStats(items);
+
+  // 쓰레기 비율 > 50% → 실패
+  if (qualityStats.garbageRatio > 0.5) {
+    return {
+      passed: false,
+      reason: `High garbage ratio: ${(qualityStats.garbageRatio * 100).toFixed(1)}%`,
+      stats: {
+        total: qualityStats.total,
+        valid: qualityStats.valid,
+        garbageRatio: qualityStats.garbageRatio,
+        uniqueTitles: 0,
+        uniqueUrls: 0,
+      },
+    };
+  }
+
+  // 유효 아이템 < 2건 → 실패
+  if (qualityStats.valid < 2) {
+    return {
+      passed: false,
+      reason: `Insufficient valid items: ${qualityStats.valid}`,
+      stats: {
+        total: qualityStats.total,
+        valid: qualityStats.valid,
+        garbageRatio: qualityStats.garbageRatio,
+        uniqueTitles: 0,
+        uniqueUrls: 0,
+      },
+    };
+  }
+
+  // 제목 다양성 검사
+  const titles = items.map((item) => item.title.toLowerCase().trim());
+  const uniqueTitles = new Set(titles).size;
+  const titleDiversity = uniqueTitles / items.length;
+
+  if (titleDiversity < 0.5) {
+    return {
+      passed: false,
+      reason: `Low title diversity: ${(titleDiversity * 100).toFixed(1)}%`,
+      stats: {
+        total: qualityStats.total,
+        valid: qualityStats.valid,
+        garbageRatio: qualityStats.garbageRatio,
+        uniqueTitles,
+        uniqueUrls: 0,
+      },
+    };
+  }
+
+  // URL 다양성 검사
+  const urls = items.map((item) => item.link.toLowerCase().trim());
+  const uniqueUrls = new Set(urls).size;
+  const urlDiversity = uniqueUrls / items.length;
+
+  if (urlDiversity < 0.5) {
+    return {
+      passed: false,
+      reason: `Low URL diversity: ${(urlDiversity * 100).toFixed(1)}%`,
+      stats: {
+        total: qualityStats.total,
+        valid: qualityStats.valid,
+        garbageRatio: qualityStats.garbageRatio,
+        uniqueTitles,
+        uniqueUrls,
+      },
+    };
+  }
+
+  // 모든 검증 통과
+  return {
+    passed: true,
+    stats: {
+      total: qualityStats.total,
+      valid: qualityStats.valid,
+      garbageRatio: qualityStats.garbageRatio,
+      uniqueTitles,
+      uniqueUrls,
+    },
+  };
+}
+
+/**
+ * 크롤러 타입별 기본 폴백 체인
+ */
+function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
+  switch (primaryType) {
+    case 'RSS':
+      return ['STATIC', 'SPA'];
+    case 'SPA':
+      return ['STATIC'];
+    case 'STATIC':
+      return ['SPA'];
+    case 'PLATFORM_NAVER':
+    case 'PLATFORM_KAKAO':
+    case 'NEWSLETTER':
+      return ['STATIC', 'SPA'];
+    case 'API':
+      return ['STATIC'];
+    default:
+      return ['SPA'];
+  }
+}
+
+/**
+ * 전략 패턴 기반 크롤링 실행 (폴백 체인 + 품질 검증)
+ */
+async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]> {
+  const config = parseConfig(source);
+
+  // 1. Primary 전략 결정
+  const inferred = inferCrawlerType(source.base_url);
+  const isLegacyType = source.crawler_type === 'static' || source.crawler_type === 'dynamic';
+  const primaryType = isLegacyType
+    ? inferred
+    : ((source.crawler_type as CrawlerType) || inferred);
+
+  // 2. Fallback 체인 구성
+  const fallbacks = config._detection?.fallbackStrategies || getDefaultFallbacks(primaryType);
+  const strategyChain = [primaryType, ...fallbacks].filter(
+    (type, index, arr) => arr.indexOf(type) === index
+  ); // 중복 제거
+
+  console.log(`[CRAWL] Strategy chain: ${strategyChain.join(' → ')}`);
+
+  // 3. 체인 순회 (각 전략 30초 타임아웃)
+  for (let i = 0; i < strategyChain.length; i++) {
+    const strategyType = strategyChain[i];
+    const isFallback = i > 0;
+
+    console.log(
+      `[CRAWL] ${isFallback ? 'Fallback' : 'Primary'} strategy: ${strategyType} (${i + 1}/${strategyChain.length})`
+    );
+
+    try {
+      // 전략 가져오기
+      const strategy = getStrategy(strategyType);
+
+      // 타임아웃 설정 (30초)
+      const timeoutPromise = new Promise<RawContentItem[]>((_, reject) =>
+        setTimeout(() => reject(new Error('Strategy timeout (30s)')), 30000)
+      );
+
+      const crawlPromise = strategy.crawlList(source);
+
+      // 목록 크롤링 (타임아웃 적용)
+      const rawItems = await Promise.race([crawlPromise, timeoutPromise]);
+
+      console.log(`[CRAWL] ${strategyType} found ${rawItems.length} items`);
+
+      // 4. 품질 검증
+      const validation = validateCrawlResults(rawItems);
+
+      if (!validation.passed) {
+        console.warn(
+          `[CRAWL] ${strategyType} validation failed: ${validation.reason}`,
+          validation.stats
+        );
+
+        // 마지막 전략이면 빈 배열 반환
+        if (i === strategyChain.length - 1) {
+          console.error(`[CRAWL] All strategies failed for ${source.name}`);
+          return [];
+        }
+
+        // 다음 전략 시도
+        continue;
+      }
+
+      console.log(`[CRAWL] ${strategyType} validation passed`, validation.stats);
+
+      // 5. 본문 크롤링
+      const articles: CrawledArticle[] = [];
+
+      for (const item of rawItems) {
+        if (!item.content && strategy.crawlContent) {
+          try {
+            const result = await strategy.crawlContent(item.link, config.content_selectors);
+
+            if (typeof result === 'string') {
+              item.content = result;
+            } else {
+              item.content = result.content;
+              if (!item.thumbnail && result.thumbnail) {
+                item.thumbnail = result.thumbnail;
+              }
+            }
+          } catch (error) {
+            console.error(`[CRAWL] Content fetch error for ${item.link}:`, error);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
+        }
+
+        articles.push(convertToArticle(item, source, config.category));
+      }
+
+      // 6. 쓰레기 필터 적용
+      const filtered = filterGarbageArticles(articles, source.name);
+
+      console.log(`[CRAWL] ${strategyType} success: ${filtered.length} valid articles`);
+      return filtered;
+    } catch (error) {
+      console.error(`[CRAWL] ${strategyType} error:`, error);
+
+      // 마지막 전략이면 빈 배열 반환
+      if (i === strategyChain.length - 1) {
+        console.error(`[CRAWL] All strategies failed for ${source.name}`);
+        return [];
+      }
+
+      // 다음 전략 시도
+      continue;
+    }
+  }
+
+  // 모든 전략 실패
+  console.error(`[CRAWL] All strategies exhausted for ${source.name}`);
+  return [];
 }
 
 /**
