@@ -3,19 +3,12 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
-// Default categories if the table doesn't exist or is empty
-const DEFAULT_CATEGORIES = ['비즈니스', '소비 트렌드'];
-
 type CategoryResponse = {
   categories: { id: number; name: string; is_default: boolean }[];
 };
 
 const defaultCategoryResponse: CategoryResponse = {
-  categories: DEFAULT_CATEGORIES.map((name, index) => ({
-    id: index + 1,
-    name,
-    is_default: true,
-  })),
+  categories: [],
 };
 
 // GET /api/categories - Get all categories (In-Memory cached)
@@ -39,7 +32,7 @@ export async function GET() {
     const { data, error } = await (supabase as any)
       .from('categories')
       .select('*')
-      .order('is_default', { ascending: false })
+      .order('display_order', { ascending: true, nullsFirst: false })
       .order('name');
 
     if (error) {
@@ -189,6 +182,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get max display_order
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: maxOrderData } = await (supabase as any)
+      .from('categories')
+      .select('display_order')
+      .order('display_order', { ascending: false })
+      .limit(1)
+      .single();
+
+    const nextOrder = maxOrderData?.display_order ? maxOrderData.display_order + 1 : 1;
+
     // Insert new category
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
@@ -196,6 +200,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: trimmedName,
         is_default: false,
+        display_order: nextOrder,
       })
       .select()
       .single();
@@ -211,6 +216,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ category: data });
   } catch (error) {
     console.error('Error in POST /api/categories:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/categories - Reorder categories (requires auth)
+export async function PUT(request: NextRequest) {
+  try {
+    if (!verifySameOrigin(request) && !verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const supabase = createServiceClient();
+    const body = await request.json();
+    const { categories } = body;
+
+    if (!Array.isArray(categories)) {
+      return NextResponse.json(
+        { error: 'Categories must be an array' },
+        { status: 400 }
+      );
+    }
+
+    // Update display_order for each category
+    const updates = categories.map((cat: { id: number; name: string }, index: number) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (supabase as any)
+        .from('categories')
+        .update({ display_order: index + 1 })
+        .eq('id', cat.id);
+    });
+
+    await Promise.all(updates);
+
+    console.log(`[CATEGORIES] Reordered ${categories.length} categories`);
+
+    // 캐시 무효화
+    invalidateCache(CACHE_KEYS.CATEGORIES);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error in PUT /api/categories:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

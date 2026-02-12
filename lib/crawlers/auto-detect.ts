@@ -119,8 +119,9 @@ export async function analyzePageStructure(url: string): Promise<AnalysisResult>
 
 /**
  * HTML fetch (15초 타임아웃)
+ * @public strategy-resolver에서 재사용
  */
-async function fetchPage(url: string): Promise<string | null> {
+export async function fetchPage(url: string): Promise<string | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -146,45 +147,95 @@ async function fetchPage(url: string): Promise<string | null> {
 
 /**
  * SPA 감지: React/Vue/Next.js + JSP/ASP 등 레거시 동적 페이지 지원
+ * - 스코어링 기반 (0~1), 임계값 0.5 이상이면 SPA 판정
  */
 function detectSPA($: cheerio.CheerioAPI): boolean {
+  const score = calculateSPAScore($);
+  return score >= 0.5;
+}
+
+/**
+ * SPA 스코어 계산 (0~1)
+ * @public strategy-resolver에서 재사용
+ */
+export function calculateSPAScore($: cheerio.CheerioAPI): number {
+  let score = 0;
+
   const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
   const hasNoscript = $('noscript').length > 0;
   const hasRootDiv = $('#root').length > 0 || $('#app').length > 0 || $('#__next').length > 0;
 
-  // 1. React/Vue/Next.js SPA 감지 (기존 로직)
+  // 1. 강력한 SPA 증거: body 텍스트 < 200자 + root div → +0.9
   if (bodyText.length < 200 && hasRootDiv) {
-    return true;
-  }
-  if (hasNoscript && hasRootDiv && bodyText.length < 500) {
-    return true;
+    score += 0.9;
   }
 
-  // 2. JSP/ASP 등 레거시 동적 페이지 감지 (보수적 기준)
+  // 2. noscript + root div + body < 500자 → +0.7
+  if (hasNoscript && hasRootDiv && bodyText.length < 500) {
+    score += 0.7;
+  }
+
+  // 3. javascript: 링크 비율 (임계값 낮춤: 50% → 30%)
   const allLinkCount = $('a[href]').length;
   const jsLinkCount = $('a[href^="javascript:"]').length;
 
-  // 2-1. javascript: 링크가 지배적인 경우 (50% 이상, 최소 5개)
-  if (allLinkCount > 0 && jsLinkCount >= 5 && jsLinkCount / allLinkCount >= 0.5) {
-    return true;
+  if (allLinkCount > 0 && jsLinkCount >= 5) {
+    const jsLinkRatio = jsLinkCount / allLinkCount;
+    if (jsLinkRatio >= 0.3) {
+      // 30% 이상
+      score += 0.4;
+    } else if (jsLinkRatio >= 0.15) {
+      // 15% 이상
+      score += 0.25;
+    }
   }
 
-  // 2-2. script 비율이 매우 높고 javascript: 링크가 있는 경우
-  // (JS 렌더링 의존 페이지: script가 본문 텍스트의 5배 이상)
+  // 4. onclick 핸들러 기반 네비게이션 (go_, fn_, moveToPage 등)
+  const onclickHandlers = $('[onclick]').filter((_, el) => {
+    const onclick = $(el).attr('onclick') || '';
+    return /go[A-Z_]|fn[A-Z_]|moveToPage|goToPage|pageMove/i.test(onclick);
+  });
+
+  if (onclickHandlers.length >= 5) {
+    score += 0.3;
+  } else if (onclickHandlers.length >= 3) {
+    score += 0.15;
+  }
+
+  // 5. script 크기 비율 (임계값 낮춤: 5배 → 3배)
   const scriptLength = $('script').text().replace(/\s+/g, '').length;
   const bodyTextLength = bodyText.replace(/\s+/g, '').length;
 
-  if (bodyTextLength > 0 && scriptLength > bodyTextLength * 5 && jsLinkCount >= 3) {
-    return true;
+  if (bodyTextLength > 0 && scriptLength > bodyTextLength * 3 && jsLinkCount >= 3) {
+    score += 0.2;
   }
 
-  return false;
+  // 6. React/Vue/Angular 프레임워크 번들 감지
+  const scriptSrc = $('script[src]')
+    .map((_, el) => $(el).attr('src') || '')
+    .get()
+    .join(' ');
+
+  if (
+    /react|vue|angular|next|nuxt|webpack|chunk|bundle|app\.[a-f0-9]{8}\.js/i.test(scriptSrc)
+  ) {
+    score += 0.3;
+  }
+
+  // 7. .go.kr/.or.kr 정부/공공 포털 가중치
+  const hostname = $('link[rel="canonical"]').attr('href') || $('base').attr('href') || '';
+  if (/\.go\.kr|\.or\.kr/i.test(hostname) && jsLinkCount > 0) {
+    score += 0.2;
+  }
+
+  return Math.min(score, 1.0);
 }
 
 /**
  * Rule-based 셀렉터 탐지 (cheerio 기반 패턴 매칭)
+ * @public strategy-resolver에서 재사용
  */
-function detectByRules($: cheerio.CheerioAPI, url: string): SelectorCandidate | null {
+export function detectByRules($: cheerio.CheerioAPI, url: string): SelectorCandidate | null {
   const candidates: SelectorCandidate[] = [];
 
   // 1. 테이블 구조 탐지
@@ -525,8 +576,9 @@ type AIDetectionResult = {
 
 /**
  * AI 기반 셀렉터 탐지 (GPT-5-nano → GPT-4o-mini fallback)
+ * @public strategy-resolver에서 재사용
  */
-async function detectByAI(html: string, url: string): Promise<AIDetectionResult | null> {
+export async function detectByAI(html: string, url: string): Promise<AIDetectionResult | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.warn('[AUTO-DETECT] OPENAI_API_KEY not configured, skipping AI detection');

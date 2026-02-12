@@ -76,6 +76,26 @@ export interface CrawlConfig {
   pagination?: PaginationConfig;
   crawl_config?: CrawlOptions;
   category?: string;
+  _detection?: DetectionMetadata; // 전략 해석 메타데이터
+}
+
+// 전략 해석 메타데이터 (config._detection에 저장)
+export interface DetectionMetadata {
+  method: 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'default';
+  confidence: number;
+  fallbackStrategies: CrawlerType[];
+}
+
+// 전략 해석 결과 (resolveStrategy 반환값)
+export interface StrategyResolution {
+  primaryStrategy: CrawlerType;
+  fallbackStrategies: CrawlerType[];
+  rssUrl: string | null;
+  selectors: SelectorConfig | null;
+  pagination: PaginationConfig | null;
+  confidence: number;
+  detectionMethod: 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'default';
+  spaDetected: boolean;
 }
 
 // 본문 크롤링 결과 (콘텐츠 + 옵션 썸네일)

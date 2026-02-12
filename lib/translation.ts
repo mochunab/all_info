@@ -42,7 +42,7 @@ export function setTranslationCache(cache: TranslationCache): void {
 export function getCachedTranslation(
   articleId: string,
   lang: Language
-): { title: string; ai_summary: string | null; content_preview: string | null } | null {
+): { title: string; ai_summary: string | null; summary: string | null; content_preview: string | null } | null {
   const cache = getTranslationCache();
   const translation = cache[articleId]?.[lang];
   if (!translation) return null;
@@ -55,6 +55,7 @@ export function getCachedTranslation(
   return {
     title: translation.title,
     ai_summary: translation.ai_summary,
+    summary: translation.summary,
     content_preview: translation.content_preview,
   };
 }
@@ -64,6 +65,7 @@ export function setCachedTranslation(
   lang: Language,
   title: string,
   ai_summary: string | null,
+  summary: string | null,
   content_preview: string | null
 ): void {
   const cache = getTranslationCache();
@@ -73,6 +75,7 @@ export function setCachedTranslation(
   cache[articleId][lang] = {
     title,
     ai_summary,
+    summary,
     content_preview,
     cached_at: Date.now(),
   };

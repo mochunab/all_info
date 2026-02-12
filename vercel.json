@@ -15,6 +15,9 @@
     },
     "app/api/summarize/batch/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/sources/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [

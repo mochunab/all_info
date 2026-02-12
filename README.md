@@ -10,6 +10,7 @@ Insight Hub는 다양한 비즈니스 콘텐츠 소스(블로그, 뉴스레터, 
 
 - **다중 소스 크롤링**: 정적 페이지, SPA, RSS, 네이버 블로그, 브런치, 뉴스레터, API 등 7가지 크롤링 전략
 - **AI 요약**: OpenAI (GPT-4o-mini / GPT-5-nano) 기반 1줄 요약 + 태그 3개 자동 생성
+- **다국어 지원**: 한국어, English, 日本語, 中文 4개 언어 UI
 - **실시간 검색/필터**: 키워드 검색, 카테고리 필터링, 소스별 필터링
 - **자동 크롤링**: Vercel Cron으로 매일 아침 9시 자동 수집
 - **반응형 UI**: Desktop, Tablet, Mobile 지원
@@ -113,6 +114,7 @@ npm run crawl -- --list
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Backend | Supabase (PostgreSQL), Supabase Edge Functions |
 | AI | OpenAI API (GPT-4o-mini, GPT-5-nano) |
+| i18n | 커스텀 번역 시스템 (ko, en, ja, zh) |
 | Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability |
 | Deployment | Vercel (Cron Jobs) |
 

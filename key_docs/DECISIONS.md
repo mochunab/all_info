@@ -263,6 +263,43 @@ mblogthumb-phinf.pstatic.net
 
 ---
 
+## ADR-012: 다국어 지원 (i18n) - 커스텀 번역 시스템
+
+**일시**: 2026-02-12
+**상태**: 확정
+
+**결정**: 커스텀 번역 시스템을 구현하여 4개 언어(한국어, English, 日本語, 中文)를 지원한다.
+
+**이유**:
+- 글로벌 사용자 접근성 향상
+- 번역 라이브러리 오버헤드 없이 경량 구현 (i18next 등 불필요)
+- 번역 키/값이 코드에 직접 포함되어 빌드 시 최적화 가능
+- localStorage로 사용자 언어 설정 유지 (회원가입 불필요)
+
+**구현**:
+- 파일: `lib/i18n.ts` - translations 객체에 ko, en, ja, zh 모든 키 정의
+- 타입: `Language = 'ko' | 'en' | 'ja' | 'zh'` (`types/index.ts`)
+- 컴포넌트: `LanguageSwitcher.tsx` - 드롭다운 UI
+- localStorage 키: `ih:language`
+- 변수 치환: `{name}`, `{count}` 형식 지원
+
+**적용 범위**:
+- Header, FilterBar, ArticleGrid, Toast
+- Sources 관리 페이지 전체
+- 총 ~50개 번역 키
+
+**대안 검토**:
+- react-i18next: 번들 크기 증가 (~100KB), 오버엔지니어링
+- next-intl: App Router 통합 좋으나 번역량이 적어 불필요
+- 하드코딩: 유지보수 불가능
+
+**트레이드오프**:
+- 번역 파일이 JSON이 아닌 TypeScript 객체로 코드에 포함되어 빌드 크기 소폭 증가
+- 동적 번역 추가/수정 불가 (코드 수정 필요)
+- 기계 번역 API 연동 없음 (콘텐츠 번역은 별도 구현 필요 시)
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
