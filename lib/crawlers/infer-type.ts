@@ -70,6 +70,7 @@ export type InferenceResult = {
  */
 export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
   const urlLower = url.toLowerCase();
+  console.log(`\n[inferCrawlerTypeEnhanced] 🔍 URL 패턴 분석: ${url}`);
 
   // 1. RSS 피드 (confidence: 0.95)
   if (
@@ -146,6 +147,7 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
     urlLower.includes('.or.kr') ||
     urlLower.includes('k-startup.go.kr')
   ) {
+    console.log(`[inferCrawlerTypeEnhanced] ✅ .go.kr/.or.kr 감지 → SPA (confidence: 0.95)`);
     return { type: 'SPA', confidence: 0.95 };
   }
 
@@ -160,5 +162,6 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
 
   // 6. 기본값: SPA (안전한 선택 - 모든 페이지 크롤링 가능)
   // confidence 0.5: "확신은 없지만 작동은 함"
+  console.log(`[inferCrawlerTypeEnhanced] ⚠️  기본값 사용 → SPA (confidence: 0.5)`);
   return { type: 'SPA', confidence: 0.5 };
 }
