@@ -16,6 +16,24 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
   console.log(`[Strategy Resolver] 🔍 분석 시작: ${url}`);
   console.log(`${'='.repeat(60)}`);
 
+  // ⚡ PRIORITY OVERRIDE: .go.kr 도메인은 무조건 SPA (우회 없음)
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('.go.kr') || urlLower.includes('.or.kr')) {
+    console.log(`[DOMAIN OVERRIDE] ✅ .go.kr/.or.kr 감지 - 강제 SPA 적용`);
+    console.log(`[Strategy Resolver] ✨ 전략 결정: SPA (confidence: 0.99)`);
+    console.log(`${'='.repeat(60)}\n`);
+    return {
+      primaryStrategy: 'SPA',
+      fallbackStrategies: ['STATIC'],
+      rssUrl: null,
+      selectors: null,
+      pagination: null,
+      confidence: 0.99,
+      detectionMethod: 'domain-override',
+      spaDetected: true,
+    };
+  }
+
   try {
     // 1. HTML 페이지 가져오기 (15초 타임아웃)
     console.log(`[Step 1/7] 📥 HTML 페이지 가져오는 중...`);
