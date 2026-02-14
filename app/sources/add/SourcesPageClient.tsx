@@ -29,6 +29,7 @@ type SourceLink = {
   id: string;
   url: string;
   name: string;
+  crawlerType: string;
   isExisting: boolean;
 };
 
@@ -50,6 +51,31 @@ type SortableCategoryProps = {
 const STORAGE_KEY = {
   LANGUAGE: 'ih:language',
 } as const;
+
+const getCrawlerTypeLabel = (type: string, language: Language): string => {
+  const labels: Record<string, Record<Language, string>> = {
+    AUTO: { ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测' },
+    STATIC: { ko: '정적페이지', en: 'Static', ja: '静的', zh: '静态' },
+    SPA: { ko: 'SPA (동적)', en: 'SPA (Dynamic)', ja: 'SPA (動的)', zh: 'SPA (动态)' },
+    RSS: { ko: 'RSS 피드', en: 'RSS Feed', ja: 'RSSフィード', zh: 'RSS订阅' },
+    PLATFORM_NAVER: { ko: '네이버 블로그', en: 'Naver Blog', ja: 'Naverブログ', zh: 'Naver博客' },
+    PLATFORM_KAKAO: { ko: '카카오 브런치', en: 'Kakao Brunch', ja: 'Kakaoブランチ', zh: 'Kakao Brunch' },
+    NEWSLETTER: { ko: '뉴스레터', en: 'Newsletter', ja: 'ニュースレター', zh: '新闻订阅' },
+    API: { ko: 'API', en: 'API', ja: 'API', zh: 'API' },
+  };
+  return labels[type]?.[language] || type;
+};
+
+const CRAWLER_TYPES = [
+  'AUTO',
+  'STATIC',
+  'SPA',
+  'RSS',
+  'PLATFORM_NAVER',
+  'PLATFORM_KAKAO',
+  'NEWSLETTER',
+  'API',
+] as const;
 
 // SortableCategory component for drag & drop
 function SortableCategory({ category, isActive, count, onSelect, onDelete, language }: SortableCategoryProps) {
@@ -277,7 +303,7 @@ export default function SourcesPageClient({
     }
   };
 
-  const handleSourceChange = (id: string, field: 'url' | 'name', value: string) => {
+  const handleSourceChange = (id: string, field: 'url' | 'name' | 'crawlerType', value: string) => {
     setSourcesByCategory({
       ...sourcesByCategory,
       [activeCategory]: currentSources.map((s) => {
@@ -297,7 +323,7 @@ export default function SourcesPageClient({
       ...sourcesByCategory,
       [activeCategory]: [
         ...currentSources,
-        { id: `new-${Date.now()}`, url: '', name: '', isExisting: false },
+        { id: `new-${Date.now()}`, url: '', name: '', crawlerType: 'AUTO', isExisting: false },
       ],
     });
   };
@@ -315,7 +341,7 @@ export default function SourcesPageClient({
 
   const handleSave = async () => {
     // Collect all valid sources from all categories
-    const allSources: { url: string; name: string; category: string }[] = [];
+    const allSources: { url: string; name: string; category: string; crawlerType: string }[] = [];
     for (const [cat, sources] of Object.entries(sourcesByCategory)) {
       for (const s of sources) {
         if (s.url.trim()) {
@@ -323,6 +349,7 @@ export default function SourcesPageClient({
             url: s.url.trim(),
             name: s.name.trim() || extractDomainName(s.url),
             category: cat,
+            crawlerType: s.crawlerType,
           });
         }
       }
@@ -559,13 +586,26 @@ export default function SourcesPageClient({
                     </button>
                   </div>
                   {source.url && (
-                    <input
-                      type="text"
-                      value={source.name}
-                      onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
-                      placeholder={t(language, 'sources.namePlaceholder')}
-                      className="mt-2 w-full px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
-                    />
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        value={source.name}
+                        onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
+                        placeholder={t(language, 'sources.namePlaceholder')}
+                        className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                      />
+                      <select
+                        value={source.crawlerType}
+                        onChange={(e) => handleSourceChange(source.id, 'crawlerType', e.target.value)}
+                        className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                      >
+                        {CRAWLER_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {getCrawlerTypeLabel(type, language)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                 </div>
               ))}
