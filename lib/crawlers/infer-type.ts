@@ -141,13 +141,14 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
   }
 
   // 5. 알려진 SPA 도메인 (confidence: 0.95 - 매우 높음)
-  // 정부 포털 (.go.kr) - 복잡한 구조로 rule-based 분석보다 우선
+  // 정부/공공기관 포털 - 복잡한 구조로 rule-based 분석보다 우선
   if (
     urlLower.includes('.go.kr') ||
     urlLower.includes('.or.kr') ||
+    urlLower.includes('nipa.kr') ||
     urlLower.includes('k-startup.go.kr')
   ) {
-    console.log(`[inferCrawlerTypeEnhanced] ✅ .go.kr/.or.kr 감지 → SPA (confidence: 0.95)`);
+    console.log(`[inferCrawlerTypeEnhanced] ✅ 정부/공공기관 도메인 감지 → SPA (confidence: 0.95)`);
     return { type: 'SPA', confidence: 0.95 };
   }
 
