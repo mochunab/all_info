@@ -5,6 +5,7 @@ type SourceLink = {
   id: string;
   url: string;
   name: string;
+  crawlerType: string;
   isExisting: boolean;
 };
 
@@ -13,6 +14,9 @@ type Category = {
   name: string;
   is_default: boolean;
 };
+
+// 페이지를 항상 동적으로 렌더링 (캐시 방지)
+export const dynamic = 'force-dynamic';
 
 export default async function AddSourcePage() {
   const supabase = createServiceClient();
@@ -57,6 +61,7 @@ export default async function AddSourcePage() {
         id: s.id.toString(),
         url: s.base_url,
         name: s.name,
+        crawlerType: s.crawler_type || 'AUTO',
         isExisting: true,
       });
     }

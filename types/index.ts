@@ -22,6 +22,7 @@ export interface Article {
 
 // 크롤러 타입 (Universal Crawler 전략)
 export type CrawlerType =
+  | 'AUTO'             // 자동 감지 (UI 전용 - 백엔드에서 자동 결정)
   | 'STATIC'           // cheerio 기반 정적 HTML 파싱
   | 'SPA'              // puppeteer 기반 동적 렌더링
   | 'RSS'              // RSS/Atom 피드 파싱

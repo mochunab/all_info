@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createServiceClient } from '@/lib/supabase/server';
 import { resolveStrategy } from '@/lib/crawlers/strategy-resolver';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     for (const source of sources) {
-      const { url, name, category } = source;
+      const { url, name, category, crawlerType: userCrawlerType } = source;
 
       if (!url) continue;
 
@@ -177,8 +178,10 @@ export async function POST(request: NextRequest) {
           }),
         };
 
-        // 해석 결과 crawler_type 업데이트
-        const crawlerTypeUpdate = resolution
+        // 사용자가 선택한 crawlerType 우선 (단, 'AUTO'면 무시하고 자동 해석 사용)
+        const crawlerTypeUpdate = userCrawlerType && userCrawlerType !== 'AUTO'
+          ? { crawler_type: userCrawlerType }
+          : resolution
           ? { crawler_type: resolution.primaryStrategy }
           : {};
 
@@ -215,11 +218,15 @@ export async function POST(request: NextRequest) {
         console.log(`🔍 [SOURCES DEBUG] resolution?.primaryStrategy: ${resolution?.primaryStrategy}`);
         console.log(`🔍 [SOURCES DEBUG] resolution?.detectionMethod: ${resolution?.detectionMethod}`);
         console.log(`🔍 [SOURCES DEBUG] resolution?.confidence: ${resolution?.confidence}`);
+        console.log(`🔍 [SOURCES DEBUG] userCrawlerType: ${userCrawlerType}`);
 
-        const crawlerType = resolution?.primaryStrategy || 'SPA'; // 기본값을 SPA로 변경!
+        // 사용자가 선택한 crawlerType 우선 (단, 'AUTO'면 무시), 없으면 해석 결과, 그것도 없으면 SPA
+        const crawlerType = (userCrawlerType && userCrawlerType !== 'AUTO' ? userCrawlerType : null)
+          || resolution?.primaryStrategy
+          || 'SPA';
 
         console.log(
-          `[SOURCES] New source: ${url} -> crawler_type: ${crawlerType} (method: ${resolution?.detectionMethod || 'none'}, confidence: ${resolution?.confidence || 0})`
+          `[SOURCES] New source: ${url} -> crawler_type: ${crawlerType} (user: ${userCrawlerType || 'none'}, method: ${resolution?.detectionMethod || 'none'}, confidence: ${resolution?.confidence || 0})`
         );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -270,6 +277,9 @@ export async function POST(request: NextRequest) {
 
     // 변경 후 캐시 무효화
     invalidateCache(CACHE_KEYS.SOURCES);
+
+    // Next.js 캐시 무효화 (Server Component 페이지 재렌더링)
+    revalidatePath('/sources/add');
 
     // 요약 로그
     console.log(`\n${'='.repeat(60)}`);
