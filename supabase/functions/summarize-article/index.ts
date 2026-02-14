@@ -15,18 +15,14 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 ### **목표**
 
-사용자는 수많은 콘텐츠 중에서 읽을거리를 빠르게 골라야 한다.
-1줄 요약은 클릭을 유도하는 '잣대' 역할을, 상세 요약은 기사를 읽지 않아도 내용을 파악할 수 있는 역할을 해야 한다.
+사용자가 기사를 읽지 않아도 내용을 파악할 수 있도록 상세 요약을 제공한다.
 
 ### **지시사항**
 
-1. 아래 '본문글'을 읽고 3가지를 작성할 것:
-   - **summary**: 1줄 요약 (클릭 유도용, 80자 이내)
+1. 아래 '본문글'을 읽고 2가지를 작성할 것:
    - **summary_tag**: 핵심 키워드 태그 3개
    - **detailed_summary**: 상세 요약글 (헤드라인 + 2~3문장 설명)
-2. summary는 전문 용어를 배제하고, 일상적이고 친근한 말투로 풀어서 쓸 것.
-3. 추상적인 표현 대신 구체적인 상황이나 이득을 명시할 것.
-4. detailed_summary 작성 규칙:
+2. detailed_summary 작성 규칙:
    - 첫 줄: 핵심 헤드라인 (기사의 핵심을 한 문장으로)
    - 빈 줄 하나
    - 2~3문장으로 기사의 주요 내용, 배경, 의미를 설명
@@ -34,7 +30,6 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 ### **제약 조건**
 
-- **summary 길이:** 공백 포함 80자 이내 (엄수)
 - **형식:** 이모티콘 및 마크다운 금지 (순수 텍스트)
 - **톤:** 친근하고 쉬운 구어체
 
@@ -42,7 +37,6 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 \`\`\`json
 {
-  "summary": "본문 핵심을 후킹 원칙으로 압축한 1줄 요약 (80자 이내)",
   "summary_tag": [
     "주제 태그1 (7자 내외)",
     "주제 태그2 (7자 내외)",
@@ -64,7 +58,6 @@ interface SummaryRequest {
 
 interface SummaryResponse {
   success: boolean;
-  summary?: string;
   summary_tags?: string[];
   detailed_summary?: string;
   error?: string;
@@ -205,7 +198,6 @@ async function generateSummary(title: string, content: string): Promise<SummaryR
       const parsed = JSON.parse(result.output_text);
       return {
         success: true,
-        summary: parsed.summary || '',
         summary_tags: parsed.summary_tag || [],
         detailed_summary: parsed.detailed_summary || '',
       };
