@@ -8,7 +8,6 @@ export interface Article {
   thumbnail_url: string | null;
   content_preview: string | null;
   summary: string | null;
-  ai_summary: string | null; // 1줄 요약 (80자 이내)
   summary_tags: string[]; // 요약 태그 3개
   author: string | null;
   published_at: string | null;
@@ -131,7 +130,6 @@ export interface TranslationCache {
   [articleId: string]: {
     [lang: string]: {
       title: string;
-      ai_summary: string | null;
       summary: string | null;
       content_preview: string | null;
       cached_at: number; // timestamp

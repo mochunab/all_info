@@ -17,7 +17,6 @@ type ArticleRow = {
   title: string;
   content_preview: string | null;
   summary?: string | null;
-  ai_summary?: string | null;
   summary_tags?: string[];
 };
 
@@ -57,7 +56,6 @@ async function generateAISummaryViaEdgeFunction(
 ): Promise<AISummaryResult> {
   if (!EDGE_FUNCTION_URL) {
     return {
-      summary: '',
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -79,7 +77,6 @@ async function generateAISummaryViaEdgeFunction(
       const errorText = await response.text();
       console.error('[Edge Function] Error:', response.status, errorText);
       return {
-        summary: '',
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -91,14 +88,12 @@ async function generateAISummaryViaEdgeFunction(
 
     if (result.success) {
       return {
-        summary: result.summary || '',
         summary_tags: result.summary_tags || [],
         detailed_summary: result.detailed_summary || '',
         success: true,
       };
     } else {
       return {
-        summary: '',
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -108,7 +103,6 @@ async function generateAISummaryViaEdgeFunction(
   } catch (error) {
     console.error('[Edge Function] Request failed:', error);
     return {
-      summary: '',
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -131,12 +125,12 @@ export async function processPendingSummaries(
   };
 
   try {
-    // 요약 없는 게시글 조회 (ai_summary가 없는 것들)
+    // 요약 없는 게시글 조회 (summary가 없는 것들)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: articlesData, error } = await (supabase as any)
       .from('articles')
-      .select('id, title, content_preview, summary, ai_summary, summary_tags')
-      .is('ai_summary', null)
+      .select('id, title, content_preview, summary, summary_tags')
+      .is('summary', null)
       .eq('is_active', true)
       .order('crawled_at', { ascending: false })
       .limit(batchSize);
@@ -200,7 +194,6 @@ export async function processPendingSummaries(
           const { error: updateError } = await (supabase as any)
             .from('articles')
             .update({
-              ai_summary: aiResult.summary || null,
               summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
               summary: aiResult.detailed_summary || null,
               updated_at: new Date().toISOString(),
@@ -254,7 +247,7 @@ export async function processArticleSummary(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: articleData, error: fetchError } = await (supabase as any)
       .from('articles')
-      .select('id, title, content_preview, summary, ai_summary, summary_tags')
+      .select('id, title, content_preview, summary, summary_tags')
       .eq('id', articleId)
       .single();
 
@@ -264,9 +257,9 @@ export async function processArticleSummary(
 
     const article = articleData as ArticleRow;
 
-    // Skip if already has ai_summary
-    if (article.ai_summary) {
-      return { success: true, summary: article.ai_summary };
+    // Skip if already has summary
+    if (article.summary) {
+      return { success: true, summary: article.summary };
     }
 
     // Skip if no content
@@ -308,7 +301,6 @@ export async function processArticleSummary(
     const { error: updateError } = await (supabase as any)
       .from('articles')
       .update({
-        ai_summary: aiResult.summary,
         summary_tags: aiResult.summary_tags,
         summary: aiResult.detailed_summary || null,
         updated_at: new Date().toISOString(),
@@ -319,7 +311,7 @@ export async function processArticleSummary(
       return { success: false, error: updateError.message };
     }
 
-    return { success: true, summary: aiResult.summary };
+    return { success: true, summary: aiResult.detailed_summary };
   } catch (error) {
     return {
       success: false,

@@ -12,7 +12,6 @@ export interface Database {
           thumbnail_url: string | null;
           content_preview: string | null;
           summary: string | null;
-          ai_summary: string | null;
           summary_tags: string[];
           author: string | null;
           published_at: string | null;
@@ -32,7 +31,6 @@ export interface Database {
           thumbnail_url?: string | null;
           content_preview?: string | null;
           summary?: string | null;
-          ai_summary?: string | null;
           summary_tags?: string[];
           author?: string | null;
           published_at?: string | null;
@@ -52,7 +50,6 @@ export interface Database {
           thumbnail_url?: string | null;
           content_preview?: string | null;
           summary?: string | null;
-          ai_summary?: string | null;
           summary_tags?: string[];
           author?: string | null;
           published_at?: string | null;
