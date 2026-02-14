@@ -575,6 +575,68 @@ type AIDetectionResult = {
 };
 
 /**
+ * AI 기반 크롤러 타입 감지 (Edge Function 호출)
+ * - Rule-based 분석이 불확실할 때 사용
+ * - GPT-5-nano가 HTML 구조를 분석하여 STATIC/SPA/RSS 등 결정
+ * @public strategy-resolver에서 재사용
+ */
+export async function detectCrawlerTypeByAI(
+  html: string,
+  url: string
+): Promise<{ type: CrawlerType; confidence: number; reasoning: string } | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('[AI-TYPE-DETECT] Supabase credentials not configured');
+    return null;
+  }
+
+  try {
+    // HTML 정리: 처음 5000자만 전송
+    const truncatedHtml = html.length > 5000 ? html.substring(0, 5000) + '\n... (truncated)' : html;
+
+    console.log(`[AI-TYPE-DETECT] 🤖 Edge Function 호출 중...`);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/detect-crawler-type`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, html: truncatedHtml }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[AI-TYPE-DETECT] Edge Function error: ${response.status}`, errorText);
+      return null;
+    }
+
+    const result = await response.json();
+
+    if (result.success && result.crawlerType) {
+      console.log(
+        `[AI-TYPE-DETECT] ✅ Success: ${result.crawlerType} (confidence: ${result.confidence})`
+      );
+      console.log(`[AI-TYPE-DETECT] 💡 Reasoning: ${result.reasoning}`);
+
+      return {
+        type: result.crawlerType as CrawlerType,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+      };
+    } else {
+      console.warn(`[AI-TYPE-DETECT] ❌ Failed: ${result.error}`);
+      return null;
+    }
+  } catch (error) {
+    console.error('[AI-TYPE-DETECT] Error:', error);
+    return null;
+  }
+}
+
+/**
  * AI 기반 셀렉터 탐지 (GPT-5-nano → GPT-4o-mini fallback)
  * @public strategy-resolver에서 재사용
  */

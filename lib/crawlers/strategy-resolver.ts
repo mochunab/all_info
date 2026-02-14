@@ -4,7 +4,7 @@
 import * as cheerio from 'cheerio';
 import type { CrawlerType, StrategyResolution } from './types';
 import { inferCrawlerTypeEnhanced } from './infer-type';
-import { fetchPage, calculateSPAScore, detectByRules, detectByAI } from './auto-detect';
+import { fetchPage, calculateSPAScore, detectByRules, detectByAI, detectCrawlerTypeByAI } from './auto-detect';
 
 /**
  * URL을 분석하여 최적의 크롤링 전략 결정
@@ -15,24 +15,6 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[Strategy Resolver] 🔍 분석 시작: ${url}`);
   console.log(`${'='.repeat(60)}`);
-
-  // ⚡ PRIORITY OVERRIDE: .go.kr 도메인은 무조건 SPA (우회 없음)
-  const urlLower = url.toLowerCase();
-  if (urlLower.includes('.go.kr') || urlLower.includes('.or.kr')) {
-    console.log(`[DOMAIN OVERRIDE] ✅ .go.kr/.or.kr 감지 - 강제 SPA 적용`);
-    console.log(`[Strategy Resolver] ✨ 전략 결정: SPA (confidence: 0.99)`);
-    console.log(`${'='.repeat(60)}\n`);
-    return {
-      primaryStrategy: 'SPA',
-      fallbackStrategies: ['STATIC'],
-      rssUrl: null,
-      selectors: null,
-      pagination: null,
-      confidence: 0.99,
-      detectionMethod: 'domain-override',
-      spaDetected: true,
-    };
-  }
 
   try {
     // 1. HTML 페이지 가져오기 (15초 타임아웃)
@@ -193,15 +175,16 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       console.log(`[Step 5/7] ⏭️  정적 페이지 - 다음 단계로 진행`);
     }
 
-    // 6. 셀렉터 분석 (rule-based → AI fallback)
-    console.log(`[Step 6/7] 🎯 CSS 셀렉터 규칙 기반 분석 중...`);
+    // 6. 셀렉터 분석 (rule-based)
+    console.log(`[Step 6/8] 🎯 CSS 셀렉터 규칙 기반 분석 중...`);
     const ruleResult = detectByRules($, url);
 
-    if (ruleResult && ruleResult.score >= 0.5) {
+    // 높은 confidence (0.7 이상)면 rule-based 결과 신뢰
+    if (ruleResult && ruleResult.score >= 0.7) {
       console.log(
-        `[Step 6/7] ✅ 규칙 기반 셀렉터 탐지 성공 (confidence: ${ruleResult.score.toFixed(2)}, ${ruleResult.count}개 아이템)`
+        `[Step 6/8] ✅ 규칙 기반 셀렉터 탐지 성공 (confidence: ${ruleResult.score.toFixed(2)}, ${ruleResult.count}개 아이템)`
       );
-      console.log(`[Step 6/7] 📝 탐지된 셀렉터:`);
+      console.log(`[Step 6/8] 📝 탐지된 셀렉터:`);
       console.log(`  - container: ${ruleResult.container}`);
       console.log(`  - item: ${ruleResult.item}`);
       console.log(`  - title: ${ruleResult.title}`);
@@ -233,25 +216,62 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       };
     } else {
       console.log(
-        `[Step 6/7] ❌ 규칙 기반 분석 실패 (confidence: ${ruleResult?.score.toFixed(2) || 0})`
+        `[Step 6/8] ⚠️  규칙 기반 분석 불확실 (confidence: ${ruleResult?.score.toFixed(2) || 0} < 0.7) - AI 분석으로 진행`
       );
     }
 
-    // 7. AI 폴백 (rule-based confidence < 0.5)
-    console.log(`[Step 7/7] 🤖 AI 기반 셀렉터 분석 시도...`);
+    // 7. AI 크롤러 타입 감지 (rule-based confidence < 0.7일 때)
+    console.log(`[Step 7/8] 🤖 AI 기반 크롤러 타입 감지 중...`);
+    const aiTypeResult = await detectCrawlerTypeByAI(html, url);
+
+    if (aiTypeResult && aiTypeResult.confidence >= 0.6) {
+      console.log(
+        `[Step 7/8] ✅ AI 타입 감지 성공: ${aiTypeResult.type} (confidence: ${aiTypeResult.confidence.toFixed(2)})`
+      );
+      console.log(`[Step 7/8] 💡 ${aiTypeResult.reasoning}`);
+      console.log(
+        `[Strategy Resolver] ✨ 전략 결정: ${aiTypeResult.type} (AI, confidence: ${aiTypeResult.confidence.toFixed(2)})`
+      );
+      console.log(`${'='.repeat(60)}\n`);
+
+      return {
+        primaryStrategy: aiTypeResult.type,
+        fallbackStrategies: getDefaultFallbacks(aiTypeResult.type),
+        rssUrl: null,
+        selectors: ruleResult && ruleResult.score >= 0.5 ? {
+          container: ruleResult.container,
+          item: ruleResult.item,
+          title: ruleResult.title,
+          link: ruleResult.link,
+          ...(ruleResult.date && { date: ruleResult.date }),
+          ...(ruleResult.thumbnail && { thumbnail: ruleResult.thumbnail }),
+        } : null,
+        pagination: null,
+        confidence: aiTypeResult.confidence,
+        detectionMethod: 'ai-type-detection',
+        spaDetected: aiTypeResult.type === 'SPA',
+      };
+    } else {
+      console.log(
+        `[Step 7/8] ❌ AI 타입 감지 실패 또는 낮은 confidence - 기본값 사용`
+      );
+    }
+
+    // 8. AI 셀렉터 탐지 폴백 (타입은 결정됐지만 셀렉터가 없을 때)
+    console.log(`[Step 8/8] 🔍 AI 기반 셀렉터 분석 시도 (최종 폴백)...`);
     const aiResult = await detectByAI(html, url);
 
     if (aiResult) {
       console.log(
-        `[Step 7/7] ✅ AI 셀렉터 탐지 성공 (confidence: ${aiResult.confidence.toFixed(2)})`
+        `[Step 8/8] ✅ AI 셀렉터 탐지 성공 (confidence: ${aiResult.confidence.toFixed(2)})`
       );
-      console.log(`[Step 7/7] 📝 AI 탐지 셀렉터:`);
+      console.log(`[Step 8/8] 📝 AI 탐지 셀렉터:`);
       console.log(`  - item: ${aiResult.selectors.item}`);
       console.log(`  - title: ${aiResult.selectors.title}`);
       console.log(`  - link: ${aiResult.selectors.link}`);
 
       console.log(
-        `[Strategy Resolver] ✨ 전략 결정: STATIC (AI, confidence: ${aiResult.confidence.toFixed(2)})`
+        `[Strategy Resolver] ✨ 전략 결정: STATIC (AI selector, confidence: ${aiResult.confidence.toFixed(2)})`
       );
       console.log(`${'='.repeat(60)}\n`);
 
@@ -262,11 +282,11 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
         selectors: aiResult.selectors,
         pagination: aiResult.pagination || null,
         confidence: aiResult.confidence,
-        detectionMethod: 'ai-analysis',
+        detectionMethod: 'ai-selector-detection',
         spaDetected: false,
       };
     } else {
-      console.log(`[Step 7/7] ❌ AI 분석 실패`);
+      console.log(`[Step 8/8] ❌ AI 셀렉터 분석 실패`);
     }
 
     // 8. 모두 실패 시: URL 패턴 결과 사용 (낮은 confidence라도)
