@@ -94,7 +94,7 @@ export interface StrategyResolution {
   selectors: SelectorConfig | null;
   pagination: PaginationConfig | null;
   confidence: number;
-  detectionMethod: 'domain-override' | 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'default';
+  detectionMethod: 'domain-override' | 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-type-detection' | 'ai-selector-detection' | 'default';
   spaDetected: boolean;
 }
 
