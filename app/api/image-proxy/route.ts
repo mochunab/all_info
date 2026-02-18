@@ -11,6 +11,7 @@ const ALLOWED_DOMAINS = [
   'img1.daumcdn.net',
   't1.daumcdn.net',
   'brunch-phinf.pstatic.net',
+  'www.wiseapp.co.kr',
 ];
 
 // Max image size: 10MB
