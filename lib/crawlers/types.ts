@@ -10,7 +10,8 @@ export type CrawlerType =
   | 'PLATFORM_NAVER'
   | 'PLATFORM_KAKAO'
   | 'NEWSLETTER'
-  | 'API';
+  | 'API'
+  | 'FIRECRAWL';
 
 // 원시 콘텐츠 아이템 (크롤링 결과)
 export interface RawContentItem {
@@ -71,6 +72,7 @@ export interface CrawlOptions {
 // 전체 크롤링 설정 (crawl_sources.config JSONB)
 export interface CrawlConfig {
   selectors?: SelectorConfig;
+  excludeSelectors?: string[]; // 제외할 영역 (nav, header, footer 등)
   content_selectors?: ContentSelectors;
   link_processing?: LinkProcessing;
   pagination?: PaginationConfig;
@@ -79,9 +81,32 @@ export interface CrawlConfig {
   _detection?: DetectionMetadata; // 전략 해석 메타데이터
 }
 
+// AI 자동 감지된 API 엔드포인트 설정
+export type DetectedApiConfig = {
+  endpoint: string;
+  method: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  body?: Record<string, unknown>;
+  responseMapping: {
+    items: string;   // JSON 경로 (예: "insightList", "data.posts")
+    title: string;   // 제목 필드명
+    link: string;    // 링크 필드명
+    thumbnail?: string;
+    date?: string;
+  };
+  urlTransform?: {
+    linkTemplate?: string;   // 예: "https://site.com/post/{urlKeyword}"
+    linkFields?: string[];   // linkTemplate에 사용할 필드명
+    thumbnailPrefix?: string; // 썸네일 상대 경로 prefix
+    baseUrl?: string;
+  };
+  confidence: number;
+  reasoning: string;
+};
+
 // 전략 해석 메타데이터 (config._detection에 저장)
 export interface DetectionMetadata {
-  method: 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'default';
+  method: 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'api-detection' | 'firecrawl' | 'default';
   confidence: number;
   fallbackStrategies: CrawlerType[];
 }
@@ -92,10 +117,13 @@ export interface StrategyResolution {
   fallbackStrategies: CrawlerType[];
   rssUrl: string | null;
   selectors: SelectorConfig | null;
+  excludeSelectors?: string[]; // 제외할 영역 (nav, header, footer 등)
   pagination: PaginationConfig | null;
   confidence: number;
-  detectionMethod: 'domain-override' | 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-type-detection' | 'ai-selector-detection' | 'default';
+  detectionMethod: 'domain-override' | 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-type-detection' | 'ai-selector-detection' | 'ai-content-detection' | 'spa-detection' | 'api-detection' | 'auto-recovery' | 'firecrawl' | 'default' | 'error';
   spaDetected: boolean;
+  optimizedUrl?: string; // URL 최적화 결과 (원본과 다를 경우에만)
+  apiConfig?: DetectedApiConfig; // API 타입일 때 감지된 엔드포인트 설정
 }
 
 // 본문 크롤링 결과 (콘텐츠 + 옵션 썸네일)
