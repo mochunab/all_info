@@ -159,13 +159,26 @@ export class SitemapStrategy implements CrawlStrategy {
         .get();
 
       if (indexUrls.length > 0) {
-        console.log(`[SITEMAP] Index: ${indexUrls.length} sub-sitemaps`);
-        const allEntries: SitemapEntry[] = [];
-        for (const subUrl of indexUrls.slice(0, 3)) {
-          const subEntries = await this.fetchSitemapEntries(subUrl, depth + 1);
-          allEntries.push(...subEntries);
+        // 기사 콘텐츠 가능성으로 sub-sitemap 필터링 (비기사 제외)
+        const scored = indexUrls.map(url => ({
+          url,
+          score: this.scoreSitemapUrl(url),
+        }));
+        const toProcess = scored
+          .filter(s => s.score >= 0) // 음수 스코어(커뮤니티/저자/태그)는 제외
+          .sort((a, b) => b.score - a.score) // 기사 확률 높은 순 정렬
+          .map(s => s.url);
+
+        const excluded = scored.filter(s => s.score < 0).map(s => s.url);
+        console.log(`[SITEMAP] Index: ${indexUrls.length} sub-sitemaps → ${toProcess.length} 처리, ${excluded.length} 제외`);
+        if (excluded.length > 0) {
+          console.log(`[SITEMAP] 제외된 sub-sitemaps: ${excluded.map(u => u.split('/').pop()).join(', ')}`);
         }
-        return allEntries;
+
+        const results = await Promise.all(
+          toProcess.map(subUrl => this.fetchSitemapEntries(subUrl, depth + 1))
+        );
+        return results.flat();
       }
 
       // 일반 sitemap URL 목록
@@ -212,6 +225,24 @@ export class SitemapStrategy implements CrawlStrategy {
     } catch {
       return `${base}/sitemap.xml`;
     }
+  }
+
+  // Sub-sitemap URL이 기사 콘텐츠를 담고 있을 가능성 스코어링
+  // 양수: 기사/뉴스 sitemap (처리 O), 음수: 커뮤니티/저자/태그 sitemap (처리 X)
+  // Sub-sitemap URL이 기사 콘텐츠를 담고 있을 가능성 스코어링
+  // 파일명만 기준으로 판단 (경로의 공통 단어에 영향받지 않도록)
+  // 양수: 기사/뉴스 sitemap (처리 O), 음수: 커뮤니티/저자/태그 sitemap (처리 X)
+  private scoreSitemapUrl(sitemapUrl: string): number {
+    // 파일명만 추출 (쿼리스트링 포함 경로 제외)
+    const filename = sitemapUrl.split('/').pop()?.split('?')[0]?.toLowerCase() ?? '';
+    // 기사 콘텐츠 신호 (+)
+    const positivePatterns = ['news', 'post', 'article', 'blog', 'content', 'story', 'magazine', 'feed', 'press', 'insight'];
+    // 비기사 콘텐츠 신호 (-): 커뮤니티, 저자 프로필, 분류 페이지
+    const negativePatterns = ['question', 'qa', 'community', 'forum', 'author', 'user', 'profile', 'tag', 'category', 'comment'];
+    let score = 0;
+    for (const p of positivePatterns) if (filename.includes(p)) score += 2;
+    for (const p of negativePatterns) if (filename.includes(p)) score -= 2;
+    return score;
   }
 
   // URL include/exclude 필터 적용
