@@ -9,7 +9,6 @@ export interface Database {
           source_name: string;
           source_url: string;
           title: string;
-          thumbnail_url: string | null;
           content_preview: string | null;
           summary: string | null;
           summary_tags: string[];
@@ -28,7 +27,6 @@ export interface Database {
           source_name: string;
           source_url: string;
           title: string;
-          thumbnail_url?: string | null;
           content_preview?: string | null;
           summary?: string | null;
           summary_tags?: string[];
@@ -47,7 +45,6 @@ export interface Database {
           source_name?: string;
           source_url?: string;
           title?: string;
-          thumbnail_url?: string | null;
           content_preview?: string | null;
           summary?: string | null;
           summary_tags?: string[];

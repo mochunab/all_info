@@ -4,7 +4,7 @@
 import * as cheerio from 'cheerio';
 import type { CrawlerType, StrategyResolution } from './types';
 import { inferCrawlerTypeEnhanced, detectContentSelectors } from './infer-type';
-import { fetchPage, calculateSPAScore, detectByRules, detectByAI, detectCrawlerTypeByAI } from './auto-detect';
+import { fetchPage, calculateSPAScore, detectByRules, detectCrawlerTypeByAI } from './auto-detect';
 import { optimizeUrl } from './url-optimizer';
 import { detectApiEndpoint } from './api-detector';
 
@@ -297,12 +297,13 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     console.log(`   🔧 모델: GPT-5-nano (타입) + GPT-4o-mini (셀렉터)`);
 
     const parallelStart = Date.now();
-    const [aiTypeResult, selectorResult] = await Promise.all([
+    const [aiTypeResult, initialSelectorResult] = await Promise.all([
       needsAIVerification
         ? detectCrawlerTypeByAI(html, url)
         : Promise.resolve(null),
       detectContentSelectors(url, html),
     ]);
+    let selectorResult = initialSelectorResult;
     console.log(`   ⏱️  병렬 AI 완료: ${Date.now() - parallelStart}ms`);
 
     // 7. AI 타입 결과 처리
@@ -370,6 +371,32 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       } catch (apiError) {
         console.warn(`   ❌ API 감지 오류:`, apiError instanceof Error ? apiError.message : apiError);
         console.log(`   ➡️  SPA 전략 유지, 다음 단계로 진행`);
+      }
+    }
+
+    // 8.5. SPA 페이지 셀렉터 재감지 (정적 HTML 신뢰도 낮을 때 Puppeteer 렌더링 HTML 사용)
+    // SPA 페이지는 JS로 목록을 로드하므로 정적 HTML에 아티클 목록이 없을 수 있음
+    const isSpaPage = spaDetected || preliminaryType === 'SPA';
+    if (isSpaPage && (!selectorResult || selectorResult.confidence < 0.5)) {
+      console.log(`\n🎭 [8.5단계/9단계] SPA 렌더링 HTML로 셀렉터 재감지 시도...`);
+      console.log(`   💡 이유: 정적 HTML에 JS 로드 기사 목록 없음 (신뢰도: ${((selectorResult?.confidence || 0) * 100).toFixed(0)}%)`);
+      try {
+        const { getRenderedHTML } = await import('./strategies/spa');
+        const renderedHtml = await getRenderedHTML(url);
+        if (renderedHtml) {
+          const renderedResult = await detectContentSelectors(url, renderedHtml);
+          console.log(`   📊 재감지 신뢰도: ${(renderedResult.confidence * 100).toFixed(0)}%`);
+          if (renderedResult.confidence > (selectorResult?.confidence || 0)) {
+            console.log(`   ✅ 재감지 성공 — Puppeteer 렌더링 HTML 셀렉터 채택`);
+            selectorResult = renderedResult;
+          } else {
+            console.log(`   ℹ️  기존 결과 유지 (재감지 신뢰도가 더 낮음)`);
+          }
+        } else {
+          console.log(`   ⚠️  렌더링 HTML 수신 실패`);
+        }
+      } catch (spaError) {
+        console.warn(`   ⚠️  SPA 렌더링 HTML 재감지 실패:`, spaError instanceof Error ? spaError.message : spaError);
       }
     }
 

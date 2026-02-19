@@ -13,12 +13,14 @@ import { kakaoStrategy } from './kakao';
 import { newsletterStrategy } from './newsletter';
 import { apiStrategy } from './api';
 import { firecrawlStrategy } from './firecrawl';
+import { sitemapStrategy } from './sitemap';
 
 // 전략 맵 (대문자 키 + 레거시 소문자 지원)
 const strategies: Record<string, CrawlStrategy> = {
   // 새로운 전략 (대문자)
   STATIC: staticStrategy,
   RSS: rssStrategy,
+  SITEMAP: sitemapStrategy,
   SPA: spaStrategy,
   PLATFORM_NAVER: naverStrategy,
   PLATFORM_KAKAO: kakaoStrategy,
@@ -70,6 +72,7 @@ export { closeBrowser };
 export {
   staticStrategy,
   rssStrategy,
+  sitemapStrategy,
   spaStrategy,
   naverStrategy,
   kakaoStrategy,

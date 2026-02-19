@@ -6,11 +6,13 @@
 
 ## Edge Functions 목록
 
-| # | 함수명 | 역할 | 모델 | 상태 |
-|---|--------|------|------|------|
-| 1 | `summarize-article` | AI 요약 생성 (1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 |
+| # | 함수명 | 역할 | 모델 | 상태 | 추가일 |
+|---|--------|------|------|------|--------|
+| 1 | `summarize-article` | AI 요약 생성 (1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2025-01 |
+| 2 | `detect-crawler-type` | HTML 구조 분석 → 크롤러 타입 자동 결정 | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2026-02-14 |
+| 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | GPT-5-nano | 운영 중 | 2026-02-19 |
 
-> 현재 1개의 Edge Function이 배포되어 있습니다. 추후 확장 시 이 문서에 추가합니다.
+> 현재 3개의 Edge Function이 배포되어 있습니다.
 
 ---
 
@@ -136,6 +138,182 @@ const { data, error } = await supabase.functions.invoke('summarize-article', {
 
 ---
 
+
+---
+
+## 2. detect-crawler-type
+
+### 개요
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `supabase/functions/detect-crawler-type/index.ts` |
+| **런타임** | Deno |
+| **모델** | GPT-5-nano (기본) → GPT-4o-mini (fallback) |
+| **환경변수** | `OPENAI_API_KEY` |
+| **호출 시점** | 소스 저장 시 strategy-resolver.ts Step 7 (AI 타입 감지) |
+
+### 역할
+
+Rule-based 분석(RSS 발견, Sitemap, URL 패턴, CMS, SPA 스코어링)이 높은 신뢰도로 결정하지 못했을 때 호출됩니다. HTML 구조를 분석하여 최적 크롤러 타입을 결정합니다.
+
+> **v1.5.1 변경**: Stage 6 (Rule-based CSS 셀렉터 분석) 제거 후 AI 타입 감지는 Stage 8 AI 셀렉터 감지와 `Promise.all`로 항상 병렬 실행됩니다.
+
+### 요청 (Request)
+
+```
+POST /functions/v1/detect-crawler-type
+Content-Type: application/json
+Authorization: Bearer {SERVICE_ROLE_KEY}
+```
+
+```json
+{
+  "url": "https://example.com/blog",
+  "html": "<!DOCTYPE html>...첫 5000자..."
+}
+```
+
+### 응답 (Response)
+
+**성공 (200)**:
+```json
+{
+  "crawlerType": "STATIC",
+  "confidence": 0.82,
+  "reasoning": "완전한 서버사이드 렌더링 HTML. article 태그와 본문 텍스트 존재. WordPress 흔적 발견."
+}
+```
+
+**실패 (400/500)**:
+```json
+{
+  "error": "에러 메시지"
+}
+```
+
+### AI 프롬프트 전략
+
+```
+분석 대상:
+  • JavaScript 프레임워크 (React, Vue, Angular) → SPA
+  • #root, #app 마운트 포인트 → SPA
+  • noscript 경고 → SPA
+  • 완전한 HTML + 본문 텍스트 → STATIC
+  • RSS/Atom link 태그 → RSS
+  • 정부/공공기관 (.go.kr) → SPA 우선
+
+출력: { crawlerType, confidence, reasoning }
+채택 기준: confidence >= 0.6
+```
+
+### 배포 방법
+
+```bash
+supabase functions deploy detect-crawler-type
+```
+
+---
+
+## 3. detect-api-endpoint
+
+### 개요
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `supabase/functions/detect-api-endpoint/index.ts` |
+| **런타임** | Deno |
+| **모델** | GPT-5-nano |
+| **환경변수** | `OPENAI_API_KEY` |
+| **호출 시점** | 소스 저장 시 strategy-resolver.ts Step 7.5 (SPA 확정 후) |
+
+### 역할
+
+SPA 타입으로 확정된 소스에 대해, 실제로 사이트가 REST API를 통해 데이터를 가져오는지 탐지합니다. API 발견 시 `crawler_type=API`로 전환하고 `crawl_config`를 자동 생성합니다.
+
+### 동작 흐름
+
+```
+1. Puppeteer로 페이지 방문
+2. 모든 XHR/Fetch 네트워크 요청 캡처
+3. GPT-5-nano에 요청 목록 전달
+4. AI가 콘텐츠 목록 API 식별
+5. 요청 body 구조 + 응답 스키마 추론
+6. crawl_config JSON 생성
+```
+
+### 요청 (Request)
+
+```
+POST /functions/v1/detect-api-endpoint
+Content-Type: application/json
+Authorization: Bearer {SERVICE_ROLE_KEY}
+```
+
+```json
+{
+  "url": "https://example.com/insights/",
+  "networkRequests": [
+    {
+      "url": "https://example.com/api/getList.json",
+      "method": "POST",
+      "requestBody": "{"sortType":"new","pageInfo":{"currentPage":0}}",
+      "responseBody": "{"insightList":[{"title":"...","urlKeyword":"..."}]}"
+    }
+  ]
+}
+```
+
+### 응답 (Response)
+
+**API 발견 (200)**:
+```json
+{
+  "found": true,
+  "crawl_config": {
+    "endpoint": "https://example.com/api/getList.json",
+    "method": "POST",
+    "headers": { "Content-Type": "application/json", "Origin": "https://example.com" },
+    "body": { "sortType": "new", "pageInfo": { "currentPage": 0, "pagePerCnt": 30 } },
+    "responseMapping": {
+      "items": "insightList", "title": "title", "link": "urlKeyword",
+      "thumbnail": "coverImgPath", "date": "baseDT"
+    },
+    "urlTransform": {
+      "linkTemplate": "https://example.com/insight/{urlKeyword}",
+      "linkFields": ["urlKeyword"]
+    }
+  },
+  "confidence": 0.9,
+  "reasoning": "POST /api/getList.json 감지. insightList 배열에 30개 아이템 반환."
+}
+```
+
+**API 미발견 (200)**:
+```json
+{
+  "found": false,
+  "reasoning": "콘텐츠 목록 관련 API 요청 없음. SPA 유지 권장."
+}
+```
+
+### 배포 방법
+
+```bash
+supabase functions deploy detect-api-endpoint
+# OPENAI_API_KEY는 summarize-article과 공유 (이미 설정됨)
+```
+
+### 실제 적용 사례
+
+**와이즈앱 (wiseapp.co.kr)**:
+```
+URL: https://www.wiseapp.co.kr/insight/
+탐지 결과: POST /insight/getList.json
+crawler_type: SPA → API (전환)
+개선 효과: Puppeteer 불필요 → fetch 크롤링 3배 빠름
+```
+
 ## Edge Function 개발 가이드
 
 ### 새 Edge Function 추가 시
@@ -200,3 +378,19 @@ return new Response(JSON.stringify(data), {
 | `cleanup-old-articles` | 오래된 아티클 정리 | 낮음 |
 
 > 필요 시 이 문서를 업데이트하고 구현합니다.
+
+---
+
+## 전체 Edge Function Secret 현황
+
+| Secret | 용도 | 사용 함수 |
+|--------|------|-----------|
+| `OPENAI_API_KEY` | OpenAI API 키 | `summarize-article`, `detect-crawler-type`, `detect-api-endpoint` (공유) |
+
+```bash
+# Secret 확인
+supabase secrets list
+
+# Secret 등록 (최초 1회)
+supabase secrets set OPENAI_API_KEY=sk-...
+```

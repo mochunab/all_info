@@ -512,21 +512,27 @@ export const exampleStrategy: CrawlStrategy = {
 // - maxPages 제한 필수 (무한 루프 방지)
 // - Puppeteer 사용 시 browser.close() 필수
 
-// AI 기반 크롤러 타입 자동 감지 (2026-02-14)
-// - 소스 저장 시 crawlerType='AUTO' 선택하면 8단계 파이프라인 자동 실행
+// AI 기반 크롤러 타입 자동 감지 (2026-02-14, v1.5.1에서 개선)
+// - 소스 저장 시 crawlerType='AUTO' 선택하면 파이프라인 자동 실행
 // - 하드코딩 금지: 도메인 기반 if문으로 타입 지정하지 말 것
-// - 8단계 파이프라인 (lib/crawlers/strategy-resolver.ts):
-//   1. Domain Override (0.95+) — Legacy 호환용만
-//   2. RSS Discovery (0.95+)
-//   3. URL Pattern (0.95+)
-//   4. CMS Detection (0.85+)
-//   5. Rule-based Analysis (0.7+)
-//   6. Confidence Check → STATIC
-//   7. AI Type Detection (0.6+) — 🤖 GPT-5-nano Edge Function
+// - 파이프라인 (lib/crawlers/strategy-resolver.ts):
+//   1. HTML 다운로드 (15초 타임아웃) — 실패 시 URL 패턴 폴백
+//   2. RSS Discovery (0.95+) — Promise.all로 6개 경로 동시 탐색 (v1.5.1)
+//   2.5. Sitemap Discovery (0.90+) — Promise.all로 2개 후보 동시 확인 (v1.5.0)
+//   3. CMS Detection (0.85+) — WordPress, Tistory, Ghost 등
+//   4. URL Pattern Analysis (0.85~0.95) — .go.kr, naver.com, /feed 등
+//   5. SPA Scoring (calculateSPAScore) — body 텍스트 < 500자, #root/#app
+//   [Stage 6 Rule-based CSS Analysis 제거됨 — v1.5.1]
+//   7. AI Type Detection — 🤖 GPT-5-nano Edge Function (항상 실행)
 //   7.5. API 엔드포인트 감지 — SPA 확정 후 detect-api-endpoint Edge Function 호출
-//   8. AI Selector Detection — 🤖 GPT-4o-mini Fallback (SPA shell 감지 강화)
+//   8. AI Selector Detection — 🤖 infer-type.ts (7+8 Promise.all 병렬 실행, v1.5.1)
+//      └─ HTML 전처리: <head>/인라인 스크립트 제거 후 50KB 제한 (아티클 카드 가시성 확보)
+//      └─ Tailwind 콜론 이스케이프: .dark:text → .dark\:text (Cheerio 파서 호환)
+//      └─ trySemanticDetection: <article> 3개+ 있을 때만 신뢰 (0.8)
+//   8.5. SPA 셀렉터 재감지 (v1.5.2) — SPA + confidence < 0.5 → Puppeteer 렌더링 HTML로 재감지
+//      └─ getRenderedHTML(url): load + 3s wait (JS 렌더링 완료 대기)
+//      └─ 재감지 신뢰도 > 기존 신뢰도일 때만 결과 교체
 // - Edge Function 배포: npx supabase functions deploy detect-crawler-type
-// - 비용 최적화: Rule-based 70% 해결, AI는 confidence < 0.7일 때만 호출
 // - 결과 저장: config._detection에 method, confidence, reasoning 저장
 ```
 
@@ -1033,6 +1039,32 @@ crawl: 크롤러 관련 변경
 ---
 
 ## 버전 히스토리
+
+### v1.5.2 (2026-02-19)
+- **STATIC 타이틀 셀렉터 수정** (`lib/crawlers/strategies/static.ts`): `DEFAULT_SELECTORS.title`에서 `a` 제거 → 제목+소제목 붙는 오탐 수정
+- **RSS 0건 STATIC fallback 복원** (`lib/crawlers/index.ts`): RSS 0건 early return 제거 → STATIC 폴백 정상 동작
+- **AI 셀렉터 프롬프트 개선** (`lib/crawlers/infer-type.ts`): 뉴스레터/채널 디렉토리 오탐 방지 규칙 + 아티클 우선순위 기준 추가
+- **SPA 셀렉터 재감지 Step 8.5** (`lib/crawlers/strategy-resolver.ts`, `spa.ts`)
+  - `getRenderedHTML(url)`: Puppeteer로 JS 렌더링 후 HTML 반환 (load + 3s wait)
+  - SPA + confidence < 0.5 → Puppeteer HTML로 `detectContentSelectors` 재실행 → 신뢰도 높을 때만 채택
+
+### v1.5.1 (2026-02-19)
+- **AI 셀렉터 감지 고도화** (`lib/crawlers/infer-type.ts`)
+  - HTML 전처리: `<head>` + 200자 이상 인라인 `<script>`/`<style>` 제거 후 50KB 제한
+    - 해결: `<head>` CSS/JS 번들(~35KB)이 아티클 카드를 50KB 밖으로 밀어내는 문제
+  - `trySemanticDetection` 조건 강화: `<article>` 태그 3개+ 있을 때만 신뢰도 0.8 반환
+    - 이전: `<main>` 태그만으로 신뢰도 0.9 반환 → AI 우회 문제 발생
+  - Tailwind CSS 콜론 이스케이프 추가: `.dark:text-slate-200` → `.dark\:text-slate-200`
+    - Cheerio CSS 파서가 `:` 를 pseudo-class로 해석하는 문제 방지
+  - JSON 수리: AI가 생성한 `\:` → `\\:` 변환 후 JSON.parse (Bad escaped character 방지)
+  - AI 프롬프트 전면 재작성: 아티클 카드 정의, REJECT 패턴(필터탭/네비/통계), URL 검증 요구사항 명시
+  - 결과에 `date`, `thumbnail` 필드 추가
+- **전략 탐지 병렬화** (`lib/crawlers/strategy-resolver.ts`)
+  - Stage 6 (Rule-based CSS 셀렉터 분석 `detectByRules`) 파이프라인에서 제거
+  - Stage 7+8 (AI 타입 감지 + AI 셀렉터 감지) `Promise.all` 병렬 실행
+  - `discoverRSS`: 6개 경로 순차 탐색 → `Promise.all` 동시 탐색 (최악 18초→3초)
+  - `discoverSitemap`: 2개 후보 순차 확인 → `Promise.all` 동시 확인 (최악 10초→5초)
+- **범용 크롤러 원칙** CLAUDE.md에 추가 (하드코딩 금지, 파이프라인 개선 방향 명시)
 
 ### v1.5.0 (2026-02-19)
 - **SITEMAP 크롤러 전략 추가** (`lib/crawlers/strategies/sitemap.ts`)

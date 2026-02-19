@@ -12,6 +12,7 @@ type HeaderProps = {
   crawlProgress?: string;
   language?: Language;
   onLanguageChange?: (lang: Language) => void;
+  selectedCategory?: string;
 };
 
 export default function Header({
@@ -21,6 +22,7 @@ export default function Header({
   crawlProgress,
   language = 'ko',
   onLanguageChange,
+  selectedCategory,
 }: HeaderProps) {
   const getUpdateText = () => {
     if (!lastUpdated) return t(language, 'header.updateWaiting');
@@ -48,6 +50,11 @@ export default function Header({
     if (!onRefresh || isCrawling) return;
     onRefresh();
   };
+
+  // '전체' 카테고리인지 확인
+  const allCategory = t(language, 'filter.allCategory');
+  const isAllCategory = !selectedCategory || selectedCategory === allCategory;
+  const shouldShowRefreshButton = !isAllCategory;
 
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
@@ -95,29 +102,31 @@ export default function Header({
               </span>
             </div>
 
-            {/* Refresh Button */}
-            <button
-              onClick={handleRefresh}
-              disabled={isCrawling}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
-            >
-              <svg
-                className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {/* Refresh Button - 특정 카테고리 선택 시에만 표시 */}
+            {shouldShowRefreshButton && (
+              <button
+                onClick={handleRefresh}
+                disabled={isCrawling}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              <span className="hidden sm:inline">
-                {isCrawling ? t(language, 'header.refreshing') : t(language, 'header.refresh')}
-              </span>
-            </button>
+                <svg
+                  className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span className="hidden sm:inline">
+                  {isCrawling ? t(language, 'header.refreshing') : t(language, 'header.refresh')}
+                </span>
+              </button>
+            )}
 
             {/* Language Switcher */}
             {onLanguageChange && (
