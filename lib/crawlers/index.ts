@@ -491,29 +491,27 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
  * 크롤러 선택 (전략 패턴 우선, 레거시 폴백)
  */
 function getCrawler(source: CrawlSource): (source: CrawlSource) => Promise<CrawledArticle[]> {
-  // 1. URL 기반으로 최적 전략 추론
-  const inferred = inferCrawlerType(source.base_url);
-  console.log(`🔍 자동 감지된 전략: ${inferred} (URL 기반)`);
-
-  // 2. 새 전략 패턴 사용 (추론된 타입 or crawler_type이 유효한 경우)
-  if (isValidCrawlerType(inferred)) {
-    console.log(`✅ 전략 패턴 사용: ${inferred}`);
-    return crawlWithStrategy;
-  }
-
-  // 3. crawler_type이 명시적으로 유효한 경우
-  if (source.crawler_type && isValidCrawlerType(source.crawler_type)) {
-    console.log(`✅ 전략 패턴 사용: ${source.crawler_type} (설정됨)`);
-    return crawlWithStrategy;
-  }
-
-  // 4. 레거시 폴백 (사이트별 크롤러)
+  // 1. 레거시 사이트별 크롤러 최우선 (검증된 전용 크롤러)
   if (LEGACY_CRAWLER_REGISTRY[source.name]) {
     console.log(`🔄 레거시 크롤러 사용: ${source.name}`);
     return LEGACY_CRAWLER_REGISTRY[source.name];
   }
 
-  // 5. 기본값: 전략 패턴
+  // 2. crawler_type이 명시적으로 유효한 경우 전략 패턴 사용
+  if (source.crawler_type && isValidCrawlerType(source.crawler_type)) {
+    console.log(`✅ 전략 패턴 사용: ${source.crawler_type} (설정됨)`);
+    return crawlWithStrategy;
+  }
+
+  // 3. URL 기반 추론 후 전략 패턴 사용
+  const inferred = inferCrawlerType(source.base_url);
+  console.log(`🔍 자동 감지된 전략: ${inferred} (URL 기반)`);
+  if (isValidCrawlerType(inferred)) {
+    console.log(`✅ 전략 패턴 사용: ${inferred}`);
+    return crawlWithStrategy;
+  }
+
+  // 4. 기본값: 전략 패턴
   console.log(`✅ 기본 전략 패턴 사용`);
   return crawlWithStrategy;
 }

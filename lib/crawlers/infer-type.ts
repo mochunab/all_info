@@ -315,6 +315,8 @@ Rules:
 - Avoid generic selectors like "li" or "div" - be specific!
 - Look for semantic classes like .article, .post, .card, .insight-item
 - Exclude navigation, headers, footers
+- Navigation menus (공지사항, 서비스 문의, 로그인, 회원가입 etc.) are NOT articles
+- If the HTML is a SPA shell (minimal visible text content, heavy JS bundle scripts, only nav/menu links visible, no actual article titles or dates), set confidence to 0.2 and note "SPA shell - requires JS rendering" in reasoning
 - Return ONLY valid JSON, no other text`;
 
   try {
