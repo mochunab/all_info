@@ -73,6 +73,77 @@ type ValidationResult = {
   };
 };
 
+/**
+ * 소스 config 업데이트 (자동 복구용)
+ */
+async function updateSourceConfig(
+  sourceId: number,
+  newConfig: {
+    crawlerType: CrawlerType;
+    selectors?: Record<string, unknown>;
+    rssUrl?: string;
+    confidence?: number;
+    detectionMethod?: string;
+  }
+): Promise<void> {
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/server');
+    const supabase = createServiceClient();
+
+    const updates: {
+      crawler_type: string;
+      config?: Record<string, unknown>;
+      crawl_url?: string;
+    } = {
+      crawler_type: newConfig.crawlerType,
+    };
+
+    // config 병합 (기존 설정 유지하면서 새 설정 추가)
+    if (newConfig.selectors || newConfig.confidence || newConfig.detectionMethod) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: currentSource } = await (supabase as any)
+        .from('crawl_sources')
+        .select('config')
+        .eq('id', sourceId)
+        .single();
+
+      const currentConfig = currentSource?.config || {};
+
+      updates.config = {
+        ...currentConfig,
+        ...(newConfig.selectors && { selectors: newConfig.selectors }),
+        _detection: {
+          method: newConfig.detectionMethod || 'auto-recovery',
+          confidence: newConfig.confidence || 0.5,
+          timestamp: new Date().toISOString(),
+          reason: 'Auto-recovery after quality validation failure',
+        },
+      };
+    }
+
+    // RSS URL이 있으면 crawl_url 업데이트
+    if (newConfig.rssUrl) {
+      updates.crawl_url = newConfig.rssUrl;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+      .from('crawl_sources')
+      .update(updates)
+      .eq('id', sourceId);
+
+    if (error) {
+      console.error('[AUTO-RECOVERY] Failed to update source config:', error);
+    } else {
+      console.log(`[AUTO-RECOVERY] ✅ Updated source config (ID: ${sourceId})`);
+      console.log(`   📊 New crawler_type: ${newConfig.crawlerType}`);
+      console.log(`   📊 Confidence: ${newConfig.confidence?.toFixed(2) || 'N/A'}`);
+    }
+  } catch (error) {
+    console.error('[AUTO-RECOVERY] Error updating source config:', error);
+  }
+}
+
 function validateCrawlResults(items: RawContentItem[]): ValidationResult {
   // 0건 → 실패
   if (items.length === 0) {
@@ -165,23 +236,26 @@ function validateCrawlResults(items: RawContentItem[]): ValidationResult {
 
 /**
  * 크롤러 타입별 기본 폴백 체인
+ * FIRECRAWL 제거 - 범용 전략만 사용 (하이브리드 자동 복구가 대체)
  */
 function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
   switch (primaryType) {
     case 'RSS':
-      return ['STATIC', 'SPA'];
+      return ['STATIC'];
     case 'SPA':
       return ['STATIC'];
     case 'STATIC':
-      return ['SPA'];
+      return [];
+    case 'FIRECRAWL':
+      return ['STATIC'];
+    case 'API':
+      return ['STATIC'];
     case 'PLATFORM_NAVER':
     case 'PLATFORM_KAKAO':
     case 'NEWSLETTER':
-      return ['STATIC', 'SPA'];
-    case 'API':
       return ['STATIC'];
     default:
-      return ['SPA'];
+      return ['STATIC'];
   }
 }
 
@@ -204,7 +278,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
     (type, index, arr) => arr.indexOf(type) === index
   ); // 중복 제거
 
-  console.log(`[CRAWL] Strategy chain: ${strategyChain.join(' → ')}`);
+  console.log(`\n📋 [전략 체인] ${strategyChain.join(' → ')}`);
 
   // 3. 체인 순회 (각 전략 30초 타임아웃)
   for (let i = 0; i < strategyChain.length; i++) {
@@ -212,52 +286,153 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
     const isFallback = i > 0;
 
     console.log(
-      `[CRAWL] ${isFallback ? 'Fallback' : 'Primary'} strategy: ${strategyType} (${i + 1}/${strategyChain.length})`
+      `\n${isFallback ? '🔄 [대체 전략]' : '🎯 [주 전략]'} ${strategyType} 실행 중... (${i + 1}/${strategyChain.length})`
     );
 
     try {
       // 전략 가져오기
+      console.log(`   ⚙️  전략 로드 중...`);
       const strategy = getStrategy(strategyType);
+      console.log(`   ✅ 전략 로드 완료`);
 
       // 타임아웃 설정 (30초)
       const timeoutPromise = new Promise<RawContentItem[]>((_, reject) =>
-        setTimeout(() => reject(new Error('Strategy timeout (30s)')), 30000)
+        setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000)
       );
 
       const crawlPromise = strategy.crawlList(source);
 
+      console.log(`   🔍 콘텐츠 목록 크롤링 중... (최대 30초)`);
       // 목록 크롤링 (타임아웃 적용)
-      const rawItems = await Promise.race([crawlPromise, timeoutPromise]);
+      const rawItemsAll = await Promise.race([crawlPromise, timeoutPromise]);
 
-      console.log(`[CRAWL] ${strategyType} found ${rawItems.length} items`);
+      // 최신 5개만 유지 (사이트 당 제한)
+      const rawItems = rawItemsAll.slice(0, 5);
+
+      console.log(`   ✅ 크롤링 완료: ${rawItemsAll.length}개 발견 → 최신 ${rawItems.length}개 선택`);
 
       // 4. 품질 검증
+      console.log(`   🔍 품질 검증 중...`);
       const validation = validateCrawlResults(rawItems);
 
       if (!validation.passed) {
         console.warn(
-          `[CRAWL] ${strategyType} validation failed: ${validation.reason}`,
-          validation.stats
+          `   ⚠️  품질 검증 실패: ${validation.reason}`
         );
+        if (validation.stats) {
+          console.warn(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 쓰레기 비율 ${(validation.stats.garbageRatio * 100).toFixed(1)}%`);
+        }
 
-        // 마지막 전략이면 빈 배열 반환
+        // 마지막 전략이면 자동 복구 시도 (하이브리드 전략)
+        if (i === strategyChain.length - 1 && validation.stats && validation.stats.garbageRatio > 0.5) {
+          console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 8단계 파이프라인 재분석 시도...`);
+
+          try {
+            const { resolveStrategy } = await import('./strategy-resolver');
+            const newStrategy = await resolveStrategy(source.base_url);
+
+            // 새 전략이 더 높은 신뢰도면 적용
+            if (newStrategy.confidence > 0.6) {
+              console.log(`   ✅ 새 전략 발견: ${newStrategy.primaryStrategy} (confidence: ${(newStrategy.confidence * 100).toFixed(0)}%)`);
+              console.log(`   💾 Config 업데이트 중...`);
+
+              // Config 업데이트
+              await updateSourceConfig(source.id, {
+                crawlerType: newStrategy.primaryStrategy,
+                selectors: (newStrategy.selectors as unknown) as Record<string, unknown> | undefined,
+                rssUrl: newStrategy.rssUrl || undefined,
+                confidence: newStrategy.confidence,
+                detectionMethod: newStrategy.detectionMethod,
+              });
+
+              // 새 전략으로 재크롤링
+              console.log(`   🔄 새 전략으로 재크롤링 시도...`);
+              const recoveryStrategy = getStrategy(newStrategy.primaryStrategy);
+
+              const updatedSource: CrawlSource = {
+                ...source,
+                crawler_type: newStrategy.primaryStrategy,
+                config: {
+                  ...source.config,
+                  selectors: newStrategy.selectors || source.config?.selectors,
+                  _detection: {
+                    method: newStrategy.detectionMethod,
+                    confidence: newStrategy.confidence,
+                    timestamp: new Date().toISOString(),
+                  },
+                },
+                ...(newStrategy.rssUrl && { crawl_url: newStrategy.rssUrl }),
+              };
+
+              const recoveryItems = await recoveryStrategy.crawlList(updatedSource);
+              const recoveryValidation = validateCrawlResults(recoveryItems.slice(0, 5));
+
+              if (recoveryValidation.passed) {
+                console.log(`   ✅ 자동 복구 성공! (${recoveryItems.length}개 발견)`);
+
+                // 본문 크롤링 (기존 로직과 동일)
+                const articles: CrawledArticle[] = [];
+                for (let idx = 0; idx < Math.min(recoveryItems.length, 5); idx++) {
+                  const item = recoveryItems[idx];
+                  if (!item.content && recoveryStrategy.crawlContent) {
+                    try {
+                      const result = await recoveryStrategy.crawlContent(item.link, config.content_selectors);
+                      if (typeof result === 'string') {
+                        item.content = result;
+                      } else {
+                        item.content = result.content;
+                        if (!item.thumbnail && result.thumbnail) {
+                          item.thumbnail = result.thumbnail;
+                        }
+                      }
+                    } catch (error) {
+                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
+                  }
+                  articles.push(convertToArticle(item, source, config.category));
+                }
+
+                const filtered = filterGarbageArticles(articles, source.name);
+                console.log(`   ✅ 자동 복구 최종 결과: ${filtered.length}개 아티클`);
+                return filtered;
+              } else {
+                console.warn(`   ⚠️  자동 복구 실패: 새 전략도 품질 검증 실패`);
+              }
+            } else {
+              console.warn(`   ⚠️  자동 복구 실패: 낮은 신뢰도 (${(newStrategy.confidence * 100).toFixed(0)}%)`);
+            }
+          } catch (error) {
+            console.error(`   ❌ 자동 복구 오류:`, error instanceof Error ? error.message : error);
+          }
+        }
+
+        // 자동 복구 실패 또는 마지막 전략이면 빈 배열 반환
         if (i === strategyChain.length - 1) {
-          console.error(`[CRAWL] All strategies failed for ${source.name}`);
+          console.error(`   ❌ 모든 전략 실패 - "${source.name}" 크롤링 중단`);
           return [];
         }
 
+        console.log(`   🔄 다음 전략 시도 중...`);
         // 다음 전략 시도
         continue;
       }
 
-      console.log(`[CRAWL] ${strategyType} validation passed`, validation.stats);
+      console.log(`   ✅ 품질 검증 통과`);
+      if (validation.stats) {
+        console.log(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 중복제거 ${validation.stats.uniqueTitles}개`);
+      }
 
       // 5. 본문 크롤링
+      console.log(`\n   📄 본문 추출 시작... (${rawItems.length}개)`);
       const articles: CrawledArticle[] = [];
+      let contentFetchCount = 0;
 
-      for (const item of rawItems) {
+      for (let idx = 0; idx < rawItems.length; idx++) {
+        const item = rawItems[idx];
         if (!item.content && strategy.crawlContent) {
           try {
+            console.log(`      [${idx + 1}/${rawItems.length}] "${item.title.substring(0, 40)}..." 본문 추출 중...`);
             const result = await strategy.crawlContent(item.link, config.content_selectors);
 
             if (typeof result === 'string') {
@@ -268,8 +443,10 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
                 item.thumbnail = result.thumbnail;
               }
             }
+            contentFetchCount++;
+            console.log(`      ✅ 본문 추출 완료 (${item.content.length}자)`);
           } catch (error) {
-            console.error(`[CRAWL] Content fetch error for ${item.link}:`, error);
+            console.error(`      ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
           }
 
           await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
@@ -278,27 +455,35 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         articles.push(convertToArticle(item, source, config.category));
       }
 
-      // 6. 쓰레기 필터 적용
-      const filtered = filterGarbageArticles(articles, source.name);
+      console.log(`   ✅ 본문 추출 완료: ${contentFetchCount}/${rawItems.length}개 성공`);
 
-      console.log(`[CRAWL] ${strategyType} success: ${filtered.length} valid articles`);
+      // 6. 쓰레기 필터 적용
+      console.log(`   🗑️  품질 필터링 중...`);
+      const filtered = filterGarbageArticles(articles, source.name);
+      const filteredCount = articles.length - filtered.length;
+      if (filteredCount > 0) {
+        console.log(`   🗑️  필터링 제거: ${filteredCount}개`);
+      }
+
+      console.log(`\n   ✅ ${strategyType} 전략 성공: 최종 ${filtered.length}개 아티클`);
       return filtered;
     } catch (error) {
-      console.error(`[CRAWL] ${strategyType} error:`, error);
+      console.error(`   ❌ ${strategyType} 전략 오류:`, error instanceof Error ? error.message : error);
 
       // 마지막 전략이면 빈 배열 반환
       if (i === strategyChain.length - 1) {
-        console.error(`[CRAWL] All strategies failed for ${source.name}`);
+        console.error(`   ❌ 모든 전략 소진 - "${source.name}" 크롤링 실패`);
         return [];
       }
 
+      console.log(`   🔄 다음 전략 시도 중...`);
       // 다음 전략 시도
       continue;
     }
   }
 
   // 모든 전략 실패
-  console.error(`[CRAWL] All strategies exhausted for ${source.name}`);
+  console.error(`❌ 크롤링 실패 - "${source.name}": 모든 전략 실패`);
   return [];
 }
 
@@ -308,25 +493,28 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
 function getCrawler(source: CrawlSource): (source: CrawlSource) => Promise<CrawledArticle[]> {
   // 1. URL 기반으로 최적 전략 추론
   const inferred = inferCrawlerType(source.base_url);
-  console.log(`[CRAWL] Inferred strategy: ${inferred} (from URL)`);
+  console.log(`🔍 자동 감지된 전략: ${inferred} (URL 기반)`);
 
   // 2. 새 전략 패턴 사용 (추론된 타입 or crawler_type이 유효한 경우)
   if (isValidCrawlerType(inferred)) {
+    console.log(`✅ 전략 패턴 사용: ${inferred}`);
     return crawlWithStrategy;
   }
 
   // 3. crawler_type이 명시적으로 유효한 경우
   if (source.crawler_type && isValidCrawlerType(source.crawler_type)) {
+    console.log(`✅ 전략 패턴 사용: ${source.crawler_type} (설정됨)`);
     return crawlWithStrategy;
   }
 
   // 4. 레거시 폴백 (사이트별 크롤러)
   if (LEGACY_CRAWLER_REGISTRY[source.name]) {
-    console.log(`[CRAWL] Falling back to legacy crawler for: ${source.name}`);
+    console.log(`🔄 레거시 크롤러 사용: ${source.name}`);
     return LEGACY_CRAWLER_REGISTRY[source.name];
   }
 
   // 5. 기본값: 전략 패턴
+  console.log(`✅ 기본 전략 패턴 사용`);
   return crawlWithStrategy;
 }
 
@@ -340,7 +528,8 @@ export async function saveArticles(
   let saved = 0;
   let skipped = 0;
 
-  for (const article of articles) {
+  for (let idx = 0; idx < articles.length; idx++) {
+    const article = articles[idx];
     try {
       // source_id 기준 중복 확인
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -352,6 +541,7 @@ export async function saveArticles(
 
       if (existing) {
         skipped++;
+        console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (중복): "${article.title.substring(0, 40)}..."`);
         continue;
       }
 
@@ -371,13 +561,13 @@ export async function saveArticles(
       });
 
       if (error) {
-        console.error(`[SAVE] Error saving ${article.title}:`, error);
+        console.error(`   ❌ [${idx + 1}/${articles.length}] 저장 실패: ${article.title}`, error);
       } else {
         saved++;
-        console.log(`[SAVE] Saved: ${article.title.substring(0, 50)}...`);
+        console.log(`   ✅ [${idx + 1}/${articles.length}] 저장 완료: "${article.title.substring(0, 40)}..."`);
       }
     } catch (error) {
-      console.error(`[SAVE] Error:`, error);
+      console.error(`   ❌ [${idx + 1}/${articles.length}] 오류:`, error);
     }
   }
 
@@ -400,74 +590,103 @@ export async function runCrawler(
 
   const startTime = Date.now();
 
+  // crawl_url이 있으면 우선 사용 (URL 최적화 결과)
+  const effectiveUrl = source.crawl_url || source.base_url;
+  const effectiveSource: CrawlSource = {
+    ...source,
+    base_url: effectiveUrl, // 크롤링 시 최적화된 URL 사용
+  };
+
   try {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[CRAWL START] ${source.name}`);
-    console.log(`URL: ${source.base_url}`);
-    console.log(`Type: ${source.crawler_type || 'auto'}`);
-    console.log(`Time: ${new Date().toISOString()}`);
-    if (options?.dryRun) console.log(`Mode: DRY RUN (no DB writes)`);
-    console.log(`${'='.repeat(60)}\n`);
+    console.log(`\n${'─'.repeat(80)}`);
+    console.log(`🎯 크롤링 대상: ${source.name}`);
+    if (source.crawl_url && source.crawl_url !== source.base_url) {
+      console.log(`   📍 원본 URL: ${source.base_url}`);
+      console.log(`   ✨ 크롤링 URL: ${source.crawl_url}`);
+    } else {
+      console.log(`   📍 URL: ${source.base_url}`);
+    }
+    console.log(`   🔧 타입: ${source.crawler_type || '자동감지'}`);
+    console.log(`   ⏰ 시작: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+    if (options?.dryRun) console.log(`   🧪 모드: 테스트 (DB 저장 안함)`);
+    console.log(`${'─'.repeat(80)}`);
 
     // 크롤러 선택 및 실행
-    const crawler = getCrawler(source);
-    console.log(`[CRAWL] Crawler: ${crawler.name || 'strategy-based'}`);
+    const crawler = getCrawler(effectiveSource);
+    console.log(`\n🤖 크롤러: ${crawler.name || '전략 기반'}`);
 
     // 크롤링 실행
-    console.log(`[CRAWL] Fetching articles...`);
-    const articles = await crawler(source);
+    console.log(`🔍 아티클 수집 중...`);
+    const articlesAll = await crawler(effectiveSource);
+
+    // 최신 5개만 유지 (사이트 당 제한)
+    const articles = articlesAll.slice(0, 5);
+
     result.found = articles.length;
-    console.log(`[CRAWL] Found ${articles.length} articles`);
+    console.log(`\n📊 수집 결과: ${articlesAll.length}개 발견 → 최신 ${articles.length}개 선택`);
 
     if (articles.length === 0) {
-      console.log(`[CRAWL] No articles found for ${source.name}`);
+      console.log(`⚠️  아티클을 찾을 수 없습니다 - ${source.name}`);
       return result;
     }
 
     // 본문 미리보기 가져오기 (레거시 크롤러용)
-    for (const article of articles) {
+    console.log(`\n📄 본문 미리보기 추출 중...`);
+    let previewCount = 0;
+    for (let idx = 0; idx < articles.length; idx++) {
+      const article = articles[idx];
       if (!article.content_preview) {
         try {
+          console.log(`   [${idx + 1}/${articles.length}] "${article.title.substring(0, 40)}..." 추출 중...`);
           const content = await fetchArticleContent(article.source_url);
           if (content) {
             article.content_preview = content.substring(0, 3000);
+            previewCount++;
+            console.log(`   ✅ 추출 완료 (${content.length}자)`);
           }
         } catch (error) {
           if (options?.verbose) {
-            console.error(`[CRAWL] Content fetch error for ${article.title}:`, error);
+            console.error(`   ❌ 추출 실패: ${article.title}`, error);
           }
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
+    if (previewCount > 0) {
+      console.log(`✅ 본문 미리보기 추출 완료: ${previewCount}개`);
+    }
 
     // DB 저장 (dry-run이 아닌 경우)
     if (!options?.dryRun) {
-      console.log(`[CRAWL] Saving ${articles.length} articles...`);
+      console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
       const { saved, skipped } = await saveArticles(articles, supabase);
       result.new = saved;
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`\n${'='.repeat(60)}`);
-      console.log(`[CRAWL COMPLETE] ${source.name}`);
-      console.log(`Duration: ${duration}s`);
-      console.log(`Found: ${result.found} | Saved: ${result.new} | Skipped: ${skipped}`);
-      console.log(`${'='.repeat(60)}\n`);
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`✅ 크롤링 완료: ${source.name}`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`⏱️  소요시간: ${duration}초`);
+      console.log(`📊 발견: ${result.found}개`);
+      console.log(`💾 저장: ${result.new}개`);
+      console.log(`⏭️  건너뜀: ${skipped}개 (중복)`);
+      console.log(`${'='.repeat(80)}\n`);
     } else {
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`\n${'='.repeat(60)}`);
-      console.log(`[DRY RUN COMPLETE] ${source.name}`);
-      console.log(`Duration: ${duration}s`);
-      console.log(`Would save: ${result.found} articles`);
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`🧪 테스트 완료: ${source.name}`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`⏱️  소요시간: ${duration}초`);
+      console.log(`📊 저장 예정: ${result.found}개`);
       if (options?.verbose) {
-        console.log('\nArticles:');
+        console.log('\n📰 아티클 목록:');
         articles.forEach((a, i) => {
           console.log(`  ${i + 1}. ${a.title}`);
-          console.log(`     URL: ${a.source_url}`);
-          console.log(`     Date: ${a.published_at || 'N/A'}`);
+          console.log(`     🔗 URL: ${a.source_url}`);
+          console.log(`     📅 날짜: ${a.published_at || 'N/A'}`);
         });
       }
-      console.log(`${'='.repeat(60)}\n`);
+      console.log(`${'='.repeat(80)}\n`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

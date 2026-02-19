@@ -1,98 +1,184 @@
-import * as cheerio from 'cheerio';
+// 와이즈앱 (wiseapp.co.kr) API 크롤러
+// POST /insight/getList.json
+
 import { generateSourceId } from '@/lib/utils';
-import { CrawledArticle, DEFAULT_HEADERS, fetchWithTimeout, isWithinDays, parseDate } from '../base';
+import { CrawledArticle, parseDate, isWithinDays } from '../base';
 import type { CrawlSource } from '@/types';
 
-// 와이즈앱 (wiseapp.co.kr) 크롤러
+type WiseAppInsightItem = {
+  insightNid?: number;
+  title?: string;
+  urlKeyword?: string;
+  coverImgPath?: string;
+  baseDT?: string;
+  createDT?: string;
+  displayDT?: string;
+  metaDesc?: string;
+  content?: string;
+};
+
+type WiseAppAPIResponse = {
+  insightList?: WiseAppInsightItem[];
+  insights?: WiseAppInsightItem[];
+  data?: WiseAppInsightItem[];
+  items?: WiseAppInsightItem[];
+  results?: WiseAppInsightItem[];
+};
+
+/**
+ * 와이즈앱 인사이트 크롤러 (API 방식)
+ */
 export async function crawlWiseapp(source: CrawlSource): Promise<CrawledArticle[]> {
   const articles: CrawledArticle[] = [];
   const category = (source.config as { category?: string })?.category || '트렌드';
 
-  console.log(`[와이즈앱] Crawling: ${source.base_url}`);
+  console.log(`[와이즈앱 API] Crawling: ${source.base_url}`);
 
   try {
-    const response = await fetchWithTimeout(source.base_url, {
-      headers: DEFAULT_HEADERS,
-    }, 10000);
+    // API 엔드포인트: /insight/getList.json
+    const apiUrl = 'https://www.wiseapp.co.kr/insight/getList.json';
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
+    // API 요청 페이로드
+    const payload = {
+      sortType: 'new',
+      searchStr: '',
+      pageInfo: {
+        currentPage: 0,
+        pagePerCnt: 30,
+        isSearched: 0,
+      },
+      insightTypeApp: 0,
+      insightTypeRetail: 0,
+      insightTypeGoods: 0,
+    };
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    console.log(`[와이즈앱 API] POST ${apiUrl}`);
+    console.log(`[와이즈앱 API] Payload:`, JSON.stringify(payload, null, 2));
 
-    // 와이즈앱 인사이트 카드 파싱
-    $('.insight-card, .post-item, article, .card').each((_, element) => {
-      try {
-        const $el = $(element);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-        // 링크
-        const $link = $el.find('a').first();
-        const href = $link.attr('href');
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json;charset=UTF-8',
+          Accept: 'application/json, text/plain, */*',
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Origin: 'https://www.wiseapp.co.kr',
+          Referer: 'https://www.wiseapp.co.kr/insight/',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-        if (!href) return;
+      clearTimeout(timeoutId);
 
-        // 절대 URL로 변환
-        const sourceUrl = href.startsWith('http')
-          ? href
-          : `https://www.wiseapp.co.kr${href.startsWith('/') ? '' : '/'}${href}`;
-
-        // 제목
-        const $title = $el.find('h2, h3, .title, .card-title');
-        const title = $title.text().trim();
-
-        if (!title) return;
-
-        const sourceId = generateSourceId(sourceUrl);
-
-        // 썸네일
-        const $thumbnail = $el.find('img');
-        let thumbnailUrl = $thumbnail.attr('src') || $thumbnail.attr('data-src');
-        if (thumbnailUrl && !thumbnailUrl.startsWith('http')) {
-          if (thumbnailUrl.startsWith('//')) {
-            thumbnailUrl = `https:${thumbnailUrl}`;
-          } else {
-            thumbnailUrl = `https://www.wiseapp.co.kr${thumbnailUrl}`;
-          }
-        }
-
-        // 날짜
-        const $date = $el.find('.date, time, .published');
-        const dateText = $date.text().trim();
-        const publishedAt = dateText ? parseDate(dateText)?.toISOString() : undefined;
-
-        console.log(`[와이즈앱] Article: "${title.substring(0, 40)}..." | Raw date: ${dateText || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`);
-
-        // 7일 이내 확인
-        if (!isWithinDays(publishedAt, 7, title)) {
-          console.log(`[와이즈앱] SKIP (too old): ${title}`);
-          return;
-        }
-
-        // 미리보기
-        const $preview = $el.find('.summary, .description, .excerpt, p');
-        const contentPreview = $preview.first().text().trim().substring(0, 500) || undefined;
-
-        articles.push({
-          source_id: sourceId,
-          source_name: source.name,
-          source_url: sourceUrl,
-          title,
-          thumbnail_url: thumbnailUrl,
-          content_preview: contentPreview,
-          published_at: publishedAt,
-          category,
-        });
-      } catch (error) {
-        console.error('[와이즈앱] Error parsing article:', error);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    });
 
-    console.log(`[와이즈앱] Found ${articles.length} articles`);
-    return articles;
+      const data = (await response.json()) as WiseAppAPIResponse;
+      console.log(`[와이즈앱 API] Response keys:`, Object.keys(data));
+
+      // insightList 배열 찾기
+      let insightList: WiseAppInsightItem[] = [];
+
+      if (data.insightList && Array.isArray(data.insightList)) {
+        insightList = data.insightList;
+      } else if (data.insights && Array.isArray(data.insights)) {
+        insightList = data.insights;
+      } else if (data.data && Array.isArray(data.data)) {
+        insightList = data.data;
+      } else if (data.items && Array.isArray(data.items)) {
+        insightList = data.items;
+      } else if (data.results && Array.isArray(data.results)) {
+        insightList = data.results;
+      } else if (Array.isArray(data)) {
+        insightList = data as unknown as WiseAppInsightItem[];
+      } else {
+        console.error('[와이즈앱 API] Cannot find insight list in response');
+        console.log('[와이즈앱 API] Response structure:', JSON.stringify(data).substring(0, 500));
+        return [];
+      }
+
+      console.log(`[와이즈앱 API] Found ${insightList.length} items in response`);
+
+      // 각 아이템 파싱
+      for (const item of insightList) {
+        try {
+          // 제목
+          const title = item.title?.trim();
+          if (!title) {
+            console.log(`[와이즈앱 API] SKIP: No title`);
+            continue;
+          }
+
+          // URL 생성
+          let url: string;
+          if (item.urlKeyword) {
+            // urlKeyword가 있으면 SEO URL 사용
+            url = `https://www.wiseapp.co.kr/insight/${item.urlKeyword}`;
+          } else if (item.insightNid) {
+            // insightNid로 폴백
+            url = `https://www.wiseapp.co.kr/insight/detail/${item.insightNid}`;
+          } else {
+            console.log(`[와이즈앱 API] SKIP: No URL for "${title}"`);
+            continue;
+          }
+
+          const sourceId = generateSourceId(url);
+
+          // 썸네일 (coverImgPath)
+          let thumbnailUrl: string | undefined;
+          if (item.coverImgPath) {
+            // API 응답에서 경로만 제공: /2026-02-10/xxx.png
+            // 실제 이미지 서버: https://www.wiseapp.co.kr:10081/insight-resources
+            thumbnailUrl = `https://www.wiseapp.co.kr:10081/insight-resources${item.coverImgPath}`;
+          }
+
+          // 날짜 (baseDT 우선)
+          const dateText = item.baseDT || item.createDT || item.displayDT || null;
+          const publishedAt = dateText ? parseDate(dateText)?.toISOString() : undefined;
+
+          console.log(
+            `[와이즈앱 API] Article: "${title.substring(0, 40)}..." | Date: ${dateText || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`
+          );
+
+          // 7일 이내 확인
+          if (!isWithinDays(publishedAt, 14, title)) {
+            console.log(`[와이즈앱 API] SKIP (too old): ${title.substring(0, 40)}...`);
+            continue;
+          }
+
+          // 미리보기 (metaDesc 우선, content HTML은 후순위)
+          const contentPreview = item.metaDesc?.trim().substring(0, 500) || undefined;
+
+          articles.push({
+            source_id: sourceId,
+            source_name: source.name,
+            source_url: url,
+            title,
+            thumbnail_url: thumbnailUrl,
+            content_preview: contentPreview,
+            published_at: publishedAt,
+            category,
+          });
+
+          console.log(`[와이즈앱 API] ✅ Added: "${title.substring(0, 40)}..."`);
+        } catch (error) {
+          console.error('[와이즈앱 API] Error parsing item:', error);
+        }
+      }
+
+      console.log(`[와이즈앱 API] Total articles: ${articles.length}`);
+      return articles;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
-    console.error('[와이즈앱] Crawl error:', error);
+    console.error('[와이즈앱 API] Crawl error:', error);
     return [];
   }
 }

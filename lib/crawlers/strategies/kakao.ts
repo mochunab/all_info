@@ -8,6 +8,7 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -122,7 +123,7 @@ export class KakaoStrategy implements CrawlStrategy {
           if (!item) continue;
 
           // 7일 이내 필터링
-          if (!isWithinDays(item.dateStr, 7, item.title)) {
+          if (!isWithinDays(item.dateStr, 14, item.title)) {
             console.log(`[KAKAO] SKIP (too old): ${item.title.substring(0, 40)}...`);
             continue;
           }
@@ -147,8 +148,14 @@ export class KakaoStrategy implements CrawlStrategy {
   private parseFeedItem(
     feedItem: Parser.Item & { contentEncoded?: string; creator?: string }
   ): RawContentItem | null {
-    const title = feedItem.title?.trim();
-    if (!title) return null;
+    const rawTitle = feedItem.title?.trim();
+    if (!rawTitle) return null;
+
+    const title = processTitle(rawTitle);
+    if (!title) {
+      console.log(`[PLATFORM_KAKAO] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+      return null;
+    }
 
     let link = feedItem.link?.trim();
     if (!link) return null;
@@ -213,10 +220,16 @@ export class KakaoStrategy implements CrawlStrategy {
         try {
           const $el = $(el);
           const $link = $el.find('a').first();
-          const title = $el.find('.tit_article, .title, h2').text().trim();
+          const rawTitle = $el.find('.tit_article, .title, h2').text().trim();
           let href = $link.attr('href');
 
-          if (!title || !href) return;
+          if (!rawTitle || !href) return;
+
+          const title = processTitle(rawTitle);
+          if (!title) {
+            console.log(`[PLATFORM_KAKAO] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+            return;
+          }
 
           // 절대 URL로 변환
           if (!href.startsWith('http')) {
@@ -232,7 +245,7 @@ export class KakaoStrategy implements CrawlStrategy {
           const dateStr = $el.find('.publish_time, .date, time').text().trim() || null;
 
           // 7일 이내 필터링
-          if (!isWithinDays(dateStr, 7, title)) {
+          if (!isWithinDays(dateStr, 14, title)) {
             return;
           }
 
@@ -280,10 +293,16 @@ export class KakaoStrategy implements CrawlStrategy {
         try {
           const $el = $(el);
           const $link = $el.find('a').first();
-          const title = $el.find('.tit_article, .title, h3').text().trim();
+          const rawTitle = $el.find('.tit_article, .title, h3').text().trim();
           let href = $link.attr('href');
 
-          if (!title || !href) return;
+          if (!rawTitle || !href) return;
+
+          const title = processTitle(rawTitle);
+          if (!title) {
+            console.log(`[PLATFORM_KAKAO] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+            return;
+          }
 
           // 절대 URL로 변환
           if (!href.startsWith('http')) {
@@ -301,7 +320,7 @@ export class KakaoStrategy implements CrawlStrategy {
           const dateStr = $el.find('.date, time').text().trim() || null;
 
           // 7일 이내 필터링
-          if (!isWithinDays(dateStr, 7, title)) {
+          if (!isWithinDays(dateStr, 14, title)) {
             return;
           }
 
@@ -350,12 +369,18 @@ export class KakaoStrategy implements CrawlStrategy {
         try {
           const $el = $(el);
           const $link = $el.find('a[href*="/@"]').first();
-          const title =
+          const rawTitle =
             $el.find('.tit_article, .title, h2, h3').first().text().trim() ||
             $link.text().trim();
           let href = $link.attr('href');
 
-          if (!title || !href) return;
+          if (!rawTitle || !href) return;
+
+          const title = processTitle(rawTitle);
+          if (!title) {
+            console.log(`[PLATFORM_KAKAO] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+            return;
+          }
 
           // 절대 URL로 변환
           if (!href.startsWith('http')) {
@@ -373,7 +398,7 @@ export class KakaoStrategy implements CrawlStrategy {
           const dateStr = $el.find('.date, time, .publish_time').text().trim() || null;
 
           // 7일 이내 필터링
-          if (!isWithinDays(dateStr, 7, title)) {
+          if (!isWithinDays(dateStr, 14, title)) {
             return;
           }
 
