@@ -99,23 +99,59 @@ export async function POST(request: NextRequest) {
       rssUrl?: string;
     }[] = [];
 
-    // 모든 URL에 대해 통합 전략 해석 실행 (9단계 파이프라인)
+    // 1단계: 기존 소스 일괄 조회 (N개 개별 SELECT → 1개 배치 SELECT)
+    const allUrls = sources
+      .filter((s: { url?: string }) => s.url)
+      .map((s: { url: string }) => s.url.trim());
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existingSourcesData } = await (supabase as any)
+      .from('crawl_sources')
+      .select('id, config, crawler_type, base_url, crawl_url')
+      .in('base_url', allUrls);
+
+    type ExistingSource = {
+      id: number;
+      config: Record<string, unknown>;
+      crawler_type: string;
+      base_url: string;
+      crawl_url: string | null;
+    };
+    const existingMap = new Map<string, ExistingSource>(
+      (existingSourcesData || []).map((s: ExistingSource) => [s.base_url, s])
+    );
+
+    // 2단계: 분석이 필요한 URL만 필터링
+    // - 신규 소스 (DB에 없음)
+    // - 크롤러 타입이 AUTO이거나 미지정인 소스 (재분석 요청)
+    const urlsNeedingAnalysis = sources
+      .filter((s: { url?: string; crawlerType?: string }) =>
+        s.url && (
+          !existingMap.has(s.url.trim()) ||
+          !s.crawlerType ||
+          s.crawlerType === 'AUTO'
+        )
+      )
+      .map((s: { url: string }) => s.url.trim());
+
+    // 3단계: 필요한 URL만 전략 해석 실행 (9단계 파이프라인)
     const resolutionMap = new Map<
       string,
       Awaited<ReturnType<typeof resolveStrategy>>
     >();
-    const allUrls = sources
-      .filter((s: { url?: string }) => s.url)
-      .map((s: { url: string }) => s.url);
 
-    if (allUrls.length > 0) {
+    if (urlsNeedingAnalysis.length > 0) {
+      const skippedCount = allUrls.length - urlsNeedingAnalysis.length;
       console.log(`\n${'='.repeat(80)}`);
-      console.log(`🚀 [소스 저장] ${allUrls.length}개 URL 크롤링 타입 자동 분석 시작 (9단계 파이프라인)`);
+      console.log(`🚀 [소스 저장] ${urlsNeedingAnalysis.length}개 URL 크롤링 타입 자동 분석 시작 (9단계 파이프라인)`);
+      if (skippedCount > 0) {
+        console.log(`⏭️  ${skippedCount}개 기존 소스 분석 스킵 (크롤러 타입 이미 지정됨)`);
+      }
       console.log(`${'='.repeat(80)}\n`);
 
       const resolutions = await Promise.allSettled(
-        allUrls.map((url: string, index: number) => {
-          console.log(`📍 [${index + 1}/${allUrls.length}] 분석 대기 중: ${url}`);
+        urlsNeedingAnalysis.map((url: string, index: number) => {
+          console.log(`📍 [${index + 1}/${urlsNeedingAnalysis.length}] 분석 대기 중: ${url}`);
           return resolveStrategy(url);
         })
       );
@@ -124,7 +160,7 @@ export async function POST(request: NextRequest) {
       console.log(`📊 분석 결과 요약`);
       console.log(`${'─'.repeat(80)}`);
 
-      allUrls.forEach((url: string, i: number) => {
+      urlsNeedingAnalysis.forEach((url: string, i: number) => {
         const result = resolutions[i];
         if (result.status === 'fulfilled') {
           resolutionMap.set(url, result.value);
@@ -133,6 +169,7 @@ export async function POST(request: NextRequest) {
           const methodLabel = {
             'domain-override': '🔧 도메인 오버라이드',
             'rss-discovery': '📡 RSS 자동 발견',
+            'sitemap-discovery': '🗺️ Sitemap 자동 발견',
             'cms-detection': '🏗️  CMS 감지',
             'url-pattern': '🔗 URL 패턴',
             'rule-analysis': '🎯 Rule-based',
@@ -147,18 +184,18 @@ export async function POST(request: NextRequest) {
             'error': '❌ 오류'
           }[method] || method;
 
-          console.log(`✅ [${i + 1}/${allUrls.length}] ${result.value.primaryStrategy}`);
+          console.log(`✅ [${i + 1}/${urlsNeedingAnalysis.length}] ${result.value.primaryStrategy}`);
           console.log(`   └─ 방법: ${methodLabel}`);
           console.log(`   └─ 신뢰도: ${confidence}%`);
         } else {
-          console.error(`❌ [${i + 1}/${allUrls.length}] 분석 실패`);
+          console.error(`❌ [${i + 1}/${urlsNeedingAnalysis.length}] 분석 실패`);
           console.error(`   └─ URL: ${url}`);
           console.error(`   └─ 오류: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
         }
       });
 
       console.log(`\n${'='.repeat(80)}`);
-      console.log(`🎉 ${allUrls.length}개 소스 분석 완료`);
+      console.log(`🎉 ${urlsNeedingAnalysis.length}개 소스 분석 완료`);
       console.log(`${'='.repeat(80)}\n`);
     }
 
@@ -186,13 +223,8 @@ export async function POST(request: NextRequest) {
         console.log(`   ✨ 최적화된 URL: ${crawlUrl}`);
       }
 
-      // Check if source already exists (base_url로만 검색)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: existing } = await (supabase as any)
-        .from('crawl_sources')
-        .select('id, config, crawler_type, base_url, crawl_url')
-        .eq('base_url', url)
-        .single();
+      // 배치 조회 결과에서 기존 소스 찾기 (개별 SELECT 제거)
+      const existing = existingMap.get(url) || null;
 
       if (existing) {
         console.log(`   🔄 기존 소스 업데이트 모드`);
@@ -291,6 +323,7 @@ export async function POST(request: NextRequest) {
           const methodLabel = {
             'domain-override': '도메인 오버라이드',
             'rss-discovery': 'RSS 자동 발견',
+            'sitemap-discovery': 'Sitemap 자동 발견',
             'cms-detection': 'CMS 감지',
             'url-pattern': 'URL 패턴',
             'rule-analysis': 'Rule-based',

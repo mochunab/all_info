@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 시스템 아키텍처 & 디버깅 가이드
 
 > AI와 개발자 모두를 위한 프로젝트 전체 아키텍처 문서
-> 최종 업데이트: 2026-02-09
+> 최종 업데이트: 2026-02-19 (v1.5.2)
 
 ## 시스템 전체 구조
 
@@ -39,9 +39,14 @@
                │  - crawl_    │     │  - RSS           │    │     (AI 요약)        │
                │    sources   │     │  - PLATFORM_NAVER│    │                      │
                │  - crawl_    │     │  - PLATFORM_KAKAO│    │  2. detect-crawler-  │
-               │    logs      │     │  - NEWSLETTER    │    │     type (NEW!)      │
+               │    logs      │     │  - NEWSLETTER    │    │     type             │
                │  - categories│     │  - API           │    │     (AI 타입 감지)   │
                └──────────────┘     └──────────────────┘    │     │                │
+                                           │                │                      │
+                                           │                │  3. detect-api-      │
+                                           │                │     endpoint (NEW!)  │
+                                           │                │     (API 자동 감지)  │
+                                           │                │     │                │
                                            │                │     ▼                │
                                            │                │  OpenAI API          │
                                            │                │  • GPT-5-nano        │
@@ -99,6 +104,7 @@ lib/crawlers/strategies/index.ts      → 전략 팩토리 (getStrategy, inferCr
 lib/crawlers/strategies/static.ts     → STATIC: Cheerio 정적 HTML (페이지네이션)
 lib/crawlers/strategies/spa.ts        → SPA: Puppeteer 동적 렌더링
 lib/crawlers/strategies/rss.ts        → RSS: rss-parser 피드 파싱
+lib/crawlers/strategies/sitemap.ts    → SITEMAP: sitemap.xml 파싱 (RSS 없는 사이트)
 lib/crawlers/strategies/naver.ts      → PLATFORM_NAVER: 네이버 블로그 특화
 lib/crawlers/strategies/kakao.ts      → PLATFORM_KAKAO: 카카오 브런치 특화
 lib/crawlers/strategies/newsletter.ts → NEWSLETTER: 뉴스레터 크롤러
@@ -120,12 +126,18 @@ lib/crawlers/sites/buybrand.ts        → 바이브랜드
 ### 크롤러 타입 자동 감지 (2026-02-14 추가)
 
 ```
-lib/crawlers/strategy-resolver.ts     → 8단계 크롤러 타입 자동 감지 파이프라인
-lib/crawlers/infer-type.ts            → URL 패턴 기반 타입 추론 (confidence 포함)
+lib/crawlers/strategy-resolver.ts     → 8+단계 크롤러 타입 자동 감지 파이프라인 (step 7.5 포함)
+lib/crawlers/infer-type.ts            → URL 패턴 기반 타입 추론 (confidence 포함, SPA shell 감지 강화)
 lib/crawlers/auto-detect.ts           → detectCrawlerTypeByAI() - AI 타입 감지 함수
                                          detectByRules() - Rule-based 셀렉터 분석
-                                         detectByAI() - AI 셀렉터 탐지
-supabase/functions/detect-crawler-type/index.ts → Edge Function (GPT-5-nano 크롤러 타입 감지)
+                                         detectByAI() - AI 셀렉터 탐지 (SPA shell 감지 규칙 추가)
+lib/crawlers/url-optimizer.ts         → URL 최적화 (RSS/피드 URL 자동 발견)
+lib/crawlers/title-cleaner.ts         → 제목 클리닝 유틸리티
+lib/crawlers/quality-filter.ts        → 기사 품질 필터 (광고성 콘텐츠 제거)
+lib/crawlers/firecrawl-client.ts      → Firecrawl API 클라이언트
+lib/crawlers/strategies/firecrawl.ts  → Firecrawl 기반 크롤러 전략
+supabase/functions/detect-crawler-type/index.ts  → Edge Function (GPT-5-nano 크롤러 타입 감지)
+supabase/functions/detect-api-endpoint/index.ts  → Edge Function (Puppeteer+AI API 엔드포인트 탐지)
 ```
 
 ### AI 요약
@@ -249,15 +261,23 @@ scripts/crawl.ts                      → 크롤링 CLI (npx tsx)
   │   │
   │   ├─ runCrawler(source, supabase) 호출 (lib/crawlers/index.ts)
   │   │   │
-  │   │   ├─ [크롤러 선택] getCrawler(source)
-  │   │   │   ├─ inferCrawlerType(url) — URL 패턴으로 전략 자동 추론
-  │   │   │   │   blog.naver.com  → PLATFORM_NAVER
-  │   │   │   │   brunch.co.kr    → PLATFORM_KAKAO
-  │   │   │   │   /feed, /rss     → RSS
-  │   │   │   │   stibee.com      → NEWSLETTER
-  │   │   │   │   기타             → STATIC (기본)
-  │   │   │   ├─ 유효한 전략이면 → crawlWithStrategy() 사용
-  │   │   │   └─ 아니면 → LEGACY_CRAWLER_REGISTRY에서 사이트별 크롤러 폴백
+  │   │   ├─ [0단계: URL 최적화] effectiveUrl 결정
+  │   │   │   │  crawl_url이 설정되어 있으면 사용, 없으면 base_url 사용
+  │   │   │   │  • effectiveUrl = source.crawl_url || source.base_url
+  │   │   │   │  • base_url: 사용자 입력 원본 (UI 표시용)
+  │   │   │   │  • crawl_url: 자동 최적화된 URL (소스 저장 시 생성)
+  │   │   │   └─ effectiveSource = { ...source, base_url: effectiveUrl }
+  │   │   │
+  │   │   ├─ [크롤러 선택] getCrawler(effectiveSource) — (2026-02-19 우선순위 개선)
+  │   │   │   ├─ 1. LEGACY_CRAWLER_REGISTRY 최우선 확인 (검증된 전용 크롤러)
+  │   │   │   │   └─ wiseapp, brunch, retailtalk, stonebc, iconsumer, openads, buybrand
+  │   │   │   ├─ 2. source.crawler_type 명시적 설정 → crawlWithStrategy() 사용
+  │   │   │   └─ 3. URL 패턴 추론 (inferCrawlerType) → crawlWithStrategy() 폴백
+  │   │   │       blog.naver.com  → PLATFORM_NAVER
+  │   │   │       brunch.co.kr    → PLATFORM_KAKAO
+  │   │   │       /feed, /rss     → RSS
+  │   │   │       stibee.com      → NEWSLETTER
+  │   │   │       기타             → SPA (기본)
   │   │   │
   │   │   ├─ [목록 크롤링] strategy.crawlList(source)
   │   │   │   └─ RawContentItem[] 반환 (title, link, dateStr, thumbnail 등)
@@ -271,6 +291,13 @@ scripts/crawl.ts                      → 크롤링 CLI (npx tsx)
   │   │   │           4. body 전체 텍스트 (최후 수단)
   │   │   │       └─ generatePreview() → 최대 500자로 잘라서 content_preview 저장
   │   │   │       └─ 요청 간 딜레이 (기본 500ms)
+  │   │   │
+  │   │   ├─ [본문 미리보기 2단계 fallback] (레거시 크롤러 포함, 2026-02-19 추가)
+  │   │   │   └─ content_preview가 없거나 50자 미만인 아티클만 대상
+  │   │   │       ├─ 1차: fetchArticleContent() — Cheerio 정적 파싱 (빠름)
+  │   │   │       └─ 2차: spaStrategy.crawlContent() — Puppeteer JS 렌더링 (SPA 대응)
+  │   │   │           └─ spa.crawlContent: `load` 이벤트 + 3초 대기 (networkidle2 타임아웃 방지)
+  │   │   │   └─ 루프 종료 후 closeBrowser() 호출 (브라우저 메모리 정리)
   │   │   │
   │   │   ├─ [중복 체크 + 저장] saveArticles()
   │   │   │   └─ source_id (URL 해시) 기준 SELECT → 이미 있으면 SKIP
@@ -295,14 +322,14 @@ scripts/crawl.ts                      → 크롤링 CLI (npx tsx)
 **핵심 포인트**:
 - **보안**: 클라이언트는 `/api/crawl/trigger`만 호출 → 서버가 내부에서 `CRON_SECRET`을 붙여 `/api/crawl/run` 호출 (프록시 패턴)
 - **중복 방지**: `source_id` (URL 기반 해시) UNIQUE 제약으로 같은 아티클 재저장 차단
-- **전략 선택**: URL 기반 자동 추론 우선 → DB의 crawler_type → 레거시 사이트별 크롤러 순
+- **전략 선택**: 레거시 사이트별 크롤러 최우선 → DB의 crawler_type → URL 기반 자동 추론 순 (2026-02-19 수정)
 - **타임아웃**: Vercel maxDuration 300초, 개별 fetch 15초 타임아웃
 
 ---
 
 ### 1-1. AI 기반 크롤러 타입 자동 감지 시스템 (2026-02-14 추가)
 
-새로운 소스 저장 시 최적의 크롤러 타입을 **자동으로 감지**하는 8단계 파이프라인.
+새로운 소스 저장 시 최적의 크롤러 타입을 **자동으로 감지**하는 9단계 파이프라인.
 Rule-based 분석이 불확실할 때 **GPT-5-nano AI**가 HTML 구조를 분석하여 결정.
 
 #### 아키텍처
@@ -318,7 +345,7 @@ Rule-based 분석이 불확실할 때 **GPT-5-nano AI**가 HTML 구조를 분석
 │  lib/crawlers/strategy-resolver.ts                                │
 │  resolveStrategy(url) → StrategyResolution                         │
 │                                                                    │
-│  8단계 파이프라인:                                                  │
+│  9단계 파이프라인:                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │ 1. HTML 페이지 다운로드 (15초 타임아웃)                      │  │
 │  │    └─ 실패 시 → URL 패턴 폴백                                │  │
@@ -327,6 +354,12 @@ Rule-based 분석이 불확실할 때 **GPT-5-nano AI**가 HTML 구조를 분석
 │  │    └─ <link rel="alternate" type="rss+xml"> 태그 탐색       │  │
 │  │    └─ RSS 유효성 검증 (3초 타임아웃)                         │  │
 │  │    └─ ✅ 성공 → RSS (confidence: 0.95) 리턴                  │  │
+│  ├────────────────────────────────────────────────────────────┤  │
+│  │ 2.5. 🆕 Sitemap 자동 발견 (2026-02-19 추가)                  │  │
+│  │    └─ /sitemap.xml, /sitemap_index.xml 후보 시도             │  │
+│  │    └─ <urlset> 또는 <sitemapindex> 태그 확인                 │  │
+│  │    └─ ✅ 성공 → SITEMAP (confidence: 0.90) 리턴              │  │
+│  │    └─ sitemap URL은 config.crawl_config.rssUrl에 저장        │  │
 │  ├────────────────────────────────────────────────────────────┤  │
 │  │ 3. CMS 플랫폼 감지                                            │  │
 │  │    └─ WordPress (wp-content, wp-includes)                   │  │
@@ -348,28 +381,43 @@ Rule-based 분석이 불확실할 때 **GPT-5-nano AI**가 HTML 구조를 분석
 │  │    └─ noscript 경고 → +0.2                                   │  │
 │  │    └─ score >= 0.5 → ✅ SPA 리턴                             │  │
 │  ├────────────────────────────────────────────────────────────┤  │
-│  │ 6. Rule-based CSS 셀렉터 패턴 분석 (detectByRules)           │  │
-│  │    └─ 테이블/리스트/반복 요소 패턴 매칭                       │  │
-│  │    └─ 셀렉터: container, item, title, link, date, thumbnail │  │
-│  │    └─ confidence >= 0.7 → ✅ STATIC + selectors 리턴         │  │
-│  │    └─ confidence < 0.7 → ⚠️ AI 분석으로 진행                │  │
+│  │ [Stage 6 Rule-based CSS 셀렉터 패턴 분석 — v1.5.1에서 제거]  │  │
+│  │  └─ detectByRules() 파이프라인에서 제외 → AI가 항상 실행     │  │
 │  ├────────────────────────────────────────────────────────────┤  │
-│  │ 7. 🆕 AI 크롤러 타입 감지 (detectCrawlerTypeByAI)            │  │
-│  │    └─ Edge Function 호출 (detect-crawler-type)              │  │
-│  │       └─ GPT-5-nano가 HTML 구조 분석 (30초 타임아웃)         │  │
-│  │       └─ 분석 요소:                                           │  │
-│  │           • URL 구조 (도메인, 쿼리 파라미터)                  │  │
-│  │           • HTML 구조 (SSR vs CSR 지표)                       │  │
-│  │           • JavaScript 프레임워크 (React, Vue, Angular)       │  │
-│  │           • 콘텐츠 렌더링 방식                                │  │
-│  │           • 플랫폼 특화 패턴                                  │  │
-│  │       └─ 출력: { crawlerType, confidence, reasoning }        │  │
-│  │    └─ confidence >= 0.6 → ✅ AI 결과 사용                    │  │
-│  │    └─ 기존 rule-based 셀렉터 보존 (score >= 0.5일 때)        │  │
+│  │ 7+8. 🆕 AI 감지 병렬 실행 (Promise.all, v1.5.1)              │  │
+│  │    ├─ 7. AI 크롤러 타입 감지 (detectCrawlerTypeByAI)         │  │
+│  │    │    └─ Edge Function 호출 (detect-crawler-type)         │  │
+│  │    │       └─ GPT-5-nano가 HTML 구조 분석 (30초 타임아웃)    │  │
+│  │    │       └─ 출력: { crawlerType, confidence, reasoning }  │  │
+│  │    │    └─ confidence >= 0.6 → ✅ AI 결과 사용               │  │
+│  │    │                                                         │  │
+│  │    └─ 8. AI 셀렉터 탐지 (detectContentSelectors, infer-type) │  │
+│  │         └─ HTML 전처리: <head> + 인라인 스크립트 제거 후 50KB│  │
+│  │         └─ trySemanticDetection: <article> 3개+ 시만 신뢰    │  │
+│  │         └─ Tailwind 콜론 이스케이프 (.dark:x → .dark\:x)    │  │
+│  │         └─ AI JSON 수리: \: → \\: (Bad escaped char 방지)    │  │
+│  │         └─ ✅ 성공 → STATIC + AI selectors 리턴              │  │
 │  ├────────────────────────────────────────────────────────────┤  │
-│  │ 8. AI 셀렉터 탐지 (detectByAI) - 최종 폴백                   │  │
-│  │    └─ GPT-4o-mini로 CSS 셀렉터 추출                          │  │
-│  │    └─ ✅ 성공 → STATIC + AI selectors 리턴                   │  │
+│  │ 7.5. 🆕 API 엔드포인트 자동 감지 (AI 타입=SPA 확정 후)         │  │
+│  │    └─ SPA 타입 확정 시 detect-api-endpoint Edge Function 호출│  │
+│  │       └─ Puppeteer로 네트워크 요청 탐지                      │  │
+│  │       └─ GPT-5-nano가 API 엔드포인트 식별                    │  │
+│  │       └─ ✅ API 발견 → crawler_type=API + crawl_config 저장  │  │
+│  │       └─ 미발견 → SPA 타입 그대로 유지                       │  │
+│  │    └─ crawl_config 구조:                                     │  │
+│  │       { endpoint, method, headers, body,                    │  │
+│  │         responseMapping, urlTransform }                     │  │
+│  ├────────────────────────────────────────────────────────────┤  │
+│  │ 8.5. 🆕 SPA 셀렉터 재감지 (v1.5.2, 정적 HTML 신뢰도 낮을 때) │  │
+│  │    └─ 조건: SPA 페이지 && 셀렉터 confidence < 0.5           │  │
+│  │    └─ getRenderedHTML(url) → Puppeteer 렌더링 HTML 획득      │  │
+│  │       └─ load 이벤트 후 3초 대기 (JS 실행 완료)              │  │
+│  │       └─ 이미지/폰트 차단 (속도 최적화)                      │  │
+│  │    └─ 렌더링 HTML로 detectContentSelectors 재실행            │  │
+│  │       └─ 재감지 신뢰도 > 기존 → ✅ Puppeteer HTML 셀렉터 채택│  │
+│  │       └─ 재감지 실패 → 기존 결과 유지 (graceful fallback)    │  │
+│  │    └─ 해결: JS 로드 아티클 목록을 정적 HTML에서 찾지 못하던  │  │
+│  │       문제 (예: joongang.co.kr/bicnic/trend 뉴스레터 오탐)   │  │
 │  ├────────────────────────────────────────────────────────────┤  │
 │  │ Default: URL 패턴 기본값 사용 (최소 confidence: 0.3)         │  │
 │  └────────────────────────────────────────────────────────────┘  │
@@ -377,11 +425,12 @@ Rule-based 분석이 불확실할 때 **GPT-5-nano AI**가 HTML 구조를 분석
                        │
                        ▼
         ┌──────────────────────────────────┐
-        │  DB 저장 (crawl_sources)          │
-        │  - crawler_type: 감지된 타입      │
-        │  - config.selectors: 셀렉터       │
-        │  - config._detection: 메타데이터  │
-        └──────────────────────────────────┘
+        │  DB 저장 (crawl_sources)                      │
+        │  - crawler_type: 감지된 타입 (SPA→API 가능)  │
+        │  - config.selectors: 셀렉터                  │
+        │  - config.crawl_config: API 설정 (API타입 시)│
+        │  - config._detection: 메타데이터              │
+        └──────────────────────────────────────────────┘
 ```
 
 #### AI 크롤러 타입 감지 Edge Function
@@ -413,14 +462,80 @@ detectCrawlerTypeByAI(html, url)
 
 | 순서 | 방법 | Detection Method | Confidence | 설명 |
 |------|------|-----------------|------------|------|
-| 1 | RSS 자동 발견 | `rss-discovery` | 0.95 | `<link>` 태그 + 유효성 검증 |
+| 1 | RSS 자동 발견 | `rss-discovery` | 0.95 | `<link>` 태그 + 유효성 검증. **6개 경로 Promise.all 병렬** (v1.5.1) |
+| 1.5 | 🆕 Sitemap 발견 | `sitemap-discovery` | 0.90 | `/sitemap.xml` 탐색 → `<urlset>` 확인. **2개 후보 Promise.all 병렬** (v1.5.1) |
 | 2 | CMS 감지 | `cms-detection` | 0.75 | WordPress, Tistory, Ghost 등 |
 | 3 | URL 패턴 (고신뢰) | `url-pattern` | 0.85~0.95 | `.go.kr`, `naver.com`, `/feed` 등 |
 | 4 | SPA 스코어링 | `rule-analysis` | 0.5~1.0 | body 텍스트, 마운트 포인트 분석 |
-| 5 | Rule-based 셀렉터 | `rule-analysis` | 0.5~1.0 | 테이블/리스트 패턴 매칭 |
-| 6 | 🆕 AI 타입 감지 | `ai-type-detection` | 0.6~1.0 | GPT-5-nano HTML 구조 분석 |
-| 7 | AI 셀렉터 탐지 | `ai-selector-detection` | 0.5~1.0 | GPT-4o-mini CSS 셀렉터 추출 |
+| ~~5~~ | ~~Rule-based 셀렉터~~ | ~~`rule-analysis`~~ | ~~0.5~1.0~~ | **v1.5.1에서 제거** — AI가 항상 실행하므로 불필요 |
+| 6 | AI 타입 감지 | `ai-type-detection` | 0.6~1.0 | GPT-5-nano HTML 구조 분석. **Stage 8과 Promise.all 병렬** (v1.5.1) |
+| 6.5 | 🆕 AI 셀렉터 탐지 | `ai-selector-detection` | 0.5~1.0 | infer-type.ts (HTML 전처리 + Tailwind 이스케이프, v1.5.1). Stage 6과 병렬 |
+| 7.5 | 🆕 API 엔드포인트 감지 | `api-detection` | 자동 | SPA 확정 후 숨겨진 API 탐지 → crawler_type=API 전환 |
+| 8.5 | 🆕 SPA 셀렉터 재감지 | `ai-selector-detection` | 재시도 | SPA + confidence < 0.5 → Puppeteer 렌더링 HTML로 재감지 (v1.5.2) |
 | 8 | URL 패턴 (기본값) | `default` | 0.3~0.5 | 모든 분석 실패 시 |
+
+#### detect-api-endpoint Edge Function (2026-02-19 추가)
+
+**파일**: `supabase/functions/detect-api-endpoint/index.ts`
+
+SPA 타입이 확정된 후, 숨겨진 REST API 엔드포인트를 자동으로 찾아 `crawl_config`에 저장합니다.
+
+```typescript
+// Edge Function 호출 흐름 (strategy-resolver.ts Step 7.5)
+detectApiEndpoint(url)
+  └─ Puppeteer로 페이지 방문 + 네트워크 요청 캡처
+     └─ XHR/Fetch 요청 목록 수집
+     └─ POST {SUPABASE_URL}/functions/v1/detect-api-endpoint
+        └─ Body: { url, networkRequests: [...] }
+
+        // Edge Function 내부 (Deno)
+        ├─ GPT-5-nano가 네트워크 요청 목록 분석
+        │  └─ 콘텐츠 목록 API vs 기타 요청 구분
+        │  └─ POST body 구조, 응답 스키마 추론
+        │
+        └─ 출력: {
+             endpoint, method, headers, body,
+             responseMapping: { items, title, link, thumbnail, date },
+             urlTransform: { linkTemplate, thumbnailPrefix }
+           }
+```
+
+**crawl_config 저장 구조 (API 타입)**:
+```json
+{
+  "crawl_config": {
+    "endpoint": "https://example.com/api/getList.json",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json;charset=UTF-8",
+      "Accept": "application/json, text/plain, */*",
+      "Origin": "https://example.com",
+      "Referer": "https://example.com/list/"
+    },
+    "body": {
+      "sortType": "new",
+      "pageInfo": { "currentPage": 0, "pagePerCnt": 30 }
+    },
+    "responseMapping": {
+      "items": "dataList",
+      "title": "title",
+      "link": "urlKeyword",
+      "thumbnail": "imgPath",
+      "date": "regDt"
+    },
+    "urlTransform": {
+      "linkTemplate": "https://example.com/detail/{urlKeyword}",
+      "linkFields": ["urlKeyword"],
+      "thumbnailPrefix": "https://cdn.example.com"
+    }
+  },
+  "_detection": {
+    "method": "api-detection",
+    "confidence": 0.9,
+    "reasoning": "POST /api/getList.json 탐지, 30개 아이템 반환 확인"
+  }
+}
+```
 
 #### 사용 예시
 
@@ -537,14 +652,20 @@ page.tsx (메인 페이지)
   └─ handleSave()
        └─ POST /api/sources
             ├─ verifySameOrigin() 또는 verifyCronAuth() 필수
-            ├─ 모든 URL에 대해 병렬로 analyzePageStructure() 실행
-            │   ├─ Rule-based: cheerio로 HTML 구조 패턴 매칭
-            │   ├─ AI fallback: GPT-5-nano/GPT-4o-mini (confidence < 0.5일 때)
-            │   └─ SPA 감지 시 crawler_type을 SPA로 override
-            ├─ URL로 크롤러 타입 자동 추론 (inferCrawlerType)
-            ├─ 기존 소스 → UPDATE (selectors 없으면 분석 결과 적용)
-            ├─ 신규 소스 → INSERT (config에 selectors 포함)
-            └─ 응답에 analysis 배열 포함 (method, confidence, crawlerType)
+            ├─ [URL 최적화] optimizeUrl() 실행 (lib/crawlers/url-optimizer.ts)
+            │   ├─ 1. 도메인 매핑 (수동 규칙, confidence: 0.95)
+            │   ├─ 2. 경로 패턴 탐색 (/feed, /rss, /blog 등, confidence: 0.8)
+            │   ├─ 3. HTML 링크 발견 (RSS 태그, 네비게이션, confidence: 0.75)
+            │   └─ → crawl_url 생성 (최적화 실패 시 NULL)
+            ├─ 모든 URL에 대해 resolveStrategy() 실행 (8+단계 파이프라인)
+            │   ├─ Rule-based: RSS 발견, CMS 감지, URL 패턴, SPA 스코어링
+            │   ├─ AI 타입 감지: GPT-5-nano (confidence < 0.7일 때)
+            │   ├─ 🆕 API 감지 (Step 7.5): SPA 확정 시 detect-api-endpoint 호출
+            │   │   └─ API 발견 → crawler_type=API, crawl_config 저장
+            │   └─ AI 셀렉터 탐지: GPT-4o-mini (SPA shell 감지 포함)
+            ├─ 기존 소스 → UPDATE (crawler_type, config 분석 결과 적용)
+            ├─ 신규 소스 → INSERT (crawler_type, config.selectors/crawl_config 포함)
+            └─ 응답에 analysis 배열 포함 (method, confidence, crawlerType, apiDetected)
 ```
 
 ---
@@ -556,7 +677,7 @@ page.tsx (메인 페이지)
 | `/api/articles` | GET | 없음 | 아티클 목록 (페이지네이션, 검색, 필터) | 기본 |
 | `/api/articles/sources` | GET | 없음 | 활성 소스명 목록 (distinct) | 기본 |
 | `/api/sources` | GET | 없음 | 크롤 소스 목록 | 기본 |
-| `/api/sources` | POST | SameOrigin 또는 CRON | 소스 추가/수정 (auto-detect 셀렉터 분석 포함) | 기본 |
+| `/api/sources` | POST | SameOrigin 또는 CRON | 소스 추가/수정 (auto-detect 셀렉터 분석 + API 감지 포함) | 300초 |
 | `/api/categories` | GET | 없음 | 카테고리 목록 | 기본 |
 | `/api/categories` | POST | SameOrigin 또는 CRON | 카테고리 추가 | 기본 |
 | `/api/crawl/run` | POST | CRON_SECRET | 전체 크롤링 + 요약 배치 | 300초 |
@@ -593,6 +714,7 @@ page.tsx (메인 페이지)
 | `STATIC` | Cheerio | 정적 HTML 페이지 | 가장 빠름, CSS 셀렉터 기반 |
 | `SPA` | Puppeteer | JavaScript 렌더링 필요 | Headless Chrome, 느림 |
 | `RSS` | rss-parser | RSS/Atom 피드 | 가장 안정적, 표준 포맷 |
+| `SITEMAP` | fetch + Cheerio | RSS 없는 정적 사이트 | sitemap.xml 파싱 → 각 URL 개별 fetch, 최대 15개 |
 | `PLATFORM_NAVER` | Cheerio | 네이버 블로그 | 네이버 특화 파싱 |
 | `PLATFORM_KAKAO` | Cheerio | 카카오 브런치 | 브런치 특화 파싱 |
 | `NEWSLETTER` | Cheerio | Stibee, Substack 등 | 뉴스레터 구조 파싱 |
@@ -606,32 +728,37 @@ URL 분석 → 최적 전략 자동 선택
   brunch.co.kr    → PLATFORM_KAKAO
   /feed, /rss     → RSS
   stibee.com      → NEWSLETTER
-  기타            → STATIC (기본)
+  기타            → SPA (기본 — JS 렌더링으로 대부분 페이지 수집 가능)
 ```
 
-### CSS 셀렉터 자동 탐지 (auto-detect.ts)
+### CSS 셀렉터 자동 탐지 (infer-type.ts, v1.5.1 대폭 개선)
 
 소스 저장 시 (`POST /api/sources`) 페이지 HTML을 분석하여 최적의 셀렉터를 자동 감지:
 
 ```
-analyzePageStructure(url)
-  ├─ 1. fetchPage(url) — 15초 타임아웃, Chrome UA 헤더
-  ├─ 2. SPA 감지 — body 텍스트 < 200자 + #root/#app → spaDetected: true
-  ├─ 3. Rule-based (detectByRules) — cheerio 패턴 매칭
-  │   ├─ 테이블 구조 (table > tbody > tr)
-  │   ├─ 리스트 구조 (ul > li, ol > li)
-  │   └─ 반복 요소 (동일 클래스 div/article/section)
-  │   → 점수: title+link=0.6, +date=+0.2, +thumbnail=+0.1, 5개이상=+0.1
-  └─ 4. AI fallback (confidence < 0.5일 때만)
-      ├─ HTML 정리 후 5000자 truncate
-      ├─ GPT-5-nano (responses API) 우선
-      └─ 404시 GPT-4o-mini (chat.completions) fallback
+detectContentSelectors(url, html)   ← strategy-resolver.ts Stage 8에서 호출
+  ├─ 1. HTML 전처리 (v1.5.1 NEW)
+  │   ├─ <head>...</head> 전체 제거 (CSS/JS 번들 ~35KB 제거)
+  │   ├─ 200자 이상 인라인 <script>/<style> 제거
+  │   └─ 정리 후 50KB 제한 적용 → 아티클 카드 가시성 확보
+  │
+  ├─ 2. trySemanticDetection (v1.5.1 강화)
+  │   ├─ <article> 태그 3개+ → confidence 0.8 반환 (신뢰)
+  │   └─ 그 외 → AI 감지로 진행 (이전: <main>만으로도 0.9 반환하던 문제 수정)
+  │
+  └─ 3. AI 감지 (GPT-4o-mini) — 항상 실행 (Rule-based 제거로 인해)
+      ├─ 개선된 프롬프트: 아티클 카드 정의, REJECT 패턴 명시
+      │   ├─ REJECT: 카테고리/필터탭 (/c/category, ?tag=), 네비게이션, 통계 숫자
+      │   └─ REQUIRE: 슬러그/ID가 있는 상세 페이지 URL
+      ├─ JSON 수리: AI 생성 \: → \\: 변환 (Bad escaped character 방지)
+      └─ Tailwind 이스케이프: .dark:text-slate-200 → .dark\:text-slate-200
 ```
 
 결과가 `crawl_sources.config.selectors`에 저장되어 크롤링 시 DEFAULT_SELECTORS 대신 사용됨.
 
 ### 크롤러 설정 구조 (crawl_sources.config JSONB)
 
+**STATIC/SPA 타입 (셀렉터 기반)**:
 ```json
 {
   "selectors": {
@@ -653,10 +780,49 @@ analyzePageStructure(url)
     "param": "page",
     "maxPages": 3
   },
+  "category": "비즈니스",
+  "_detection": {
+    "method": "rule-analysis",
+    "confidence": 0.82,
+    "fallbackStrategies": []
+  }
+}
+```
+
+**API 타입 (crawl_config 기반, 2026-02-19 추가)**:
+```json
+{
   "crawl_config": {
-    "delay": 1000
+    "endpoint": "https://example.com/api/getList.json",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json;charset=UTF-8",
+      "Accept": "application/json, text/plain, */*",
+      "Origin": "https://example.com",
+      "Referer": "https://example.com/list/"
+    },
+    "body": {
+      "sortType": "new",
+      "pageInfo": { "currentPage": 0, "pagePerCnt": 30 }
+    },
+    "responseMapping": {
+      "items": "dataList",
+      "title": "title",
+      "link": "urlKeyword",
+      "thumbnail": "imgPath",
+      "date": "regDt"
+    },
+    "urlTransform": {
+      "linkTemplate": "https://example.com/detail/{urlKeyword}",
+      "linkFields": ["urlKeyword"],
+      "thumbnailPrefix": "https://cdn.example.com"
+    }
   },
-  "category": "비즈니스"
+  "_detection": {
+    "method": "api-detection",
+    "confidence": 0.9,
+    "reasoning": "Puppeteer 네트워크 탐지 + AI 분석"
+  }
 }
 ```
 
@@ -669,6 +835,21 @@ analyzePageStructure(url)
 4. body 전체 텍스트 (최후의 수단)
 → generatePreview()로 최대 500자 잘라서 content_preview에 저장
 ```
+
+### 레거시 크롤러 본문 추출 2단계 fallback (2026-02-19 추가)
+
+SPA/API 사이트는 Cheerio 정적 파싱이 실패(HTTP 404 또는 빈 body)하므로, `index.ts`의 본문 미리보기 추출 루프에 Puppeteer 2차 fallback이 적용됨.
+
+```
+content_preview가 없거나 < 50자인 아티클에 대해:
+  1차: fetchArticleContent(url)     — Cheerio (빠름, 정적 페이지)
+  2차: spaStrategy.crawlContent(url) — Puppeteer (SPA/JS 렌더링)
+    └─ spa.crawlContent 내부: waitUntil='load' + 3초 대기
+       (networkidle2는 폴링/WebSocket 유지 사이트에서 30초 타임아웃)
+루프 종료 후: closeBrowser() (Puppeteer 싱글톤 브라우저 정리)
+```
+
+**< 50자 조건의 이유**: API 전략의 `crawlContent`가 JSON 파싱 실패 시 `'{}'` (2자)를 반환하여 `content_preview`에 저장될 수 있음. 이 경우 falsy 체크(`!content_preview`)만으로는 Puppeteer fallback이 트리거되지 않음.
 
 ---
 
@@ -683,7 +864,6 @@ analyzePageStructure(url)
 | `source_name` | varchar(100) | 소스 이름 | 크롤링 시 |
 | `source_url` | text | 원본 기사 URL | 크롤링 시 |
 | `title` | varchar(500) | 기사 제목 | 크롤링 시 |
-| `thumbnail_url` | text | 썸네일 이미지 URL | 크롤링 시 |
 | `content_preview` | text | **원본 본문 텍스트 (500~3000자)** | **크롤링 시 (Readability/Cheerio)** |
 | `summary` | text | 3줄 요약 (레거시) | **AI 배치 요약 시 (OpenAI)** |
 | `ai_summary` | text | 1줄 요약 (80자 이내) | **AI 배치 요약 시 (Edge Function)** |
@@ -705,7 +885,8 @@ analyzePageStructure(url)
 |------|------|------|
 | `id` | serial (PK) | 소스 ID |
 | `name` | varchar(100) | 소스 이름 |
-| `base_url` | text | 크롤링 대상 URL |
+| `base_url` | text | 사용자 입력 원본 URL (UI 표시용) |
+| `crawl_url` | text (nullable) | 실제 크롤링할 최적화된 URL (NULL이면 base_url 사용) |
 | `priority` | integer | 크롤링 우선순위 |
 | `crawler_type` | text | 크롤러 전략 (STATIC/SPA/RSS 등) |
 | `config` | jsonb | 크롤링 설정 (셀렉터, 페이지네이션 등) |
@@ -781,7 +962,7 @@ const SOURCE_COLORS: Record<string, string> = {
      → Cache-Control: 24h
 ```
 
-**허용 도메인 (11개)**: postfiles.pstatic.net, blogfiles.pstatic.net, dimg.donga.com, img.stibee.com 등
+**허용 도메인 (12개)**: postfiles.pstatic.net, blogfiles.pstatic.net, dimg.donga.com, img.stibee.com, www.wiseapp.co.kr (2026-02-19 추가) 등
 
 ### RLS (Row Level Security)
 
@@ -893,6 +1074,85 @@ supabase functions deploy summarize-article
 # Supabase Dashboard → Edge Functions → summarize-article → Logs
 ```
 
+
+### 8. API 타입 소스 content_preview NULL / SPA 페이지 본문 추출 실패
+
+**원인 1**: `crawler_type=API` 소스의 `crawlContent`가 FE 라우트 URL에 JSON fetch를 시도 → HTTP 404 → `'{}'` (2자) 반환 → `content_preview`에 무의미한 값 저장
+
+**원인 2**: `config.crawl_config.urlTransform.linkTemplate`이 잘못된 URL 패턴 → Cheerio·Puppeteer 모두 404 페이지 렌더링
+- 예: `/insight/{insightNid}` → 실제 URL은 `/insight/detail/{insightNid}`
+
+**자동 해결 (v1.4.1~)**: `content_preview < 50자`이면 Puppeteer fallback 자동 시도
+
+**수동 확인**:
+```bash
+npm run crawl:dry -- --source=<id> --verbose
+# "🔄 Cheerio 실패 → Puppeteer 시도..." 로그 확인
+```
+
+**linkTemplate 수정**:
+```bash
+# Supabase Dashboard → crawl_sources → config.crawl_config.urlTransform.linkTemplate 확인/수정
+# 또는:
+UPDATE crawl_sources
+SET config = jsonb_set(config, '{crawl_config,urlTransform,linkTemplate}', '"https://example.com/detail/{id}"')
+WHERE id = <소스ID>;
+```
+
+### 9. AI 셀렉터 탐지 — 필터탭/카테고리 링크를 아티클로 오인
+
+**원인 1**: `<head>` CSS/JS 번들(~35KB)이 HTML 앞부분을 차지 → 50KB 제한 시 아티클 카드는 잘려서 AI가 볼 수 없음. AI는 필터탭(30~45KB 위치)만 보고 잘못된 셀렉터 선택.
+
+**원인 2**: `trySemanticDetection`이 `<main>` 태그만으로 confidence 0.9 반환 → AI 우회하여 부정확한 셀렉터 사용.
+
+**원인 3**: Tailwind CSS 클래스 (`.dark:text-slate-200`)를 Cheerio가 pseudo-class `:text-slate-200`으로 파싱 시도 → `Unknown pseudo-class` 에러.
+
+**자동 해결 (v1.5.1~)**:
+- HTML 전처리로 `<head>` 제거 → 아티클 카드 50KB 내 위치
+- `<article>` 3개+ 조건으로 시맨틱 감지 강화
+- `escapeTailwindColons()` 함수로 Tailwind 콜론 자동 이스케이프
+- JSON 수리로 AI 생성 `\:` → `\\:` 변환
+
+**수동 확인**:
+```bash
+# AI 셀렉터 탐지 테스트
+npx tsx /tmp/test-selectors.ts  # detectContentSelectors 직접 호출
+# config._detection.reasoning에서 감지 근거 확인
+npm run crawl:dry -- --source=<id> --verbose
+```
+
+### 9. API 타입 소스 크롤링 0건 (crawl_config 없음)
+
+**원인**: `crawler_type=API`인데 `config.crawl_config`가 없으면 APIStrategy가 `base_url`을 API URL로 사용 → HTML 응답 → JSON 파싱 실패 → 0건
+
+**증상**: 크롤링 로그에 "JSON 파싱 실패" 또는 "articles_found: 0"
+
+**해결**:
+```bash
+# Supabase Dashboard → crawl_sources → 해당 소스의 config 컬럼 확인
+# crawl_config가 없으면 수동으로 추가 또는 소스 재저장 (AUTO 타입으로)
+
+# 또는 MCP SQL로 직접 수정:
+UPDATE crawl_sources 
+SET config = jsonb_set(config, '{crawl_config}', '{"endpoint":"https://...","method":"POST",...}')
+WHERE id = <소스ID>;
+```
+
+### 10. 날짜 필터로 기사가 누락되는 경우
+
+**원인**: `isWithinDays()` 필터 — 기본 14일 초과 기사는 수집 안 함
+
+**증상**: 크롤링 로그에 "SKIP (too old): <제목>"
+
+**해결**:
+```typescript
+// lib/crawlers/base.ts isWithinDays()의 기본값 조정
+// 또는 각 전략 파일에서 호출 시 days 파라미터 변경
+isWithinDays(publishedAt, 30, title)  // 30일로 확장
+```
+
+> **현재 설정 (2026-02-19)**: 14일 윈도우 (이전 7일에서 변경)
+
 ---
 
 ## 성능 특성
@@ -910,6 +1170,9 @@ supabase functions deploy summarize-article
 | 최대 limit | 50개 |
 | 이미지 프록시 캐시 | 24시간 |
 | crawl/trigger Rate Limit | 30초 |
+| RSS 경로 탐색 (6경로 병렬) | ~3초 (이전 최악: 18초 순차) |
+| Sitemap 탐색 (2후보 병렬) | ~5초 (이전 최악: 10초 순차) |
+| Stage 7+8 병렬화 절약 | ~5초 (AI 타입 + 셀렉터 동시 실행) |
 
 ---
 
@@ -960,7 +1223,8 @@ supabase functions deploy summarize-article
   "crons": [{ "path": "/api/crawl/run", "schedule": "0 0 * * *" }],
   "functions": {
     "app/api/crawl/run/route.ts": { "maxDuration": 300 },
-    "app/api/summarize/batch/route.ts": { "maxDuration": 300 }
+    "app/api/summarize/batch/route.ts": { "maxDuration": 300 },
+    "app/api/sources/route.ts": { "maxDuration": 300 }
   },
   "headers": [
     { "source": "/(.*)", "headers": [
@@ -970,6 +1234,85 @@ supabase functions deploy summarize-article
   ]
 }
 ```
+
+> **sources maxDuration 300초 이유 (2026-02-19)**: 소스 저장 시 step 7.5 API 감지에 Puppeteer(~30초) + AI API(~34초) = 64초 소요 → 60초 기본 초과.
+
+---
+
+## 버전 히스토리 (주요 변경)
+
+### v1.5.2 (2026-02-19)
+- **STATIC 타이틀 셀렉터 수정** (`lib/crawlers/strategies/static.ts`)
+  - `DEFAULT_SELECTORS.title`에서 `a` 제거 → 부모 `<a>` 태그가 자식 `<h2>` 보다 먼저 매칭되어 제목+소제목이 붙는 문제 수정
+  - `parseItem` fallback(`$el.find('a').first().text()`)은 유지
+- **RSS 0건 STATIC fallback 복원** (`lib/crawlers/index.ts`)
+  - RSS 0건 early return 로직 제거 → 날짜 필터 초과 시 STATIC 폴백 정상 동작
+- **AI 셀렉터 프롬프트 개선** (`lib/crawlers/infer-type.ts`)
+  - 뉴스레터/채널 디렉토리 오탐 방지 규칙 추가 (짧은 브랜드명, 날짜 없는 카드 REJECT)
+  - 아티클 선택 우선순위: 제목 길이 > 날짜 노출 > 요약 텍스트 > URL 패턴
+- **SPA 셀렉터 재감지 (Step 8.5)** (`lib/crawlers/strategy-resolver.ts`, `spa.ts`)
+  - `getRenderedHTML(url)` export 추가: Puppeteer로 JS 렌더링 후 HTML 반환 (load + 3s wait)
+  - SPA 페이지 + confidence < 0.5 조건에서 Puppeteer HTML로 `detectContentSelectors` 재실행
+  - 재감지 신뢰도가 더 높을 때만 결과 교체 (graceful fallback)
+
+### v1.5.1 (2026-02-19)
+- **AI 셀렉터 감지 고도화** (`lib/crawlers/infer-type.ts`)
+  - HTML 전처리: `<head>` + 200자 이상 인라인 `<script>`/`<style>` 제거 후 50KB 제한
+    - 해결: `<head>` CSS/JS 번들(~35KB)이 아티클 카드를 50KB 밖으로 밀어내던 근본 원인
+  - `trySemanticDetection` 조건 강화: `<article>` 태그 3개+ 있을 때만 신뢰도 0.8 반환
+    - 이전: `<main>` 태그만으로 신뢰도 0.9 반환 → AI 우회하여 잘못된 셀렉터 사용하던 문제 수정
+  - `escapeTailwindColons()` 함수 추가: `.dark:text-slate-200` → `.dark\:text-slate-200`
+    - Cheerio CSS 파서가 `:` 를 pseudo-class로 해석하는 문제 방지 (모든 Tailwind 사이트에 적용)
+  - JSON 수리: AI가 생성한 `\:` → `\\:` 변환 후 JSON.parse (Bad escaped character 방지)
+  - AI 프롬프트 전면 재작성
+    - STEP 1~3 구조화: 반복 그룹 탐색 → URL 분류 → 아티클 카드 선택
+    - REJECT 패턴 명시: 카테고리 필터탭 (`/c/`, `?tag=`), 네비게이션, 통계 숫자
+    - reasoning에 아티클 예시 제목 + URL 포함 요구
+  - 결과에 `date`, `thumbnail` 필드 추가
+- **전략 탐지 병렬화** (`lib/crawlers/strategy-resolver.ts`)
+  - Stage 6 (`detectByRules`) 파이프라인에서 완전 제거 → AI가 항상 실행
+  - Stage 7+8 (AI 타입 감지 + AI 셀렉터 감지) `Promise.all` 병렬 실행 (~5초 절약)
+  - `discoverRSS`: 6개 경로 순차 → `Promise.all` 동시 (18초 → 3초)
+  - `discoverSitemap`: 2개 후보 순차 → `Promise.all` 동시 (10초 → 5초)
+- **범용 크롤러 원칙** CLAUDE.md에 추가 (하드코딩 금지, 파이프라인 개선 방향 명시)
+
+### v1.5.0 (2026-02-19)
+- **SITEMAP 크롤러 전략 추가** (`lib/crawlers/strategies/sitemap.ts`)
+  - RSS 없는 사이트 대응: sitemap.xml → URL 수집 → 각 페이지 1회 fetch (title + thumbnail + content 동시 추출)
+  - Sitemap Index 재귀 처리 (depth ≤ 1, 최대 3개 서브 sitemap)
+  - 날짜 필터(14일), URL include/exclude 필터, 최대 15개 제한, 5개씩 병렬 fetch
+- **자동 감지 파이프라인 Step 2.5 추가** (`lib/crawlers/strategy-resolver.ts`)
+  - RSS 발견 실패 시 `/sitemap.xml` 자동 탐색, `config.crawl_config.rssUrl`에 sitemap URL 저장
+- **SITEMAP 타입 전체 등록**: `types.ts`, `types/index.ts`, `strategies/index.ts`, `infer-type.ts`, `SourcesPageClient.tsx`, `route.ts`
+- **YouTube/GraphQL 크롤러 추가 기각** (검토 결과 불필요)
+  - YouTube: 기존 RSS 전략으로 커버 가능 (`feeds/videos.xml?channel_id=...`)
+  - GraphQL (Velog/Hashnode): RSS 피드 존재, 복잡도 대비 효과 없음
+
+### v1.4.1 (2026-02-19)
+- **레거시 크롤러 Puppeteer 2차 fallback** (`lib/crawlers/index.ts`)
+  - 본문 미리보기 추출: Cheerio → Puppeteer 자동 전환 (`spaStrategy.crawlContent`)
+  - 조건: `!content_preview || content_preview.length < 50`
+  - API 전략이 `'{}'` (2자)를 반환하는 케이스도 Puppeteer fallback 트리거됨
+  - 루프 종료 후 `closeBrowser()` 호출
+- **spa.crawlContent 전략 변경** (`lib/crawlers/strategies/spa.ts`)
+  - `networkidle2` → `load` + 3초 대기 (폴링/WebSocket 유지 사이트 타임아웃 방지)
+- **와이즈앱 linkTemplate 수정** (DB, crawl_sources #82)
+  - `/insight/{insightNid}` → `/insight/detail/{insightNid}`
+  - AI 자동 감지 시 숫자형 ID를 SEO URL keyword로 오판한 버그
+
+### v1.4.0 (2026-02-19)
+- **getCrawler() 우선순위 수정**: LEGACY_CRAWLER_REGISTRY가 URL 추론보다 먼저 확인 (사이트별 전용 크롤러 우선)
+  - 변경 전: `inferCrawlerType()` 항상 유효값 반환 → 레거시 크롤러 도달 불가
+  - 변경 후: Legacy 체크 → crawler_type → URL 추론 순
+- **API 엔드포인트 자동 감지 (Step 7.5)**: SPA 확정 후 `detect-api-endpoint` Edge Function 호출
+  - Puppeteer 네트워크 탐지 → GPT-5-nano 분석 → `crawl_config` 자동 저장
+  - 적용 예: 와이즈앱 → `crawler_type=API`, `crawl_config` 자동 생성
+- **AI 셀렉터 감지 SPA shell 규칙 강화**: 네비게이션 메뉴를 기사로 오인하는 문제 방지
+  - `detectSelectorsWithAI()` 프롬프트에 SPA shell 감지 규칙 추가
+  - confidence 0.2 이하 → SPA shell 판정, STATIC 전환 차단
+- **크롤링 윈도우 14일 확장**: `isWithinDays()` 7일 → 14일 (전체 적용)
+- **이미지 프록시 도메인 추가**: `www.wiseapp.co.kr` (썸네일 URL 지원)
+- **vercel.json maxDuration**: `app/api/sources/route.ts` 60→300초
 
 ### GitHub
 

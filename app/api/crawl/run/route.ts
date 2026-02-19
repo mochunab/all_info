@@ -41,17 +41,18 @@ async function handleCrawlRun(request: NextRequest) {
 
     const supabase = createServiceClient();
 
-    // Check for sourceId query parameter (pg_cron per-source mode)
+    // Check for query parameters
     const { searchParams } = new URL(request.url);
     const sourceId = searchParams.get('sourceId');
+    const category = searchParams.get('category');
     const skipSummary = searchParams.get('skipSummary') === 'true';
 
-    console.log(`\n${'#'.repeat(70)}`);
-    console.log(`# CRAWL RUN STARTED ${sourceId ? `(sourceId: ${sourceId})` : '(all sources)'}`);
-    console.log(`# Time: ${new Date().toISOString()}`);
-    console.log(`${'#'.repeat(70)}\n`);
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`🚀 크롤링 시작 ${sourceId ? `(소스 ID: ${sourceId})` : category ? `(카테고리: ${category})` : '(전체 소스)'}`);
+    console.log(`⏰ 시작 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+    console.log(`${'='.repeat(80)}\n`);
 
-    // Fetch sources: single source or all active sources
+    // Fetch sources: single source, category filter, or all active sources
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query = (supabase as any)
       .from('crawl_sources')
@@ -61,13 +62,17 @@ async function handleCrawlRun(request: NextRequest) {
     if (sourceId) {
       query = query.eq('id', parseInt(sourceId, 10));
     } else {
+      if (category) {
+        query = query.eq('config->>category', category);
+        console.log(`📂 카테고리 필터 적용: ${category}`);
+      }
       query = query.order('priority', { ascending: false });
     }
 
     const { data: sourcesData, error: sourcesError } = await query;
 
     if (sourcesError) {
-      console.error('[SOURCES] Error fetching sources:', sourcesError);
+      console.error('❌ [DB 조회 오류] 크롤링 소스 조회 실패:', sourcesError);
       return NextResponse.json(
         { error: 'Failed to fetch crawl sources' },
         { status: 500 }
@@ -77,23 +82,38 @@ async function handleCrawlRun(request: NextRequest) {
     const sources = sourcesData as CrawlSource[] | null;
 
     if (!sources || sources.length === 0) {
-      console.log('[SOURCES] No active crawl sources found in database');
+      const message = category
+        ? `활성화된 크롤링 소스가 없습니다 (카테고리: ${category})`
+        : '활성화된 크롤링 소스가 없습니다';
+      console.log(`⚠️  [알림] ${message}`);
       return NextResponse.json({
         success: true,
-        message: 'No active crawl sources found',
+        message: category
+          ? `No active crawl sources found for category: ${category}`
+          : 'No active crawl sources found',
         results: [],
       });
     }
 
-    console.log(`[SOURCES] Found ${sources.length} active sources:`);
+    console.log(`\n📋 [소스 목록] 총 ${sources.length}개의 활성 소스 발견:`);
     sources.forEach((s, i) => {
-      console.log(`  ${i + 1}. ${s.name} (${s.base_url})`);
+      console.log(`   ${i + 1}. 📌 ${s.name}`);
+      console.log(`      └─ URL: ${s.base_url}`);
+      console.log(`      └─ 타입: ${s.crawler_type || '자동감지'}`);
+      console.log(`      └─ 우선순위: ${s.priority || 1}`);
     });
+    console.log('');
 
     const results = [];
 
-    for (const source of sources) {
+    for (let idx = 0; idx < sources.length; idx++) {
+      const source = sources[idx];
+      console.log(`\n${'─'.repeat(80)}`);
+      console.log(`🔄 [${idx + 1}/${sources.length}] "${source.name}" 크롤링 시작...`);
+      console.log(`${'─'.repeat(80)}`);
+
       // Create crawl log entry
+      console.log(`📝 크롤링 로그 생성 중...`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: log, error: logError } = await (supabase as any)
         .from('crawl_logs')
@@ -105,17 +125,29 @@ async function handleCrawlRun(request: NextRequest) {
         .single();
 
       if (logError) {
-        console.error(`Error creating log for ${source.name}:`, logError);
+        console.error(`❌ [로그 생성 실패] ${source.name}:`, logError);
         continue;
       }
+      console.log(`✅ 로그 생성 완료 (ID: ${log.id})`);
+
+      const sourceStartTime = Date.now();
 
       try {
         // Import and run the appropriate crawler
+        console.log(`\n🎯 크롤러 실행 중...`);
         const { runCrawler } = await import('@/lib/crawlers');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const crawlResult = await runCrawler(source, supabase as any);
 
+        const sourceDuration = ((Date.now() - sourceStartTime) / 1000).toFixed(2);
+
+        console.log(`\n✅ [크롤링 완료] "${source.name}"`);
+        console.log(`   📊 발견: ${crawlResult.found}개`);
+        console.log(`   💾 저장: ${crawlResult.new}개`);
+        console.log(`   ⏱️  소요시간: ${sourceDuration}초`);
+
         // Update log with results
+        console.log(`📝 크롤링 로그 업데이트 중...`);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('crawl_logs')
@@ -134,6 +166,8 @@ async function handleCrawlRun(request: NextRequest) {
           .update({ last_crawled_at: new Date().toISOString() })
           .eq('id', source.id);
 
+        console.log(`✅ 로그 업데이트 완료`);
+
         results.push({
           source: source.name,
           success: true,
@@ -141,7 +175,10 @@ async function handleCrawlRun(request: NextRequest) {
           new: crawlResult.new,
         });
       } catch (crawlError) {
-        console.error(`Crawl error for ${source.name}:`, crawlError);
+        const sourceDuration = ((Date.now() - sourceStartTime) / 1000).toFixed(2);
+        console.error(`\n❌ [크롤링 실패] "${source.name}"`);
+        console.error(`   ⚠️  오류: ${crawlError instanceof Error ? crawlError.message : 'Unknown error'}`);
+        console.error(`   ⏱️  소요시간: ${sourceDuration}초`);
 
         // Update log with error
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,41 +202,56 @@ async function handleCrawlRun(request: NextRequest) {
     // Summary of crawl results
     const totalFound = results.reduce((sum, r) => sum + (r.found || 0), 0);
     const totalNew = results.reduce((sum, r) => sum + (r.new || 0), 0);
+    const totalSuccess = results.filter(r => r.success).length;
     const totalFailed = results.filter(r => !r.success).length;
 
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[CRAWL SUMMARY]`);
-    console.log(`Total sources: ${sources.length}`);
-    console.log(`Total articles found: ${totalFound}`);
-    console.log(`Total new articles saved: ${totalNew}`);
-    console.log(`Failed sources: ${totalFailed}`);
-    console.log(`${'='.repeat(60)}\n`);
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`📊 크롤링 결과 요약`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`✅ 성공: ${totalSuccess}개 소스`);
+    console.log(`❌ 실패: ${totalFailed}개 소스`);
+    console.log(`📰 발견한 콘텐츠: ${totalFound}개`);
+    console.log(`💾 새로 저장된 콘텐츠: ${totalNew}개`);
+    console.log(`${'='.repeat(80)}\n`);
 
     // After crawling, process pending summaries (skip if per-source mode with skipSummary)
     let summaryResult = { processed: 0, success: 0, failed: 0 };
     if (!skipSummary) {
-      console.log('[SUMMARIZE] Starting batch summarization...');
+      console.log(`\n${'─'.repeat(80)}`);
+      console.log(`🤖 AI 요약 생성 시작...`);
+      console.log(`${'─'.repeat(80)}`);
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
-      console.log(`[SUMMARIZE] Complete: ${summaryResult.success}/${summaryResult.processed} successful`);
+      console.log(`\n✅ AI 요약 완료: ${summaryResult.success}/${summaryResult.processed}개 성공`);
+      if (summaryResult.failed > 0) {
+        console.log(`⚠️  실패: ${summaryResult.failed}개`);
+      }
     } else {
-      console.log('[SUMMARIZE] Skipped (skipSummary=true, will run separately)');
+      console.log(`\n⏭️  AI 요약 건너뛰기 (별도 실행 예정)`);
     }
 
     // 크롤링 완료 후 articles 캐시 무효화
+    console.log(`\n🗑️  캐시 무효화 중...`);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+    console.log(`✅ 캐시 무효화 완료`);
 
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
-    console.log(`\n${'#'.repeat(70)}`);
-    console.log(`# CRAWL RUN COMPLETE ${sourceId ? `(sourceId: ${sourceId})` : ''}`);
-    console.log(`# Duration: ${totalDuration}s`);
-    console.log(`# New articles: ${totalNew}`);
-    console.log(`${'#'.repeat(70)}\n`);
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`🎉 전체 크롤링 완료! ${sourceId ? `(소스 ID: ${sourceId})` : ''}`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`⏱️  총 소요시간: ${totalDuration}초`);
+    console.log(`💾 새로 저장된 콘텐츠: ${totalNew}개`);
+    console.log(`🤖 AI 요약 생성: ${summaryResult.success}개`);
+    console.log(`${'='.repeat(80)}\n`);
 
     return NextResponse.json({
       success: true,
-      message: sourceId ? `Crawled source ${sourceId}` : `Crawled ${sources.length} sources`,
+      message: sourceId
+        ? `Crawled source ${sourceId}`
+        : category
+          ? `Crawled ${sources.length} sources for category: ${category}`
+          : `Crawled ${sources.length} sources`,
       results,
       summarization: {
         processed: summaryResult.processed,

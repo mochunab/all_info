@@ -32,6 +32,16 @@ export const translations = {
     'toast.noNewInsights': '새로운 인사이트가 없습니다.',
     'toast.crawlFailed': '불러오기 실패: {error}',
     'toast.networkError': '네트워크 오류: {error}',
+    'toast.error': '오류: {error}',
+    'toast.articleDeleted': '인사이트가 삭제되었습니다.',
+    'toast.deleteFailed': '삭제 실패: {error}',
+
+    // Dialog
+    'dialog.confirm': '확인',
+    'dialog.cancel': '취소',
+    'dialog.deleteArticleTitle': '인사이트 삭제',
+    'dialog.deleteArticleMessage': '이 인사이트를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
+    'dialog.delete': '삭제',
 
     // Sources Add Page
     'sources.back': '돌아가기',
@@ -51,6 +61,7 @@ export const translations = {
     'sources.delete': '삭제',
     'sources.deleting': '삭제 중...',
     'sources.categoryDeleted': "'{name}' 카테고리가 삭제되었습니다.",
+    'sources.categoryExists': "'{name}' 카테고리가 이미 존재합니다.",
     'sources.autoAnalysis': '{count}개 소스 저장 (자동분석: {methods})',
   },
   en: {
@@ -84,6 +95,16 @@ export const translations = {
     'toast.noNewInsights': 'No new insights available.',
     'toast.crawlFailed': 'Failed: {error}',
     'toast.networkError': 'Network error: {error}',
+    'toast.error': 'Error: {error}',
+    'toast.articleDeleted': 'Insight deleted successfully.',
+    'toast.deleteFailed': 'Delete failed: {error}',
+
+    // Dialog
+    'dialog.confirm': 'Confirm',
+    'dialog.cancel': 'Cancel',
+    'dialog.deleteArticleTitle': 'Delete Insight',
+    'dialog.deleteArticleMessage': 'Are you sure you want to delete this insight? This action cannot be undone.',
+    'dialog.delete': 'Delete',
 
     // Sources Add Page
     'sources.back': 'Back',
@@ -103,6 +124,7 @@ export const translations = {
     'sources.delete': 'Delete',
     'sources.deleting': 'Deleting...',
     'sources.categoryDeleted': "'{name}' category has been deleted.",
+    'sources.categoryExists': "Category '{name}' already exists.",
     'sources.autoAnalysis': '{count} sources saved (auto-analysis: {methods})',
   },
   ja: {
@@ -136,6 +158,16 @@ export const translations = {
     'toast.noNewInsights': '新しいインサイトはありません。',
     'toast.crawlFailed': '失敗: {error}',
     'toast.networkError': 'ネットワークエラー: {error}',
+    'toast.error': 'エラー: {error}',
+    'toast.articleDeleted': 'インサイトが削除されました。',
+    'toast.deleteFailed': '削除失敗: {error}',
+
+    // Dialog
+    'dialog.confirm': '確認',
+    'dialog.cancel': 'キャンセル',
+    'dialog.deleteArticleTitle': 'インサイトを削除',
+    'dialog.deleteArticleMessage': 'このインサイトを削除してもよろしいですか？この操作は取り消せません。',
+    'dialog.delete': '削除',
 
     // Sources Add Page
     'sources.back': '戻る',
@@ -155,6 +187,7 @@ export const translations = {
     'sources.delete': '削除',
     'sources.deleting': '削除中...',
     'sources.categoryDeleted': "'{name}' カテゴリが削除されました。",
+    'sources.categoryExists': "カテゴリ '{name}' は既に存在します。",
     'sources.autoAnalysis': '{count} ソース保存 (自動分析: {methods})',
   },
   zh: {
@@ -188,6 +221,16 @@ export const translations = {
     'toast.noNewInsights': '没有新的洞察。',
     'toast.crawlFailed': '失败：{error}',
     'toast.networkError': '网络错误：{error}',
+    'toast.error': '错误：{error}',
+    'toast.articleDeleted': '洞察已删除。',
+    'toast.deleteFailed': '删除失败：{error}',
+
+    // Dialog
+    'dialog.confirm': '确认',
+    'dialog.cancel': '取消',
+    'dialog.deleteArticleTitle': '删除洞察',
+    'dialog.deleteArticleMessage': '您确定要删除此洞察吗？此操作无法撤消。',
+    'dialog.delete': '删除',
 
     // Sources Add Page
     'sources.back': '返回',
@@ -207,6 +250,7 @@ export const translations = {
     'sources.delete': '删除',
     'sources.deleting': '删除中...',
     'sources.categoryDeleted': "'{name}' 类别已删除。",
+    'sources.categoryExists': "类别 '{name}' 已存在。",
     'sources.autoAnalysis': '{count} 来源已保存（自动分析：{methods}）',
   },
 } as const;
