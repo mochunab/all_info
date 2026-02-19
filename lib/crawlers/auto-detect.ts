@@ -165,17 +165,24 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
   const hasNoscript = $('noscript').length > 0;
   const hasRootDiv = $('#root').length > 0 || $('#app').length > 0 || $('#__next').length > 0;
 
-  // 1. 강력한 SPA 증거: body 텍스트 < 200자 + root div → +0.9
+  // 1. 강력한 SPA 증거: body 텍스트 < 200자 + root div → +1.0 (즉시 확정)
   if (bodyText.length < 200 && hasRootDiv) {
-    score += 0.9;
+    score += 1.0;
+    return score; // 즉시 리턴
   }
 
-  // 2. noscript + root div + body < 500자 → +0.7
+  // 2. noscript + root div + body < 500자 → +0.8
   if (hasNoscript && hasRootDiv && bodyText.length < 500) {
+    score += 0.8;
+  }
+
+  // 3. data-server-rendered="true" (Vue.js SSR → CSR)
+  const hasVueSSR = $('[data-server-rendered="true"]').length > 0;
+  if (hasVueSSR && hasRootDiv) {
     score += 0.7;
   }
 
-  // 3. javascript: 링크 비율 (임계값 낮춤: 50% → 30%)
+  // 4. javascript: 링크 비율 (임계값 낮춤: 50% → 30%)
   const allLinkCount = $('a[href]').length;
   const jsLinkCount = $('a[href^="javascript:"]').length;
 
@@ -190,7 +197,7 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
     }
   }
 
-  // 4. onclick 핸들러 기반 네비게이션 (go_, fn_, moveToPage 등)
+  // 5. onclick 핸들러 기반 네비게이션 (go_, fn_, moveToPage 등)
   const onclickHandlers = $('[onclick]').filter((_, el) => {
     const onclick = $(el).attr('onclick') || '';
     return /go[A-Z_]|fn[A-Z_]|moveToPage|goToPage|pageMove/i.test(onclick);
@@ -202,7 +209,7 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
     score += 0.15;
   }
 
-  // 5. script 크기 비율 (임계값 낮춤: 5배 → 3배)
+  // 6. script 크기 비율 (임계값 낮춤: 5배 → 3배)
   const scriptLength = $('script').text().replace(/\s+/g, '').length;
   const bodyTextLength = bodyText.replace(/\s+/g, '').length;
 
@@ -210,22 +217,37 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
     score += 0.2;
   }
 
-  // 6. React/Vue/Angular 프레임워크 번들 감지
+  // 7. React/Vue/Angular 프레임워크 번들 감지 (강화)
   const scriptSrc = $('script[src]')
     .map((_, el) => $(el).attr('src') || '')
     .get()
     .join(' ');
 
-  if (
-    /react|vue|angular|next|nuxt|webpack|chunk|bundle|app\.[a-f0-9]{8}\.js/i.test(scriptSrc)
-  ) {
-    score += 0.3;
+  const scriptContent = $('script:not([src])').text();
+
+  // Vue.js 특정 패턴
+  if (/vue|vuex|vue-router|nuxt/i.test(scriptSrc + scriptContent)) {
+    score += 0.4;
+  }
+  // React 특정 패턴
+  else if (/react|react-dom|next\.js|webpack|chunk|bundle|app\.[a-f0-9]{8}\.js/i.test(scriptSrc)) {
+    score += 0.4;
+  }
+  // Angular 특정 패턴
+  else if (/angular|ng-|@angular/i.test(scriptSrc + scriptContent)) {
+    score += 0.4;
   }
 
-  // 7. .go.kr/.or.kr 정부/공공 포털 가중치
+  // 8. .go.kr/.or.kr 정부/공공 포털 가중치
   const hostname = $('link[rel="canonical"]').attr('href') || $('base').attr('href') || '';
   if (/\.go\.kr|\.or\.kr/i.test(hostname) && jsLinkCount > 0) {
     score += 0.2;
+  }
+
+  // 9. HTML 주석에서 SPA 프레임워크 흔적 확인
+  const htmlText = $.html();
+  if (/<!--.*?(Surfit|created by|built with|powered by).*(Vue|React|Next|Nuxt)/is.test(htmlText)) {
+    score += 0.3;
   }
 
   return Math.min(score, 1.0);
@@ -236,16 +258,20 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
  * @public strategy-resolver에서 재사용
  */
 export function detectByRules($: cheerio.CheerioAPI, url: string): SelectorCandidate | null {
+  // nav/header/footer 제거한 클론으로 분석 (content-extractor.ts와 동일 패턴)
+  const $clean = cheerio.load($.html());
+  $clean('nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"]').remove();
+
   const candidates: SelectorCandidate[] = [];
 
   // 1. 테이블 구조 탐지
-  detectTableStructure($, url, candidates);
+  detectTableStructure($clean, url, candidates);
 
   // 2. 리스트 구조 탐지 (ul > li, ol > li)
-  detectListStructure($, url, candidates);
+  detectListStructure($clean, url, candidates);
 
   // 3. 반복 div/article/section 구조 탐지
-  detectRepeatingElements($, url, candidates);
+  detectRepeatingElements($clean, url, candidates);
 
   if (candidates.length === 0) {
     return null;

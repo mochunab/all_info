@@ -1,12 +1,14 @@
 // SPA 크롤링 전략
-// puppeteer 기반 동적 렌더링 지원
+// puppeteer-core + @sparticuz/chromium 기반 동적 렌더링 지원 (Vercel 호환)
 
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // 기본 셀렉터
 const DEFAULT_SELECTORS: SelectorConfig = {
@@ -23,18 +25,33 @@ let browserInstance: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (!browserInstance || !browserInstance.isConnected()) {
-    browserInstance = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-      ],
-    });
+    // Vercel 환경 감지
+    const isVercel = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    if (isVercel) {
+      // Vercel Serverless: @sparticuz/chromium 사용
+      browserInstance = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: null,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+      });
+    } else {
+      // 로컬 환경: 시스템 Chrome 사용
+      browserInstance = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+        ],
+      });
+    }
   }
   return browserInstance;
 }
@@ -67,13 +84,41 @@ export class SPAStrategy implements CrawlStrategy {
       );
 
       // 불필요한 리소스 차단 (성능 향상)
+      // + API 요청 로깅 (디버깅용)
       await page.setRequestInterception(true);
       page.on('request', (request) => {
         const resourceType = request.resourceType();
+        const url = request.url();
+
+        // API 요청 로깅
+        if (url.includes('/api/') || url.includes('api.surfit.io')) {
+          console.log(`[SPA] 🔍 API Request: ${request.method()} ${url}`);
+        }
+
         if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
           request.abort();
         } else {
           request.continue();
+        }
+      });
+
+      // API 응답 로깅
+      page.on('response', async (response) => {
+        const url = response.url();
+        if (url.includes('/api/') || url.includes('api.surfit.io')) {
+          console.log(`[SPA] ✅ API Response: ${response.status()} ${url}`);
+
+          // JSON 응답인 경우 일부 출력 (디버깅)
+          const contentType = response.headers()['content-type'] || '';
+          if (contentType.includes('application/json')) {
+            try {
+              const data = await response.json();
+              const preview = JSON.stringify(data).substring(0, 200);
+              console.log(`[SPA] 📦 Response Preview: ${preview}...`);
+            } catch {
+              // JSON 파싱 실패 무시
+            }
+          }
         }
       });
 
@@ -83,11 +128,20 @@ export class SPAStrategy implements CrawlStrategy {
         timeout: 30000,
       });
 
+      // 추가 대기 시간 (JavaScript 실행 완료 대기)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const crawlConfig = config.crawl_config as any;
+      const additionalWait = crawlConfig?.additionalWait || 2000;
+      await this.delay(additionalWait);
+      console.log(`[SPA] Waited ${additionalWait}ms for JS execution`);
+
       // 특정 셀렉터 대기 (설정된 경우)
-      if (config.crawl_config?.waitForSelector) {
-        await page.waitForSelector(config.crawl_config.waitForSelector, {
-          timeout: config.crawl_config?.waitTimeout || 10000,
+      if (crawlConfig?.waitForSelector) {
+        console.log(`[SPA] Waiting for selector: ${crawlConfig.waitForSelector}`);
+        await page.waitForSelector(crawlConfig.waitForSelector, {
+          timeout: crawlConfig?.waitTimeout || 10000,
         });
+        console.log(`[SPA] Selector found!`);
       }
 
       // 페이지네이션 처리
@@ -270,8 +324,9 @@ export class SPAStrategy implements CrawlStrategy {
         baseUrl: string;
         removeParams: string[];
         linkTemplate: string | null;
+        excludeSelectors?: string[];
       }) => {
-        const { containerSelector, selectors, baseUrl, removeParams, linkTemplate } = params;
+        const { containerSelector, selectors, baseUrl, removeParams, linkTemplate, excludeSelectors } = params;
         const results: RawContentItem[] = [];
 
         const container = document.querySelector(containerSelector);
@@ -281,6 +336,16 @@ export class SPAStrategy implements CrawlStrategy {
 
         elements.forEach((el) => {
           try {
+            // excludeSelectors 체크 - 제외 영역 안에 있는지 확인
+            if (excludeSelectors?.length) {
+              const isExcluded = excludeSelectors.some(excludeSel =>
+                el.closest(excludeSel) !== null
+              );
+              if (isExcluded) {
+                return;
+              }
+            }
+
             // 제목
             const titleEl = el.querySelector(selectors.title);
             const title = titleEl?.textContent?.trim() || el.querySelector('a')?.textContent?.trim();
@@ -380,20 +445,34 @@ export class SPAStrategy implements CrawlStrategy {
           'fbclid',
           'ref',
         ],
+        excludeSelectors: config.excludeSelectors,
       }
     );
 
-    // 7일 이내 필터링
+    // 제목 정제 + 7일 이내 필터링
     const filteredItems: RawContentItem[] = [];
     for (const item of items) {
-      if (!isWithinDays(item.dateStr, 7, item.title)) {
-        console.log(`[SPA] SKIP (too old): ${item.title.substring(0, 40)}...`);
+      // 제목 정제 및 검증
+      const cleanedTitle = processTitle(item.title);
+      if (!cleanedTitle) {
+        console.log(`[SPA] SKIP (invalid title): "${item.title.substring(0, 40)}..."`);
         continue;
       }
+
+      // 7일 이내 체크
+      if (!isWithinDays(item.dateStr, 14, cleanedTitle)) {
+        console.log(`[SPA] SKIP (too old): ${cleanedTitle.substring(0, 40)}...`);
+        continue;
+      }
+
       console.log(
-        `[SPA] Found: "${item.title.substring(0, 40)}..." | Date: ${item.dateStr || 'N/A'}`
+        `[SPA] Found: "${cleanedTitle.substring(0, 40)}..." | Date: ${item.dateStr || 'N/A'}`
       );
-      filteredItems.push(item);
+
+      filteredItems.push({
+        ...item,
+        title: cleanedTitle, // 정제된 제목으로 교체
+      });
     }
 
     return filteredItems;

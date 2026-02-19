@@ -110,7 +110,7 @@ export async function crawlWithCheerio(
       console.log(`[Cheerio] Article: "${title.substring(0, 40)}..." | Raw date: ${dateText || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`);
 
       // Check if within 7 days
-      if (!isWithinDays(publishedAt, 7, title)) {
+      if (!isWithinDays(publishedAt, 14, title)) {
         console.log(`[Cheerio] SKIP (too old): ${title}`);
         return;
       }
