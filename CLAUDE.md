@@ -24,24 +24,92 @@ https://github.com/mochunab/all_info.git
 
 ## 기술 스택
 
-| 영역 | 기술 |
-|------|------|
-| Framework | Next.js 14 (App Router) |
-| Language | TypeScript (strict mode) |
-| Styling | Tailwind CSS v3 + CSS Variables |
-| State | React 18 Hooks (useState, useEffect, useCallback) |
-| i18n | 커스텀 번역 시스템 (`lib/i18n.ts`, localStorage) |
-| Database | Supabase (PostgreSQL) |
-| Auth | 커스텀 인증 (`lib/auth.ts` - Bearer Token / Same-Origin 검증) |
-| AI (Edge Function) | Supabase Edge Function (Deno) → OpenAI GPT-5-nano |
-| AI (Local Fallback) | OpenAI API 직접 호출 → GPT-4o-mini |
-| Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability, jsdom@24 |
-| Middleware | Next.js Middleware (Rate Limiting, CORS, Security Headers) |
-| Deployment | Vercel Serverless (Cron: 매일 00:00 UTC = 09:00 KST) |
-| Server | 별도 백엔드 서버 없음 — Next.js API Routes가 Vercel Serverless Functions로 실행 |
-| Font | Pretendard (본문), Outfit (로고) |
+### 📱 Frontend
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| Framework | Next.js 14 (App Router) | React 기반 풀스택 프레임워크, SSR/CSR 하이브리드 |
+| Language | TypeScript (strict mode) | 정적 타입 체킹, `type` 사용 (interface 금지) |
+| UI Library | React 18 | Hooks 기반 상태 관리 (useState, useEffect, useCallback) |
+| Styling | Tailwind CSS v3 | 유틸리티 퍼스트 CSS + CSS Variables |
+| i18n | 커스텀 시스템 | `lib/i18n.ts` - 4개 언어 지원 (ko, en, ja, zh) |
+| Fonts | Pretendard, Outfit | 본문(Pretendard), 로고(Outfit) |
 
-> **참고**: 사용자 로그인 시스템 없음. Supabase Auth 미사용. 모든 인증은 서버 간 Bearer Token 기반.
+### 🔧 Backend
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| API | Next.js API Routes | Vercel Serverless Functions로 실행 (별도 서버 없음) |
+| Language | TypeScript | API Routes 및 비즈니스 로직 |
+| Auth | 커스텀 인증 시스템 | Bearer Token (서버 간) + Same-Origin (CSRF 방어) |
+| Middleware | Next.js Middleware | Rate Limiting, CORS, Security Headers |
+
+### 🗄️ Database
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| Database | Supabase (PostgreSQL) | 클라우드 매니지드 PostgreSQL |
+| Client | Supabase JS SDK | Browser / Server / Service (Admin) 클라이언트 분리 |
+| RLS | Row Level Security | 테이블별 권한 정책 적용 |
+
+> **참고**: Supabase Auth 미사용. 사용자 로그인 시스템 없음. 모든 인증은 서버 간 통신용.
+
+### 🤖 AI & Edge Functions
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| AI 요약 (Primary) | Supabase Edge Function (Deno) | GPT-5-nano 기반 1줄 요약 + 태그 생성 |
+| AI 요약 (Fallback) | OpenAI API (GPT-4o-mini) | Edge Function 실패 시 자동 fallback |
+| AI 크롤러 타입 감지 | Edge Function (GPT-5-nano) | HTML 구조 분석하여 최적 크롤러 타입 자동 결정 |
+| Retry Logic | 최대 3회 재시도 | 백오프 전략 (1s → 2s → 3s) |
+
+### 🕷️ Crawling Engine
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| 정적 HTML | Cheerio | CSS 셀렉터 기반 파싱 (가장 빠름) |
+| 동적 렌더링 (SPA) | Puppeteer | Headless Chrome, JavaScript 렌더링 |
+| RSS/Atom | rss-parser | 피드 파서 |
+| 본문 추출 | @mozilla/readability | 광고/메뉴 자동 제거 |
+| DOM 파싱 | jsdom@24 | Node.js 환경 DOM 조작 |
+| 전략 패턴 | 8가지 크롤러 타입 | STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API |
+
+### 🚀 Deployment & Hosting
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| Hosting | Vercel | Serverless 플랫폼 |
+| Cron Jobs | Vercel Cron | 매일 00:00 UTC (09:00 KST) 자동 크롤링 |
+| Serverless Functions | maxDuration 300초 | 크롤링/요약 API 타임아웃 설정 |
+| CDN | Vercel Edge Network | 글로벌 CDN 자동 배포 |
+
+### 🛠️ Development Tools
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| Version Control | GitHub | https://github.com/mochunab/all_info.git |
+| Package Manager | npm | 의존성 관리 |
+| Build Tool | Next.js (Turbopack) | 빌드 및 번들링 |
+| Linting | ESLint | TypeScript 코드 품질 검사 |
+
+---
+
+### 📊 Infrastructure Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Vercel Platform                        │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  Next.js 14 App                                   │  │
+│  │  ├─ Frontend (React 18 SSR/CSR)                   │  │
+│  │  └─ Backend (API Routes → Serverless Functions)  │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                          │
+│  Cron: 매일 09:00 KST → POST /api/crawl/run             │
+└────────┬────────────────────────────┬───────────────────┘
+         │                            │
+         ▼                            ▼
+  ┌─────────────┐            ┌──────────────────┐
+  │  Supabase   │            │  OpenAI API      │
+  │  - PostgreSQL│            │  - GPT-5-nano    │
+  │  - Edge Fn   │            │  - GPT-4o-mini   │
+  │  - RLS       │            │  (AI 요약)       │
+  └─────────────┘            └──────────────────┘
+```
+
 > **서버 구성 상세**: [PROJECT_CONTEXT.md → 서버 구성](./key_docs/PROJECT_CONTEXT.md#서버-구성) 참조
 > **크롤링 플로우 상세**: [PROJECT_CONTEXT.md → 크롤링 플로우](./key_docs/PROJECT_CONTEXT.md#1-크롤링-플로우-자료-불러오기-버튼--cron) 참조
 
@@ -105,6 +173,7 @@ insight-hub/
 │       │   ├── static.ts         # STATIC: 정적 페이지 (Cheerio + 페이지네이션)
 │       │   ├── spa.ts            # SPA: 동적 페이지 (Puppeteer)
 │       │   ├── rss.ts            # RSS: 피드 파서 (rss-parser)
+│       │   ├── sitemap.ts        # SITEMAP: sitemap.xml 파싱 (RSS 없는 사이트 대응)
 │       │   ├── naver.ts          # PLATFORM_NAVER: 네이버 블로그 특화
 │       │   ├── kakao.ts          # PLATFORM_KAKAO: 카카오 브런치 특화
 │       │   ├── newsletter.ts     # NEWSLETTER: 뉴스레터 크롤러
@@ -159,18 +228,26 @@ const strategy = getStrategy(source.crawler_type);
 const items = await strategy.crawlList(source);
 ```
 
-**지원 크롤러 타입 (7종)**:
+**지원 크롤러 타입 (9종)**:
 | 타입 | 엔진 | 용도 |
 |------|------|------|
+| `AUTO` | 9단계 파이프라인 | **자동 감지** (UI 전용, DB에는 저장 안 됨) |
 | `STATIC` | Cheerio | 정적 HTML (페이지네이션 지원) |
 | `SPA` | Puppeteer | JS 렌더링 필요한 동적 페이지 |
 | `RSS` | rss-parser | RSS/Atom 피드 |
+| `SITEMAP` | fetch + Cheerio | sitemap.xml 파싱 → 각 페이지 크롤링 (RSS 없는 사이트) |
 | `PLATFORM_NAVER` | Cheerio | 네이버 블로그 특화 |
 | `PLATFORM_KAKAO` | Cheerio | 카카오 브런치 특화 |
 | `NEWSLETTER` | Cheerio | 뉴스레터 플랫폼 |
 | `API` | fetch | REST API 엔드포인트 |
 
-**크롤러 타입 자동 추론**: `inferCrawlerType(url)` — URL 패턴 기반으로 `crawler_type` 자동 결정
+**크롤러 타입 자동 감지 (2026-02-14)**:
+- **9단계 파이프라인**: Rule-based (1-6단계, Step 2.5 Sitemap 포함) → AI 감지 (7-8단계)
+- **AUTO 옵션**: UI에서 "자동지정" 선택 시 백엔드가 8단계 파이프라인으로 최적 타입 결정
+- **비용 최적화**: Rule-based가 70% 해결 (무료), AI는 confidence < 0.7일 때만 호출 (30%)
+- **Edge Function**: `detect-crawler-type` — GPT-5-nano가 HTML 구조 분석
+- **투명성**: `config._detection` 메타데이터에 감지 방법, 신뢰도, 근거 저장
+- 상세: [PROJECT_CONTEXT.md → AI 기반 크롤러 타입 자동 감지 시스템](./key_docs/PROJECT_CONTEXT.md#ai-기반-크롤러-타입-자동-감지-시스템)
 
 ### 2. 2단계 데이터 파이프라인
 
@@ -252,7 +329,7 @@ Header.tsx "자료 불러오기" 버튼
 |----------|--------|------|------|-------------|
 | `/api/articles` | GET | 없음 | 아티클 목록 (검색, 필터, 페이지네이션) | 기본 |
 | `/api/articles/sources` | GET | 없음 | 소스별 아티클 조회 | 기본 |
-| `/api/sources` | GET/POST | Same-Origin | 크롤링 소스 CRUD (POST 시 auto-detect 셀렉터 분석) | 기본 |
+| `/api/sources` | GET/POST | Same-Origin | 크롤링 소스 CRUD (POST 시 auto-detect + API 감지 포함) | **300초** |
 | `/api/crawl/run` | POST | Bearer Token | 전체 크롤링 실행 + 배치 요약 | **300초** |
 | `/api/crawl/trigger` | POST | Rate Limit (30s) | 프론트엔드 → crawl/run 프록시 | 기본 |
 | `/api/crawl/status` | GET | 없음 | 크롤링 상태 조회 | 기본 |
@@ -260,6 +337,38 @@ Header.tsx "자료 불러오기" 버튼
 | `/api/summarize/batch` | POST | Bearer Token | 일괄 AI 요약 | **300초** |
 | `/api/categories` | GET/POST | 없음 | 카테고리 CRUD | 기본 |
 | `/api/image-proxy` | GET | 없음 | 이미지 프록시 | 기본 |
+
+---
+
+## 범용 크롤러 원칙 (CRITICAL — 모든 세션에서 반드시 인지)
+
+> **핵심 목표**: Insight Hub는 **임의의 URL을 등록하면 자동으로 크롤링 전략을 결정하는 범용 AI 크롤러**다.
+> 특정 사이트에 맞춘 하드코딩은 이 목표에 정면으로 위배된다.
+
+### ❌ 절대 금지 — 소스별 하드코딩
+
+| 금지 행위 | 이유 |
+|-----------|------|
+| `crawl_sources.config` (DB)를 특정 사이트에 맞게 직접 수정 | 다른 소스에 적용 불가, 반복 유지보수 부담 |
+| 특정 도메인/URL 조건 if문으로 분기 추가 | 하드코딩 누적 → 스파게티 코드 |
+| 특정 소스 실패를 DB 패치로 해결 | 근본 원인 미해결, 다음 소스에서 동일 문제 재발 |
+
+### ✅ 올바른 문제 해결 방향
+
+크롤링이 실패하거나 AI가 잘못된 config를 생성하면 → **탐지 파이프라인 자체를 개선**
+
+| 증상 | 올바른 해결책 |
+|------|------------|
+| AI 셀렉터 오탐 (필터탭 → 아티클로 오인) | `infer-type.ts` `detectSelectorsWithAI` 프롬프트 고도화 |
+| 시맨틱 감지가 AI를 우회해 잘못된 결과 | `trySemanticDetection` 조건 강화 (article 태그 3개+ 등) |
+| 크롤러 타입 오탐 | `strategy-resolver.ts` 파이프라인 로직 개선 |
+| 특정 사이트 구조에서 일관 실패 | 해당 패턴의 **범용** 감지 규칙 추가 (단일 사이트 X) |
+
+### 범용성 자가 검증 기준
+
+> 코드를 수정하기 전, 스스로에게 물어볼 것:
+> **"이 수정이 maily.so 외 다른 임의의 사이트에도 동일하게 적용되는가?"**
+> 특정 사이트에만 해당한다면 → 잘못된 방향. 파이프라인 개선으로 돌아갈 것.
 
 ---
 
@@ -398,10 +507,27 @@ export const exampleStrategy: CrawlStrategy = {
 // 필수 체크 사항:
 // - fetchWithTimeout(url, {}, 15000) — 15초 기본 타임아웃
 // - source_id 중복 체크 (URL 기반 해시)
-// - isWithinDays(date, 7) — 최근 7일 필터링
+// - isWithinDays(date, 14) — 최근 14일 필터링 (2026-02-19: 7→14 변경)
 // - DEFAULT_HEADERS 사용 (User-Agent 설정)
 // - maxPages 제한 필수 (무한 루프 방지)
 // - Puppeteer 사용 시 browser.close() 필수
+
+// AI 기반 크롤러 타입 자동 감지 (2026-02-14)
+// - 소스 저장 시 crawlerType='AUTO' 선택하면 8단계 파이프라인 자동 실행
+// - 하드코딩 금지: 도메인 기반 if문으로 타입 지정하지 말 것
+// - 8단계 파이프라인 (lib/crawlers/strategy-resolver.ts):
+//   1. Domain Override (0.95+) — Legacy 호환용만
+//   2. RSS Discovery (0.95+)
+//   3. URL Pattern (0.95+)
+//   4. CMS Detection (0.85+)
+//   5. Rule-based Analysis (0.7+)
+//   6. Confidence Check → STATIC
+//   7. AI Type Detection (0.6+) — 🤖 GPT-5-nano Edge Function
+//   7.5. API 엔드포인트 감지 — SPA 확정 후 detect-api-endpoint Edge Function 호출
+//   8. AI Selector Detection — 🤖 GPT-4o-mini Fallback (SPA shell 감지 강화)
+// - Edge Function 배포: npx supabase functions deploy detect-crawler-type
+// - 비용 최적화: Rule-based 70% 해결, AI는 confidence < 0.7일 때만 호출
+// - 결과 저장: config._detection에 method, confidence, reasoning 저장
 ```
 
 ### 6. 에러 핸들링 패턴
@@ -567,9 +693,16 @@ npm run crawl -- --source=1
 
 ### 2. 새 크롤링 소스 추가
 
-1. Supabase Dashboard → `crawl_sources` 테이블에 레코드 삽입
-2. `crawler_type` 설정 (또는 `inferCrawlerType(url)` 자동 추론)
-3. `config` JSON에 `selectors`, `pagination` 등 설정
+**권장 방법**: UI에서 "소스 관리" 페이지 사용
+1. 홈 → "소스 관리" → "소스 링크 추가"
+2. URL 입력 후 크롤러 타입 "자동지정" (AUTO) 선택 (기본값)
+3. 저장 → 백엔드가 8단계 파이프라인으로 자동 분석
+4. `config._detection`에 감지 결과 저장됨
+
+**수동 방법**: Supabase Dashboard 직접 수정
+1. `crawl_sources` 테이블에 레코드 삽입
+2. `crawler_type` 설정 (또는 UI에서 AUTO 선택 권장)
+3. `config` JSON에 `selectors`, `pagination` 등 설정 (AUTO면 자동 생성)
 4. `npm run crawl:dry -- --source=<id> --verbose` 테스트
 5. 성공 시 `is_active = true` 활성화
 
@@ -591,11 +724,19 @@ Body: { "articleId": "uuid" }
 ### 4. Edge Function 배포
 
 ```bash
-# Supabase CLI
+# AI 요약 Edge Function (GPT-5-nano)
 supabase functions deploy summarize-article
+
+# AI 크롤러 타입 감지 Edge Function (GPT-5-nano) - 2026-02-14 추가
+supabase functions deploy detect-crawler-type
+npx supabase functions deploy detect-api-endpoint
 
 # 또는 MCP (Supabase MCP 설정 시)
 # → mcp__supabase__deploy_edge_function
+
+# Secret 확인 (OPENAI_API_KEY는 두 함수 공유)
+# Supabase Dashboard → Edge Functions → Secrets
+# - OPENAI_API_KEY: sk-... (이미 설정됨)
 ```
 
 ### 5. Git + 배포
@@ -727,7 +868,23 @@ useEffect(() => {
 **해결**:
 1. `USE_EDGE_FUNCTION` 환경변수 확인 (기본 `true`)
 2. Supabase Secrets에 `OPENAI_API_KEY` 확인
-3. `content_preview` 컬럼 NULL이면 크롤러 본문 추출 로직 확인
+3. `content_preview` 컬럼 NULL이면 크롤러 본문 추출 로직 확인 → Q6 참조
+
+### Q6. content_preview가 NULL이거나 너무 짧습니다 (SPA 사이트).
+**원인**: SPA 페이지는 Cheerio 정적 파싱 불가 (HTTP 404 또는 빈 body). API 타입 소스의 경우 `crawlContent`가 `'{}'` 같은 2자 fallback을 반환하기도 함.
+**해결 (자동)**: `lib/crawlers/index.ts`의 본문 미리보기 추출 루프는 다음 2단계 fallback을 자동 적용:
+1. Cheerio 1차 시도 (빠름, 정적 페이지)
+2. Cheerio 실패 또는 `content_preview < 50자`이면 → Puppeteer (SPA 렌더링)
+**수동 확인**:
+```bash
+npm run crawl:dry -- --source=<id> --verbose
+# "🔄 Cheerio 실패 → Puppeteer 시도..." 로그 확인
+# "✅ Puppeteer 추출 완료 (N자)" 로그 확인
+```
+**추가 원인 - API 소스 linkTemplate 오류**:
+- `crawler_type=API` 소스의 `config.crawl_config.urlTransform.linkTemplate`이 잘못된 URL 패턴이면 404 페이지가 렌더링됨
+- 예: `/insight/{id}` (잘못됨) → `/insight/detail/{id}` (올바름)
+- Supabase Dashboard → `crawl_sources` → `config.crawl_config.urlTransform` 확인
 
 ### Q3. Vercel에서 Puppeteer가 작동하지 않습니다.
 **원인**: Vercel Serverless는 Chrome 바이너리 포함 불가
@@ -809,7 +966,7 @@ useEffect(() => {
 | `id` | serial PK |
 | `name` | 소스 이름 |
 | `base_url` | 크롤링 대상 URL |
-| `crawler_type` | STATIC/SPA/RSS/PLATFORM_NAVER/PLATFORM_KAKAO/NEWSLETTER/API |
+| `crawler_type` | STATIC/SPA/RSS/SITEMAP/PLATFORM_NAVER/PLATFORM_KAKAO/NEWSLETTER/API |
 | `config` | jsonb — selectors, pagination, content_selectors 등 |
 | `category` | 카테고리 |
 | `is_active` | 활성화 여부 |
@@ -876,6 +1033,38 @@ crawl: 크롤러 관련 변경
 ---
 
 ## 버전 히스토리
+
+### v1.5.0 (2026-02-19)
+- **SITEMAP 크롤러 전략 추가** (`lib/crawlers/strategies/sitemap.ts`)
+  - RSS 피드가 없는 사이트를 위한 sitemap.xml 기반 크롤링
+  - `crawlList()`: sitemap 파싱 → 날짜 필터(14일) → URL 필터 → 최대 15개 → 5개씩 병렬 fetch
+  - 각 URL에서 title + thumbnail + content를 1회 fetch로 동시 추출 (이중 fetch 방지)
+  - Sitemap Index 재귀 처리 지원 (depth ≤ 1, 최대 3개 서브 sitemap)
+- **자동 감지 파이프라인 Step 2.5 추가** (`lib/crawlers/strategy-resolver.ts`)
+  - RSS 발견 실패 시 `/sitemap.xml` 자동 탐색 → `SITEMAP` 전략 선택
+  - 발견된 sitemap URL은 `config.crawl_config.rssUrl`에 저장
+- **SITEMAP 타입 등록**: `types.ts`, `types/index.ts`, `strategies/index.ts`, `infer-type.ts`, `SourcesPageClient.tsx`
+
+### v1.4.1 (2026-02-19)
+- **레거시 크롤러 Puppeteer fallback 추가** (`lib/crawlers/index.ts`)
+  - 본문 미리보기 추출 루프: Cheerio 1차 → Puppeteer 2차 자동 전환
+  - 조건: `!content_preview || content_preview.length < 50` (2자짜리 `'{}'` 등 무의미한 값 포함)
+  - `spaStrategy.crawlContent()` 호출 후 `closeBrowser()` 정리
+  - 와이즈앱 외 다른 SPA/API 소스도 자동 혜택
+- **spa.crawlContent `load` + 3s wait 전략** (`lib/crawlers/strategies/spa.ts`)
+  - `networkidle2` → `load` + `setTimeout(3000)` 변경
+  - 폴링/WebSocket 유지 사이트(와이즈앱 등)에서 30초 타임아웃 방지
+- **와이즈앱 linkTemplate URL 수정** (DB, crawl_sources source 82)
+  - `/insight/{insightNid}` → `/insight/detail/{insightNid}`
+  - 감지 오류: AI가 `insightNid`를 `urlKeyword`처럼 SEO URL로 오판
+
+### v1.4.0 (2026-02-19)
+- **getCrawler() 우선순위 수정**: LEGACY_CRAWLER_REGISTRY가 URL 추론보다 먼저 확인
+- **API 엔드포인트 자동 감지 (Step 7.5)**: SPA 확정 후 `detect-api-endpoint` Edge Function 호출
+- **AI 셀렉터 감지 SPA shell 규칙 강화**: 네비게이션 메뉴 오인식 방지
+- **크롤링 윈도우 14일 확장**: `isWithinDays()` 7일 → 14일
+- **이미지 프록시 도메인 추가**: `www.wiseapp.co.kr`
+- **vercel.json maxDuration**: `app/api/sources/route.ts` 60→300초
 
 ### v1.3.0 (2026-02)
 - CSS 셀렉터 자동 탐지 모듈 추가 (`lib/crawlers/auto-detect.ts`)
