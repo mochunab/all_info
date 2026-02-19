@@ -31,6 +31,8 @@ export default function Home() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef(search);
   const categoryRef = useRef(category);
+  const crawlSeenRunning = useRef(false);
+  const crawlAbortRef = useRef<AbortController | null>(null);
 
   // 언어 설정 초기화 (URL 파라미터 우선, localStorage 차선)
   useEffect(() => {
@@ -191,6 +193,11 @@ export default function Home() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    crawlSeenRunning.current = false;
+    if (crawlAbortRef.current) {
+      crawlAbortRef.current.abort();
+      crawlAbortRef.current = null;
+    }
   }, []);
 
   // Keep refs in sync for polling closure
@@ -216,17 +223,31 @@ export default function Home() {
 
     // 4초 간격으로 크롤링 상태 + 아티클 폴링
     pollingRef.current = setInterval(async () => {
-      // 1. 크롤링 상태 확인 (진행률 표시)
+      // 1. 크롤링 상태 확인 (진행률 표시 + 완료 자동 감지)
       try {
         const statusRes = await fetch('/api/crawl/status');
         if (statusRes.ok) {
           const status: CrawlStatus = await statusRes.json();
 
-          if (status.totalSources > 0) {
-            const progress = status.newArticles > 0
-              ? `${status.completedSources}/${status.totalSources} 소스 완료 · ${status.newArticles}개 새 아티클`
-              : `${status.completedSources}/${status.totalSources} 소스 완료`;
-            setCrawlProgress(progress);
+          if (status.isRunning) {
+            crawlSeenRunning.current = true;
+            if (status.totalSources > 0) {
+              const progress = status.newArticles > 0
+                ? `${status.completedSources}/${status.totalSources} 소스 완료 · ${status.newArticles}개 새 아티클`
+                : `${status.completedSources}/${status.totalSources} 소스 완료`;
+              setCrawlProgress(progress);
+            }
+          } else if (crawlSeenRunning.current) {
+            // 크롤이 DB에서 완료 감지 → trigger fetch 응답 없어도 UI 정리
+            stopPolling();
+            setIsCrawling(false);
+            setCrawlProgress('');
+            setPage(1);
+            fetchArticles(1, false);
+            setLastUpdated(new Date().toISOString());
+            setToastMessage(t(language, 'toast.noNewInsights'));
+            setShowToast(true);
+            return;
           }
         }
       } catch { /* 무시 */ }
@@ -252,13 +273,20 @@ export default function Home() {
     // 트리거 호출 - 선택된 카테고리 전달
     const requestCategory = category || undefined;
 
+    // 10분 타임아웃 (크롤이 오래 걸려도 UI가 멈추지 않도록)
+    const controller = new AbortController();
+    crawlAbortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+
     fetch('/api/crawl/trigger', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category: requestCategory }),
+      signal: controller.signal,
     })
       .then((res) => res.json())
       .then((data) => {
+        clearTimeout(timeoutId);
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');
@@ -287,6 +315,9 @@ export default function Home() {
         setLastUpdated(new Date().toISOString());
       })
       .catch((error) => {
+        clearTimeout(timeoutId);
+        // AbortError = 타임아웃 또는 사용자 중단 (폴링에서 이미 완료 처리했을 수 있음)
+        if ((error as Error).name === 'AbortError') return;
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');

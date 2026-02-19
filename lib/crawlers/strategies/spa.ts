@@ -158,9 +158,9 @@ export class SPAStrategy implements CrawlStrategy {
         }
       });
 
-      // 페이지 로드
+      // 페이지 로드 (networkidle2는 폴링/WebSocket 사이트에서 30초 타임아웃 발생 → load 사용)
       await page.goto(source.base_url, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'load',
         timeout: 30000,
       });
 
