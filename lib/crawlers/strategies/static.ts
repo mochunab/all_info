@@ -7,6 +7,7 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig } from 
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // 기본 헤더
 const DEFAULT_HEADERS = {
@@ -101,11 +102,24 @@ export class StaticStrategy implements CrawlStrategy {
       $container.find(selectors.item).each((_, element) => {
         try {
           const $el = $(element);
+
+          // excludeSelectors 체크 - 제외 영역 안에 있는지 확인
+          if (config.excludeSelectors?.length) {
+            const isExcluded = config.excludeSelectors.some(excludeSel =>
+              $el.closest(excludeSel).length > 0
+            );
+            if (isExcluded) {
+              const excludedIn = config.excludeSelectors.find(sel => $el.closest(sel).length > 0);
+              console.log(`[STATIC] SKIP (excluded area): ${excludedIn}`);
+              return;
+            }
+          }
+
           const item = this.parseItem($, $el, selectors, baseUrl, config);
 
           if (item && item.title && item.link) {
             // 7일 이내 필터링
-            if (!isWithinDays(item.dateStr, 7, item.title)) {
+            if (!isWithinDays(item.dateStr, 14, item.title)) {
               console.log(`[STATIC] SKIP (too old): ${item.title.substring(0, 40)}...`);
               return;
             }
@@ -134,10 +148,16 @@ export class StaticStrategy implements CrawlStrategy {
     baseUrl: string,
     config: CrawlConfig
   ): RawContentItem | null {
-    // 제목
+    // 제목 (정제 + 검증)
     const $title = $el.find(selectors.title).first();
-    const title = $title.text().trim() || $el.find('a').first().text().trim();
-    if (!title) return null;
+    const rawTitle = $title.text().trim() || $el.find('a').first().text().trim();
+    if (!rawTitle) return null;
+
+    const title = processTitle(rawTitle);
+    if (!title) {
+      console.log(`[STATIC] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+      return null;
+    }
 
     // 링크
     const $link = $el.find(selectors.link).first();

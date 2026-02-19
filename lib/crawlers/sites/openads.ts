@@ -72,7 +72,7 @@ export async function crawlOpenads(source: CrawlSource): Promise<CrawledArticle[
           console.log(`[오픈애즈] Article: "${title.substring(0, 40)}..." | Raw date: ${dateText || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`);
 
           // 7일 이내 확인
-          if (!isWithinDays(publishedAt, 7, title)) {
+          if (!isWithinDays(publishedAt, 14, title)) {
             console.log(`[오픈애즈] SKIP (too old): ${title}`);
             return;
           }

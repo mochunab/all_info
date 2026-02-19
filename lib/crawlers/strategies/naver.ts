@@ -8,6 +8,7 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -97,16 +98,22 @@ export class NaverStrategy implements CrawlStrategy {
 
       for (const feedItem of feed.items) {
         try {
-          const title = feedItem.title?.trim();
+          const rawTitle = feedItem.title?.trim();
           const link = feedItem.link?.trim();
 
-          if (!title || !link) continue;
+          if (!rawTitle || !link) continue;
+
+          const title = processTitle(rawTitle);
+          if (!title) {
+            console.log(`[PLATFORM_NAVER] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+            continue;
+          }
 
           // 날짜
           const dateStr = feedItem.pubDate || feedItem.isoDate || null;
 
           // 7일 이내 필터링
-          if (!isWithinDays(dateStr, 7, title)) {
+          if (!isWithinDays(dateStr, 14, title)) {
             console.log(`[NAVER] SKIP (too old): ${title.substring(0, 40)}...`);
             continue;
           }
@@ -185,14 +192,49 @@ export class NaverStrategy implements CrawlStrategy {
 
             // 제목과 링크
             const $link = $el.is('a') ? $el : $el.find('a').first();
-            const title = $link.text().trim() || $el.find('.title, .tit').text().trim();
+
+            // 제목 추출: 1) 제목 셀렉터 우선, 2) 링크 텍스트 fallback
+            let rawTitle =
+              $el.find('.title, .tit, h2, h3, .post_tit').first().text().trim() ||
+              $link.clone().children().remove().end().text().trim() || // 자식 요소 제거 후 직접 텍스트만
+              $link.text().trim();
+
+            // 네이버 특화 메타 정보 제거 (우선 처리)
+            rawTitle = rawTitle
+              .replace(/\s*\|\s*인터비즈.*$/i, '') // "| 인터비즈 ..." 제거
+              .replace(/\s*\|\s*[가-힣a-zA-Z0-9\s]+\d{4}\.\s*\d{1,2}\.\s*\d{1,2}\..*$/i, '') // "| 소스명 2026. 2. 9. ..." 제거
+              .replace(/\s*댓글수\s*\d+.*$/i, ''); // "댓글수 1" 제거
+
             let href = $link.attr('href');
 
-            if (!title || !href) return;
+            if (!rawTitle || !href) return;
+
+            // 범용 제목 정제 + 검증
+            const title = processTitle(rawTitle);
+            if (!title) {
+              console.log(`[PLATFORM_NAVER] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+              return;
+            }
+
+            // 무효한 링크 필터링 (#, javascript:, mailto: 등)
+            if (
+              href === '#' ||
+              href.startsWith('#!') ||
+              href.startsWith('javascript:') ||
+              href.startsWith('mailto:') ||
+              href.trim() === ''
+            ) {
+              return;
+            }
 
             // 절대 URL로 변환
             if (!href.startsWith('http')) {
               href = `https://blog.naver.com${href.startsWith('/') ? '' : '/'}${href}`;
+            }
+
+            // 네이버 블로그 포스트 URL 검증 (logNo 파라미터 필수)
+            if (!href.includes('logNo=') && !href.includes('PostView')) {
+              return;
             }
 
             // 날짜
@@ -202,7 +244,7 @@ export class NaverStrategy implements CrawlStrategy {
               null;
 
             // 7일 이내 필터링
-            if (!isWithinDays(dateStr, 7, title)) {
+            if (!isWithinDays(dateStr, 14, title)) {
               return;
             }
 

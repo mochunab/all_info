@@ -143,7 +143,7 @@ export async function crawlRetailtalk(source: CrawlSource): Promise<CrawledArtic
         console.log(`[리테일톡] Article: "${title.substring(0, 40)}..." | Thumbnail date: ${thumbnailMatch?.[1] || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`);
 
         // 7일 이내 확인
-        if (!isWithinDays(publishedAt, 7, title)) {
+        if (!isWithinDays(publishedAt, 14, title)) {
           console.log(`[리테일톡] SKIP (too old): ${title}`);
           return;
         }

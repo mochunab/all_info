@@ -72,7 +72,7 @@ export function createArticle(
   const publishedAt = data.date ? parseDate(data.date)?.toISOString() : undefined;
 
   // Skip if older than 7 days
-  if (!isWithinDays(publishedAt, 7)) return null;
+  if (!isWithinDays(publishedAt, 14)) return null;
 
   return {
     source_id: generateSourceId(data.url),

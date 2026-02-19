@@ -61,7 +61,7 @@ export async function crawlStonebc(source: CrawlSource): Promise<CrawledArticle[
         const publishedAt = updatedTime ? parseDate(updatedTime)?.toISOString() : undefined;
         console.log(`[스톤브릿지] Article: "${title.substring(0, 40)}..." | Raw date: ${updatedTime || 'N/A'} | Parsed: ${publishedAt || 'N/A'}`);
 
-        if (!isWithinDays(publishedAt, 7, title)) {
+        if (!isWithinDays(publishedAt, 14, title)) {
           console.log(`[스톤브릿지] SKIP (too old): ${title}`);
           continue;
         }

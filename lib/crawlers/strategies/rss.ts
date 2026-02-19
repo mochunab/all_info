@@ -7,6 +7,7 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -58,7 +59,7 @@ export class RSSStrategy implements CrawlStrategy {
           }
 
           // 7일 이내 필터링
-          if (!isWithinDays(item.dateStr, 7, item.title)) {
+          if (!isWithinDays(item.dateStr, 14, item.title)) {
             console.log(`[RSS] SKIP (too old): ${item.title.substring(0, 40)}...`);
             continue;
           }
@@ -113,9 +114,15 @@ export class RSSStrategy implements CrawlStrategy {
     },
     config: CrawlConfig
   ): RawContentItem | null {
-    // 제목
-    const title = feedItem.title?.trim();
-    if (!title) return null;
+    // 제목 (정제 + 검증)
+    const rawTitle = feedItem.title?.trim();
+    if (!rawTitle) return null;
+
+    const title = processTitle(rawTitle);
+    if (!title) {
+      console.log(`[RSS] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+      return null;
+    }
 
     // 링크
     let link = feedItem.link?.trim();

@@ -7,6 +7,7 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
+import { processTitle } from '../title-cleaner';
 
 // 뉴스레터 플랫폼 감지
 type NewsletterPlatform = 'stibee' | 'substack' | 'mailchimp' | 'generic';
@@ -139,10 +140,16 @@ export class NewsletterStrategy implements CrawlStrategy {
       try {
         const $el = $(el);
 
-        // 제목
+        // 제목 (정제 + 검증)
         const $title = $el.find(finalSelectors.title).first();
-        const title = $title.text().trim() || $el.find('a').first().text().trim();
-        if (!title || title.length < 5) return;
+        const rawTitle = $title.text().trim() || $el.find('a').first().text().trim();
+        if (!rawTitle) return;
+
+        const title = processTitle(rawTitle);
+        if (!title) {
+          console.log(`[NEWSLETTER] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+          return;
+        }
 
         // 링크
         const $link = $el.find(finalSelectors.link).first();
@@ -196,7 +203,7 @@ export class NewsletterStrategy implements CrawlStrategy {
           null;
 
         // 7일 이내 필터링
-        if (!isWithinDays(dateStr, 7, title)) {
+        if (!isWithinDays(dateStr, 14, title)) {
           console.log(`[NEWSLETTER] SKIP (too old): ${title.substring(0, 40)}...`);
           return;
         }

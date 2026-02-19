@@ -6,22 +6,31 @@ import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { isWithinDays } from '../date-parser';
 import { generatePreview } from '../content-extractor';
+import { processTitle } from '../title-cleaner';
 
 // API 설정 인터페이스
 interface APIConfig {
+  endpoint?: string; // API 엔드포인트 (base_url과 분리 가능)
   method?: 'GET' | 'POST';
   headers?: Record<string, string>;
   body?: Record<string, unknown>;
   queryParams?: Record<string, string>;
   // 응답 매핑
   responseMapping?: {
-    items: string; // JSON 경로 (예: "data.posts", "results")
+    items: string; // JSON 경로 (예: "data.posts", "results", "insightList")
     title: string;
     link: string;
     thumbnail?: string;
     author?: string;
     date?: string;
     content?: string;
+  };
+  // URL 변환 설정
+  urlTransform?: {
+    linkTemplate?: string; // 예: "https://site.com/post/{id}" 또는 "https://site.com/{urlKeyword}"
+    linkFields?: string[]; // linkTemplate에 사용할 필드들 (순서대로 {0}, {1}, ... 또는 {fieldName})
+    thumbnailPrefix?: string; // 썸네일 상대 경로 앞에 붙일 prefix
+    baseUrl?: string; // 상대 URL을 절대 URL로 변환할 때 사용
   };
   // 페이지네이션
   pagination?: {
@@ -40,17 +49,23 @@ export class APIStrategy implements CrawlStrategy {
     const config = parseConfig(source);
     const apiConfig = (config.crawl_config as unknown as APIConfig) || {};
 
-    console.log(`[API] Fetching: ${source.base_url}`);
+    // API 엔드포인트 결정 (endpoint 설정이 있으면 사용, 없으면 base_url)
+    const apiUrl = apiConfig.endpoint || source.base_url;
+
+    console.log(`[API] Fetching: ${apiUrl}`);
+    if (apiConfig.endpoint) {
+      console.log(`[API] Source URL: ${source.base_url} (표시용)`);
+    }
 
     try {
       const items: RawContentItem[] = [];
 
       // 페이지네이션 처리
       if (apiConfig.pagination) {
-        const pageItems = await this.fetchWithPagination(source.base_url, apiConfig);
+        const pageItems = await this.fetchWithPagination(apiUrl, apiConfig, source.base_url);
         items.push(...pageItems);
       } else {
-        const pageItems = await this.fetchSinglePage(source.base_url, apiConfig);
+        const pageItems = await this.fetchSinglePage(apiUrl, apiConfig, source.base_url);
         items.push(...pageItems);
       }
 
@@ -96,17 +111,19 @@ export class APIStrategy implements CrawlStrategy {
   }
 
   private async fetchSinglePage(
-    baseUrl: string,
-    apiConfig: APIConfig
+    apiUrl: string,
+    apiConfig: APIConfig,
+    sourceBaseUrl: string
   ): Promise<RawContentItem[]> {
-    const url = this.buildUrl(baseUrl, apiConfig.queryParams);
+    const url = this.buildUrl(apiUrl, apiConfig.queryParams);
     const response = await this.makeRequest(url, apiConfig);
-    return this.parseResponse(response, apiConfig, baseUrl);
+    return this.parseResponse(response, apiConfig, sourceBaseUrl);
   }
 
   private async fetchWithPagination(
-    baseUrl: string,
-    apiConfig: APIConfig
+    apiUrl: string,
+    apiConfig: APIConfig,
+    sourceBaseUrl: string
   ): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
     const pagination = apiConfig.pagination!;
@@ -136,12 +153,12 @@ export class APIStrategy implements CrawlStrategy {
           break;
       }
 
-      const url = this.buildUrl(baseUrl, params);
+      const url = this.buildUrl(apiUrl, params);
       console.log(`[API] Page ${page + 1}: ${url}`);
 
       try {
         const response = await this.makeRequest(url, apiConfig);
-        const pageItems = this.parseResponse(response, apiConfig, baseUrl);
+        const pageItems = this.parseResponse(response, apiConfig, sourceBaseUrl);
 
         if (pageItems.length === 0) {
           console.log('[API] No more items, stopping pagination');
@@ -246,25 +263,65 @@ export class APIStrategy implements CrawlStrategy {
       try {
         const item = rawItem as Record<string, unknown>;
 
-        // 필수 필드: 제목
-        const title = this.getNestedValue(item, mapping.title) as string;
-        if (!title) continue;
+        // 필수 필드: 제목 (정제 + 검증)
+        const rawTitle = this.getNestedValue(item, mapping.title) as string;
+        if (!rawTitle) continue;
+
+        const title = processTitle(rawTitle);
+        if (!title) {
+          console.log(`[API] SKIP (invalid title): "${rawTitle.substring(0, 50)}..."`);
+          continue;
+        }
 
         // 필수 필드: 링크
         let link = this.getNestedValue(item, mapping.link) as string;
         if (!link) continue;
 
+        // URL 변환 적용
+        const urlTransform = apiConfig.urlTransform;
+
+        // 링크 템플릿 처리
+        if (urlTransform?.linkTemplate) {
+          const template = urlTransform.linkTemplate;
+          let resolvedLink = template;
+
+          // linkFields가 있으면 해당 필드 값들로 치환
+          if (urlTransform.linkFields) {
+            urlTransform.linkFields.forEach((fieldName, index) => {
+              const value = this.getNestedValue(item, fieldName);
+              if (value !== undefined) {
+                // {0}, {1}, ... 형식과 {fieldName} 형식 모두 지원
+                resolvedLink = resolvedLink
+                  .replace(new RegExp(`\\{${index}\\}`, 'g'), String(value))
+                  .replace(new RegExp(`\\{${fieldName}\\}`, 'g'), String(value));
+              }
+            });
+          } else {
+            // linkFields가 없으면 link 필드 값으로 치환
+            resolvedLink = resolvedLink.replace(/\{[^}]+\}/g, link);
+          }
+
+          link = resolvedLink;
+        }
+
         // 절대 URL로 변환
         if (!link.startsWith('http')) {
-          link = `${origin}${link.startsWith('/') ? '' : '/'}${link}`;
+          const transformBase = urlTransform?.baseUrl || origin;
+          link = `${transformBase}${link.startsWith('/') ? '' : '/'}${link}`;
         }
 
         // 선택 필드: 썸네일
         let thumbnail: string | null = null;
         if (mapping.thumbnail) {
           thumbnail = (this.getNestedValue(item, mapping.thumbnail) as string) || null;
-          if (thumbnail && !thumbnail.startsWith('http')) {
-            thumbnail = `${origin}${thumbnail.startsWith('/') ? '' : '/'}${thumbnail}`;
+          if (thumbnail) {
+            // 썸네일 prefix 적용
+            if (urlTransform?.thumbnailPrefix && !thumbnail.startsWith('http')) {
+              thumbnail = `${urlTransform.thumbnailPrefix}${thumbnail}`;
+            } else if (!thumbnail.startsWith('http')) {
+              const transformBase = urlTransform?.baseUrl || origin;
+              thumbnail = `${transformBase}${thumbnail.startsWith('/') ? '' : '/'}${thumbnail}`;
+            }
           }
         }
 
@@ -281,7 +338,7 @@ export class APIStrategy implements CrawlStrategy {
         }
 
         // 7일 이내 필터링
-        if (!isWithinDays(dateStr, 7, title)) {
+        if (!isWithinDays(dateStr, 14, title)) {
           console.log(`[API] SKIP (too old): ${title.substring(0, 40)}...`);
           continue;
         }

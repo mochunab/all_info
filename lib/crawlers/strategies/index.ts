@@ -12,6 +12,7 @@ import { naverStrategy } from './naver';
 import { kakaoStrategy } from './kakao';
 import { newsletterStrategy } from './newsletter';
 import { apiStrategy } from './api';
+import { firecrawlStrategy } from './firecrawl';
 
 // 전략 맵 (대문자 키 + 레거시 소문자 지원)
 const strategies: Record<string, CrawlStrategy> = {
@@ -23,6 +24,7 @@ const strategies: Record<string, CrawlStrategy> = {
   PLATFORM_KAKAO: kakaoStrategy,
   NEWSLETTER: newsletterStrategy,
   API: apiStrategy,
+  FIRECRAWL: firecrawlStrategy,
   // 레거시 지원 (소문자)
   static: staticStrategy,
   dynamic: spaStrategy,
@@ -73,4 +75,5 @@ export {
   kakaoStrategy,
   newsletterStrategy,
   apiStrategy,
+  firecrawlStrategy,
 };
