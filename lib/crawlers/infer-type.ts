@@ -11,6 +11,14 @@ import type { CrawlerType } from './types';
 export function inferCrawlerType(url: string): CrawlerType {
   const urlLower = url.toLowerCase();
 
+  // Sitemap (RSS 체크보다 앞에: sitemap.xml은 RSS가 아님)
+  if (
+    urlLower.includes('sitemap') &&
+    (urlLower.includes('.xml') || urlLower.endsWith('sitemap'))
+  ) {
+    return 'SITEMAP';
+  }
+
   // RSS 피드
   if (
     urlLower.includes('/rss') ||
@@ -90,7 +98,15 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
   const urlLower = url.toLowerCase();
   console.log(`\n[inferCrawlerTypeEnhanced] 🔍 URL 패턴 분석: ${url}`);
 
-  // 1. RSS 피드 (confidence: 0.95)
+  // 1. Sitemap (RSS 체크보다 앞에: sitemap.xml은 RSS가 아님)
+  if (
+    urlLower.includes('sitemap') &&
+    (urlLower.includes('.xml') || urlLower.endsWith('sitemap'))
+  ) {
+    return { type: 'SITEMAP', confidence: 0.95 };
+  }
+
+  // 1b. RSS 피드 (confidence: 0.95)
   if (
     urlLower.includes('/rss') ||
     urlLower.includes('/feed') ||
@@ -239,40 +255,55 @@ export async function detectContentSelectors(
 
 /**
  * 시맨틱 HTML 기반 셀렉터 감지 (빠른 경로)
+ *
+ * 주의: <main> 태그 하나만 있는 경우 AI 감지를 건너뛰지 않음.
+ * Tailwind CSS 기반 현대 사이트는 <main> 안에 유틸리티 클래스 기반 카드를 사용하므로
+ * 'article, .article, .post, .card' 같은 범용 셀렉터가 0개를 반환할 수 있음.
+ * 실제 <article> 태그 3개 이상이 존재할 때만 신뢰 (WordPress, 전통적 CMS 패턴).
  */
 function trySemanticDetection(html: string): SelectorDetectionResult {
-  const priorities = [
-    { selector: 'main', score: 0.9 },
-    { selector: '[role="main"]', score: 0.9 },
-    { selector: 'article', score: 0.8 },
-    { selector: '.content', score: 0.6 },
-    { selector: '#content', score: 0.6 },
-  ];
+  // <article> 태그 개수 카운트 (실제 시맨틱 마크업 사용 여부 확인)
+  const articleTagCount = (html.match(/<article[\s>]/gi) || []).length;
 
-  // 간단한 HTML 파싱 (정규식)
-  for (const { selector, score } of priorities) {
-    const pattern =
-      selector.startsWith('[') || selector.startsWith('#') || selector.startsWith('.')
-        ? new RegExp(selector.replace(/[.#[\]="]/g, '\\$&'), 'i')
-        : new RegExp(`<${selector}[>\\s]`, 'i');
-
-    if (pattern.test(html)) {
-      console.log(`[trySemanticDetection] ✅ 시맨틱 태그 발견: ${selector}`);
-      return {
-        selectors: {
-          container: selector,
-          item: 'article, .article, .post, .card',
-          title: 'h1, h2, h3, .title',
-          link: 'a',
-        },
-        excludeSelectors: ['nav', 'header', 'footer', 'aside'],
-        confidence: score,
-        method: 'semantic',
-      };
-    }
+  if (articleTagCount >= 3) {
+    console.log(`[trySemanticDetection] ✅ <article> 태그 ${articleTagCount}개 발견 → 시맨틱 감지`);
+    return {
+      selectors: {
+        container: 'main, [role="main"], body',
+        item: 'article',
+        title: 'h1, h2, h3, .title, .headline',
+        link: 'a',
+      },
+      excludeSelectors: ['nav', 'header', 'footer', 'aside'],
+      confidence: 0.8,
+      method: 'semantic',
+    };
   }
 
+  // <article> 없으면 AI에게 넘김 (Tailwind/유틸리티 클래스 사이트 등)
+  console.log(`[trySemanticDetection] ⏭️  <article> 태그 부족 (${articleTagCount}개) → AI 감지로 진행`);
   return getFallbackSelectors();
+}
+
+/**
+ * AI가 생성한 CSS 셀렉터에서 Tailwind `:` 이스케이프 처리
+ *
+ * 문제: Tailwind 다크모드/반응형 클래스(dark:text-slate-200, lg:text-xl 등)의
+ *       `:` 가 CSS 의사 클래스(pseudo-class)로 오인되어 Cheerio 파서가 에러를 던짐.
+ * 해결: 클래스 내부의 Tailwind 변형 접두사 뒤 `:` 를 `\:` 로 이스케이프.
+ *
+ * 예: .dark:text-slate-200 → .dark\:text-slate-200
+ *     .lg:gap-4            → .lg\:gap-4
+ * 보존: a:hover, :nth-child(n) 등 표준 CSS 의사 클래스는 변환하지 않음
+ */
+function escapeTailwindColons(selector: string | undefined | null): string | undefined {
+  if (!selector) return selector ?? undefined;
+  // `.word:word-` 패턴: 점(.) 뒤 단어 + 콜론 + 하이픈 포함 단어 → Tailwind 유틸리티
+  // 단, 표준 pseudo-class(:hover, :focus 등)는 하이픈이 없으므로 제외됨
+  return selector.replace(
+    /(\.[a-zA-Z0-9]+):([a-zA-Z][a-zA-Z0-9]*-)/g,
+    '$1\\:$2'
+  );
 }
 
 /**
@@ -288,36 +319,71 @@ async function detectSelectorsWithAI(
     return getFallbackSelectors();
   }
 
-  // HTML 크기 제한 (토큰 비용 절감) - 처음 50KB만
-  const truncatedHtml = html.substring(0, 50000);
+  // HTML 전처리: <head>와 대형 인라인 스크립트/스타일 제거 후 50KB 추출
+  // 이유: <head> CSS/JS 번들이 30-40KB를 차지하면 실제 body 콘텐츠가 50KB 한도 밖으로 밀려남
+  const cleanedHtml = html
+    .replace(/<head[\s\S]*?<\/head>/i, '')                      // <head> 전체 제거
+    .replace(/<script[^>]*>[\s\S]{200,}?<\/script>/gi, '')     // 인라인 스크립트(200자+) 제거
+    .replace(/<style[^>]*>[\s\S]{200,}?<\/style>/gi, '')       // 인라인 스타일(200자+) 제거
+    .replace(/\n{3,}/g, '\n\n')                                 // 빈 줄 정리
+    .trim();
+  const truncatedHtml = cleanedHtml.substring(0, 50000);
 
-  const prompt = `You are a web scraping expert. Analyze this HTML and provide the BEST CSS selectors to extract article/content list items.
+  const prompt = `You are a web scraping expert. Your task: find CSS selectors for the MAIN ARTICLE LIST on this page — the repeating cards/rows where each one is a unique article, blog post, or newsletter issue.
 
 URL: ${url}
 
-HTML (truncated):
+HTML (first 50KB):
 \`\`\`html
 ${truncatedHtml}
 \`\`\`
 
-Respond ONLY with valid JSON (no markdown, no explanation):
+## HOW TO IDENTIFY REAL ARTICLE CARDS
+
+Real article cards have ALL of these:
+1. A link pointing to a UNIQUE DETAIL PAGE — URL contains a slug or ID (e.g. /posts/abc123, /articles/my-title, /p/12345, /2024/01/title)
+2. A TITLE — a sentence of text longer than 10 characters (NOT a number, NOT a one-word menu label)
+3. They REPEAT in a grid or list (typically 5–20 cards per page)
+
+## WHAT TO REJECT (these look like lists but are NOT articles)
+
+- ❌ Category / tag FILTER TABS: links to /c/category, ?tag=topic, /type/name, /category/name
+- ❌ Navigation links: /about, /login, /signup, /comments, /stories, /users/
+- ❌ Stat numbers: subscriber counts ("1.2K followers"), view counts ("202 reads"), like counts
+- ❌ Social media links: Twitter, Instagram, YouTube icons/buttons
+- ❌ "Load more" buttons, pagination numbers
+
+## STEP-BY-STEP PROCESS
+
+STEP 1: Find all repeating element groups in the HTML (3+ similar elements in a container)
+STEP 2: For each group, check: do the child <a> links point to UNIQUE DETAIL PAGES or to CATEGORY/FILTER pages?
+STEP 3: Select the group whose links point to DETAIL PAGES with slugs/IDs
+STEP 4: Write specific CSS selectors for that group
+
+## SPA SHELL DETECTION
+
+If the HTML has almost no visible text (just nav/menu links, no article titles, heavy <script> bundles) — the page requires JavaScript rendering. In this case: set confidence to 0.2 and note "SPA shell" in reasoning.
+
+IMPORTANT — CSS SELECTOR ESCAPING FOR TAILWIND:
+Tailwind class names use ":" for variants (dark:, lg:, hover:, etc.).
+In a CSS selector string, ":" must be escaped as "\\:" to avoid pseudo-class parse errors.
+In JSON output this means writing "\\\\" + ":" (double-backslash colon).
+Example: class "dark:text-slate-200" → JSON value ".dark\\:text-slate-200"
+Example: class "lg:gap-4" → JSON value ".lg\\:gap-4"
+Do NOT write ".dark:text-slate-200" — this will cause a CSS parser error.
+
+Respond ONLY with valid JSON (no markdown, no extra text):
 {
-  "container": "CSS selector for main content container (optional, use if exists)",
-  "item": "CSS selector for each article/post item",
-  "title": "CSS selector for title within each item",
-  "link": "CSS selector for link within each item",
+  "container": "CSS selector for the container holding all article cards (null if not needed)",
+  "item": "CSS selector for ONE article card — the repeating element",
+  "title": "CSS selector for the article title text inside each card",
+  "link": "CSS selector for the <a> tag inside each card that links to the article detail page",
+  "date": "CSS selector for the publish date/time element (null if not present)",
+  "thumbnail": "CSS selector for the thumbnail image (null if not present)",
   "excludeSelectors": ["nav", "header", "footer"],
   "confidence": 0.85,
-  "reasoning": "Brief explanation of your choice"
-}
-
-Rules:
-- Avoid generic selectors like "li" or "div" - be specific!
-- Look for semantic classes like .article, .post, .card, .insight-item
-- Exclude navigation, headers, footers
-- Navigation menus (공지사항, 서비스 문의, 로그인, 회원가입 etc.) are NOT articles
-- If the HTML is a SPA shell (minimal visible text content, heavy JS bundle scripts, only nav/menu links visible, no actual article titles or dates), set confidence to 0.2 and note "SPA shell - requires JS rendering" in reasoning
-- Return ONLY valid JSON, no other text`;
+  "reasoning": "Describe: (1) what the article cards look like, (2) an example article title you found, (3) an example URL the item links point to (e.g. /posts/abc123)"
+}`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -348,16 +414,26 @@ Rules:
       throw new Error('AI 응답에 JSON 없음');
     }
 
-    const aiResult = JSON.parse(jsonMatch[0]);
+    // JSON repair: \: → \\: (AI가 CSS 이스케이프를 JSON에 그대로 쓰는 경우 수정)
+    // JSON 스펙상 \: 는 유효하지 않은 escape → \\: 로 수정
+    const repairedJson = jsonMatch[0].replace(/(?<!\\)\\:/g, '\\\\:');
+    const aiResult = JSON.parse(repairedJson);
 
     console.log('[detectSelectorsWithAI] ✅ AI 감지 성공:', aiResult);
 
+    // Tailwind `dark:xxx`, `lg:xxx` 등 콜론 이스케이프 처리 (Cheerio 파서 오류 방지)
     return {
       selectors: {
-        container: aiResult.container,
-        item: aiResult.item,
-        title: aiResult.title,
-        link: aiResult.link,
+        container: escapeTailwindColons(aiResult.container),
+        item: escapeTailwindColons(aiResult.item) ?? aiResult.item,
+        title: escapeTailwindColons(aiResult.title) ?? aiResult.title,
+        link: escapeTailwindColons(aiResult.link) ?? aiResult.link,
+        ...(aiResult.date && aiResult.date !== 'null'
+          ? { date: escapeTailwindColons(aiResult.date) }
+          : {}),
+        ...(aiResult.thumbnail && aiResult.thumbnail !== 'null'
+          ? { thumbnail: escapeTailwindColons(aiResult.thumbnail) }
+          : {}),
       },
       excludeSelectors: aiResult.excludeSelectors || ['nav', 'header', 'footer'],
       confidence: aiResult.confidence || 0.7,
