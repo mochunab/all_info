@@ -98,6 +98,36 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       console.log(`   ➡️  다음 단계로 진행...`);
     }
 
+    // 2.5. Sitemap 자동 발견 (RSS 없는 사이트 대응)
+    console.log(`\n🗺️  [2.5단계/9단계] Sitemap 자동 발견 시도...`);
+    const sitemapUrl = await discoverSitemap(url);
+
+    if (sitemapUrl) {
+      console.log(`   ✅ Sitemap 발견!`);
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`✨ [전략 결정] SITEMAP`);
+      console.log(`   📊 신뢰도: 90%`);
+      console.log(`   🔗 Sitemap URL: ${sitemapUrl}`);
+      console.log(`   🔄 대체 전략: STATIC`);
+      console.log(`${'='.repeat(80)}\n`);
+
+      return {
+        primaryStrategy: 'SITEMAP',
+        fallbackStrategies: ['STATIC'],
+        rssUrl: sitemapUrl, // rssUrl 필드 재활용 — sources route.ts가 crawl_config.rssUrl에 저장
+        selectors: null,
+        excludeSelectors: undefined,
+        pagination: null,
+        confidence: 0.9,
+        detectionMethod: 'sitemap-discovery',
+        spaDetected: false,
+        optimizedUrl,
+      };
+    } else {
+      console.log(`   ⏭️  Sitemap 미발견`);
+      console.log(`   ➡️  다음 단계로 진행...`);
+    }
+
     // 3. CMS 감지 (WordPress, Tistory, Ghost, Medium)
     console.log(`[3단계/9단계] 🏗️  CMS 플랫폼 감지 시도...`);
     const cmsResult = detectCMS($);
@@ -254,111 +284,44 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       }
     }
 
-    // 6. 셀렉터 분석 (rule-based)
-    console.log(`\n🎯 [6단계/9단계] Rule-based CSS 셀렉터 패턴 분석`);
-    console.log(`   🔍 분석 방식: 테이블/리스트/반복 요소 패턴 매칭`);
-    const ruleResult = detectByRules($, url);
+    // 6. Rule-based 셀렉터 분석 — 비활성화 (코드 보존)
+    // detectByRules()는 auto-detect.ts에 보존됨. resolveStrategyV2에서는 여전히 사용.
 
-    // 높은 confidence (0.85 이상)면 rule-based 결과 신뢰
-    if (ruleResult && ruleResult.score >= 0.85) {
-      const confidencePercent = (ruleResult.score * 100).toFixed(0);
-      console.log(`   ✅ 셀렉터 분석 성공!`);
-      console.log(`   📊 셀렉터 신뢰도: ${confidencePercent}% (임계값: 85% 이상)`);
-      console.log(`   📰 탐지된 아이템: ${ruleResult.count}개`);
-      console.log(`\n   📝 자동 탐지된 CSS 셀렉터:`);
-      console.log(`      • container: ${ruleResult.container || 'N/A'}`);
-      console.log(`      • item: ${ruleResult.item}`);
-      console.log(`      • title: ${ruleResult.title}`);
-      console.log(`      • link: ${ruleResult.link}`);
-      if (ruleResult.date) console.log(`      • date: ${ruleResult.date}`);
-      if (ruleResult.thumbnail) console.log(`      • thumbnail: ${ruleResult.thumbnail}`);
-
-      // 이미 타입이 결정됐으면 그 타입 사용, 아니면 STATIC
-      const finalType = preliminaryType || 'STATIC';
-      const finalConfidence = preliminaryType ? preliminaryConfidence : ruleResult.score;
-      const finalMethod = (preliminaryType ? preliminaryMethod : 'rule-analysis') as StrategyResolution['detectionMethod'];
-
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`✨ [전략 결정] ${finalType} - ${finalMethod === 'url-pattern' ? 'URL 패턴' : 'Rule-based'}`);
-      console.log(`   📊 신뢰도: ${(finalConfidence * 100).toFixed(0)}%`);
-      console.log(`   🔧 셀렉터: Rule-based 자동 탐지`);
-      console.log(`   🔄 대체 전략: ${getDefaultFallbacks(finalType).join(' → ')}`);
-      console.log(`${'='.repeat(80)}\n`);
-
-      return {
-        primaryStrategy: finalType,
-        fallbackStrategies: getDefaultFallbacks(finalType),
-        rssUrl: null,
-        selectors: {
-          container: ruleResult.container,
-          item: ruleResult.item,
-          title: ruleResult.title,
-          link: ruleResult.link,
-          ...(ruleResult.date && { date: ruleResult.date }),
-          ...(ruleResult.thumbnail && { thumbnail: ruleResult.thumbnail }),
-        },
-        excludeSelectors: undefined,
-        pagination: null,
-        confidence: finalConfidence,
-        detectionMethod: finalMethod,
-        spaDetected: finalType === 'SPA',
-        optimizedUrl,
-      };
-    } else {
-      const ruleConfidencePercent = ((ruleResult?.score || 0) * 100).toFixed(0);
-      console.log(`   ⚠️  셀렉터 분석 실패 또는 낮은 신뢰도`);
-      console.log(`   📊 셀렉터 신뢰도: ${ruleConfidencePercent}% (임계값: 85% 미만)`);
-      console.log(`   💡 타입 신뢰도: ${preliminaryType ? (preliminaryConfidence * 100).toFixed(0) + '%' : 'N/A'}`);
-      console.log(`   🤖 AI 분석으로 진행...`);
-    }
-
-    // 7. AI 크롤러 타입 감지 (신뢰도 낮으면 무조건 2차 검증)
+    // 7 + 8. AI 타입 감지 & AI 셀렉터 탐지 — 병렬 실행
     const needsAIVerification = !preliminaryType || preliminaryConfidence < 0.85;
 
-    if (needsAIVerification) {
-      console.log(`\n🤖 [7단계/9단계] AI 기반 크롤러 타입 감지`);
-      if (preliminaryType) {
-        console.log(`   ⚠️  기존 타입(${preliminaryType}) 신뢰도 낮음 (${(preliminaryConfidence * 100).toFixed(0)}%) - AI 2차 검증`);
-      }
-      console.log(`   🔧 사용 모델: Edge Function (GPT-5-nano) → GPT-4o-mini fallback`);
-      console.log(`   ⏱️  최대 대기시간: 30초`);
+    console.log(`\n🤖 [7+8단계/9단계] AI 타입 감지 + AI 셀렉터 탐지 병렬 실행`);
+    if (!needsAIVerification) {
+      console.log(`   ✅ 타입 확정됨 (${preliminaryType}, ${(preliminaryConfidence * 100).toFixed(0)}%) — 타입 AI 건너뜀, 셀렉터만 탐지`);
+    }
+    console.log(`   🔧 모델: GPT-5-nano (타입) + GPT-4o-mini (셀렉터)`);
 
-      const aiStartTime = Date.now();
-      const aiTypeResult = await detectCrawlerTypeByAI(html, url);
-      const aiDuration = Date.now() - aiStartTime;
+    const parallelStart = Date.now();
+    const [aiTypeResult, selectorResult] = await Promise.all([
+      needsAIVerification
+        ? detectCrawlerTypeByAI(html, url)
+        : Promise.resolve(null),
+      detectContentSelectors(url, html),
+    ]);
+    console.log(`   ⏱️  병렬 AI 완료: ${Date.now() - parallelStart}ms`);
 
-      if (aiTypeResult && aiTypeResult.confidence >= 0.6) {
-        const aiConfidencePercent = (aiTypeResult.confidence * 100).toFixed(0);
-        console.log(`   ✅ AI 타입 감지 성공!`);
-        console.log(`   ⏱️  소요시간: ${aiDuration}ms`);
-        console.log(`   📊 신뢰도: ${aiConfidencePercent}%`);
-        console.log(`   🎯 감지된 타입: ${aiTypeResult.type}`);
-        console.log(`   💡 판단 근거: ${aiTypeResult.reasoning}`);
+    // 7. AI 타입 결과 처리
+    if (aiTypeResult && aiTypeResult.confidence >= 0.6) {
+      const aiConfidencePercent = (aiTypeResult.confidence * 100).toFixed(0);
+      console.log(`   ✅ AI 타입: ${aiTypeResult.type} (${aiConfidencePercent}%) — ${aiTypeResult.reasoning}`);
 
-        // AI 결과가 더 신뢰도 높으면 덮어쓰기
-        if (aiTypeResult.confidence > preliminaryConfidence) {
-          if (preliminaryType && preliminaryType !== aiTypeResult.type) {
-            console.log(`   🔄 타입 변경: ${preliminaryType} (${(preliminaryConfidence * 100).toFixed(0)}%) → ${aiTypeResult.type} (${aiConfidencePercent}%)`);
-          }
-          preliminaryType = aiTypeResult.type;
-          preliminaryConfidence = aiTypeResult.confidence;
-          preliminaryMethod = 'ai-type-detection';
-        } else {
-          console.log(`   ℹ️  기존 타입(${preliminaryType}) 유지 - 신뢰도가 더 높음`);
+      if (aiTypeResult.confidence > preliminaryConfidence) {
+        if (preliminaryType && preliminaryType !== aiTypeResult.type) {
+          console.log(`   🔄 타입 변경: ${preliminaryType} → ${aiTypeResult.type}`);
         }
+        preliminaryType = aiTypeResult.type;
+        preliminaryConfidence = aiTypeResult.confidence;
+        preliminaryMethod = 'ai-type-detection';
       } else {
-        const aiConfidencePercent = ((aiTypeResult?.confidence || 0) * 100).toFixed(0);
-        console.log(`   ❌ AI 타입 감지 실패 또는 낮은 신뢰도`);
-        console.log(`   📊 신뢰도: ${aiConfidencePercent}% (임계값: 60% 미만)`);
-        console.log(`   ⏱️  소요시간: ${aiDuration}ms`);
-        console.log(`   🔄 다음 단계로 진행...`);
+        console.log(`   ℹ️  기존 타입(${preliminaryType}) 유지 — 신뢰도 더 높음`);
       }
-    } else {
-      console.log(`\n🤖 [7단계/9단계] AI 크롤러 타입 감지 - 건너뜀`);
-      console.log(`   ✅ 이미 높은 신뢰도로 타입 확정됨`);
-      console.log(`   🎯 확정 타입: ${preliminaryType}`);
-      console.log(`   📊 타입 신뢰도: ${(preliminaryConfidence * 100).toFixed(0)}% (임계값: 85% 이상)`);
-      console.log(`   💡 AI 검증 불필요 (비용 절감)`);
+    } else if (needsAIVerification) {
+      console.log(`   ❌ AI 타입 감지 실패 (신뢰도 낮음)`);
     }
 
     // 7.5. 숨겨진 API 엔드포인트 자동 감지 (step 5.5 미실행 + SPA 확정된 경우)
@@ -410,23 +373,12 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       }
     }
 
-    // 8. AI 셀렉터 탐지 (새로운 3단계 방식)
-    console.log(`\n🔍 [8단계/9단계] AI 기반 콘텐츠 셀렉터 탐지 (3단계 방식)`);
-    console.log(`   🎯 1단계: Semantic HTML (무료, 빠름)`);
-    console.log(`   🎯 2단계: AI 분석 (GPT-4o-mini)`);
-    console.log(`   🎯 3단계: Fallback 제네릭 셀렉터`);
-
-    const selectorStartTime = Date.now();
-    const selectorResult = await detectContentSelectors(url, html);
-    const selectorDuration = Date.now() - selectorStartTime;
-
+    // 8. AI 셀렉터 결과 처리 (Stage 7+8 병렬 실행에서 이미 완료됨)
     if (selectorResult && selectorResult.confidence >= 0.6) {
       const confidencePercent = (selectorResult.confidence * 100).toFixed(0);
-      console.log(`   ✅ 셀렉터 탐지 성공!`);
-      console.log(`   ⏱️  소요시간: ${selectorDuration}ms`);
-      console.log(`   📊 신뢰도: ${confidencePercent}%`);
-      console.log(`   🔧 탐지 방법: ${selectorResult.method}`);
-      console.log(`   💡 판단 근거: ${selectorResult.reasoning || 'N/A'}`);
+      console.log(`\n🔍 [8단계/9단계] AI 셀렉터 결과 (병렬 완료)`);
+      console.log(`   ✅ 탐지 성공! 신뢰도: ${confidencePercent}%, 방법: ${selectorResult.method}`);
+      console.log(`   💡 근거: ${selectorResult.reasoning || 'N/A'}`);
       console.log(`\n   📝 탐지된 CSS 셀렉터:`);
       console.log(`      • container: ${selectorResult.selectors.container || 'N/A'}`);
       console.log(`      • item: ${selectorResult.selectors.item}`);
@@ -435,7 +387,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       if (selectorResult.selectors.date) console.log(`      • date: ${selectorResult.selectors.date}`);
       if (selectorResult.selectors.thumbnail) console.log(`      • thumbnail: ${selectorResult.selectors.thumbnail}`);
       if (selectorResult.excludeSelectors?.length) {
-        console.log(`\n   🚫 제외 셀렉터 (네비게이션/UI):`);
+        console.log(`\n   🚫 제외 셀렉터:`);
         selectorResult.excludeSelectors.forEach(sel => console.log(`      • ${sel}`));
       }
 
@@ -444,10 +396,8 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       const finalMethod = (preliminaryType ? preliminaryMethod : 'ai-content-detection') as StrategyResolution['detectionMethod'];
 
       console.log(`\n${'='.repeat(80)}`);
-      console.log(`✨ [전략 결정] ${finalType} - ${selectorResult.method} 기반 셀렉터`);
+      console.log(`✨ [전략 결정] ${finalType} — ${selectorResult.method} 기반 셀렉터`);
       console.log(`   📊 신뢰도: ${(finalConfidence * 100).toFixed(0)}%`);
-      console.log(`   🤖 탐지 방법: ${selectorResult.method}`);
-      console.log(`   🔧 셀렉터: ${selectorResult.method} 자동 탐지`);
       console.log(`   🔄 대체 전략: ${getDefaultFallbacks(finalType).join(' → ')}`);
       console.log(`${'='.repeat(80)}\n`);
 
@@ -464,8 +414,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
         optimizedUrl,
       };
     } else {
-      console.log(`   ❌ 셀렉터 탐지 실패 또는 낮은 신뢰도`);
-      console.log(`   ⏱️  소요시간: ${selectorDuration}ms`);
+      console.log(`\n🔍 [8단계/9단계] AI 셀렉터 탐지 실패 또는 낮은 신뢰도`);
     }
 
     // 9. 모두 실패 시: preliminaryType 또는 URL 패턴 사용
@@ -489,14 +438,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       primaryStrategy: finalType,
       fallbackStrategies: getDefaultFallbacks(finalType),
       rssUrl: null,
-      selectors: ruleResult && ruleResult.score >= 0.3 ? {
-        container: ruleResult.container,
-        item: ruleResult.item,
-        title: ruleResult.title,
-        link: ruleResult.link,
-        ...(ruleResult.date && { date: ruleResult.date }),
-        ...(ruleResult.thumbnail && { thumbnail: ruleResult.thumbnail }),
-      } : null,
+      selectors: null, // rule-based 셀렉터 폴백 비활성화 — 크롤링 시 DEFAULT_SELECTORS 사용
       excludeSelectors: undefined,
       pagination: null,
       confidence: finalConfidence,
@@ -530,18 +472,74 @@ async function discoverRSS(url: string, $: cheerio.CheerioAPI): Promise<string |
     }
   }
 
-  // 2. 일반 RSS 경로 후보 - 각 경로를 실제 검증
+  // 2. 일반 RSS 경로 후보 - 병렬 검증 (직렬 6회 최대 18s → 병렬 최대 3s)
   const commonRssPaths = ['/feed', '/rss', '/feed.xml', '/rss.xml', '/atom.xml', '/index.xml'];
+  const candidates = commonRssPaths.map(path => normalizeUrl(path, url));
 
-  for (const path of commonRssPaths) {
-    const rssUrl = normalizeUrl(path, url);
-    const isValid = await validateRSSFeed(rssUrl);
-    if (isValid) {
-      return rssUrl;
-    }
-  }
+  const results = await Promise.all(
+    candidates.map(async (rssUrl) => ({
+      rssUrl,
+      isValid: await validateRSSFeed(rssUrl),
+    }))
+  );
 
-  return null;
+  // commonRssPaths 우선순위 순서 유지 (첫 번째 유효한 것 반환)
+  const validResult = results.find(r => r.isValid);
+  return validResult ? validResult.rssUrl : null;
+}
+
+/**
+ * Sitemap 자동 발견
+ * - /sitemap.xml, /sitemap_index.xml 경로 시도
+ * - XML 응답에 <urlset> 또는 <sitemapindex> 포함 여부로 유효성 판단
+ */
+async function discoverSitemap(url: string): Promise<string | null> {
+  const origin = (() => {
+    try { return new URL(url).origin; } catch { return null; }
+  })();
+  if (!origin) return null;
+
+  const candidates = [
+    `${origin}/sitemap.xml`,
+    `${origin}/sitemap_index.xml`,
+  ];
+
+  // 병렬 검증 (직렬 2회 최대 10s → 병렬 최대 5s)
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(candidate, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: { Accept: 'application/xml,text/xml,*/*' },
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return null;
+
+        const contentType = response.headers.get('content-type') || '';
+        const isXml = contentType.includes('xml') || candidate.endsWith('.xml');
+        if (!isXml) return null;
+
+        // 첫 2KB만 읽어서 sitemap 태그 확인
+        const reader = response.body?.getReader();
+        if (!reader) return null;
+
+        const { value } = await reader.read();
+        reader.cancel();
+        const text = value ? new TextDecoder().decode(value.slice(0, 2048)) : '';
+
+        return (text.includes('<urlset') || text.includes('<sitemapindex')) ? candidate : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return results.find(r => r !== null) ?? null;
 }
 
 /**
@@ -652,6 +650,8 @@ function normalizeUrl(href: string, baseUrl: string): string {
 function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
   switch (primaryType) {
     case 'RSS':
+      return ['STATIC'];
+    case 'SITEMAP':
       return ['STATIC'];
     case 'SPA':
       return ['STATIC'];
