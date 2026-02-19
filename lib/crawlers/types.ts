@@ -7,6 +7,7 @@ export type CrawlerType =
   | 'STATIC'
   | 'SPA'
   | 'RSS'
+  | 'SITEMAP'
   | 'PLATFORM_NAVER'
   | 'PLATFORM_KAKAO'
   | 'NEWSLETTER'
@@ -17,7 +18,7 @@ export type CrawlerType =
 export interface RawContentItem {
   title: string;
   link: string;
-  thumbnail: string | null;
+  thumbnail?: string | null;
   author: string | null;
   dateStr: string | null;
   content?: string;
@@ -91,7 +92,6 @@ export type DetectedApiConfig = {
     items: string;   // JSON 경로 (예: "insightList", "data.posts")
     title: string;   // 제목 필드명
     link: string;    // 링크 필드명
-    thumbnail?: string;
     date?: string;
   };
   urlTransform?: {
@@ -106,7 +106,7 @@ export type DetectedApiConfig = {
 
 // 전략 해석 메타데이터 (config._detection에 저장)
 export interface DetectionMetadata {
-  method: 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'api-detection' | 'firecrawl' | 'default';
+  method: 'rss-discovery' | 'sitemap-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-analysis' | 'api-detection' | 'firecrawl' | 'default';
   confidence: number;
   fallbackStrategies: CrawlerType[];
 }
@@ -120,14 +120,14 @@ export interface StrategyResolution {
   excludeSelectors?: string[]; // 제외할 영역 (nav, header, footer 등)
   pagination: PaginationConfig | null;
   confidence: number;
-  detectionMethod: 'domain-override' | 'rss-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-type-detection' | 'ai-selector-detection' | 'ai-content-detection' | 'spa-detection' | 'api-detection' | 'auto-recovery' | 'firecrawl' | 'default' | 'error';
+  detectionMethod: 'domain-override' | 'rss-discovery' | 'sitemap-discovery' | 'url-pattern' | 'cms-detection' | 'rule-analysis' | 'ai-type-detection' | 'ai-selector-detection' | 'ai-content-detection' | 'spa-detection' | 'api-detection' | 'auto-recovery' | 'firecrawl' | 'default' | 'error';
   spaDetected: boolean;
   optimizedUrl?: string; // URL 최적화 결과 (원본과 다를 경우에만)
   apiConfig?: DetectedApiConfig; // API 타입일 때 감지된 엔드포인트 설정
 }
 
-// 본문 크롤링 결과 (콘텐츠 + 옵션 썸네일)
-export type ContentResult = string | { content: string; thumbnail?: string };
+// 본문 크롤링 결과
+export type ContentResult = string;
 
 // 전략 인터페이스
 export interface CrawlStrategy {
@@ -149,7 +149,6 @@ export interface CrawledArticle {
   source_name: string;
   source_url: string;
   title: string;
-  thumbnail_url?: string;
   content_preview?: string;
   summary?: string;
   author?: string;

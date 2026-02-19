@@ -21,7 +21,7 @@ const DEFAULT_HEADERS = {
 // 기본 셀렉터
 const DEFAULT_SELECTORS: SelectorConfig = {
   item: 'article, .article, .post, .item, .card, .list-item',
-  title: 'h2, h3, h1, .title, .headline, a',
+  title: 'h2, h3, h1, .title, .headline',
   link: 'a',
   thumbnail: 'img',
   author: '.author, .writer, .byline, .name',

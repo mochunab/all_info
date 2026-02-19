@@ -11,31 +11,6 @@ import { parseDateToISO } from './date-parser';
 import { generateSourceId } from '@/lib/utils';
 import { filterGarbageArticles, getQualityStats } from './quality-filter';
 
-// Legacy imports for backward compatibility
-import { crawlWithCheerio, fetchArticleContent } from './cheerio-crawler';
-import { crawlWithPlaywright } from './playwright-crawler';
-
-// Site-specific crawlers (레거시)
-import { crawlIconsumer } from './sites/iconsumer';
-import { crawlBrunch } from './sites/brunch';
-import { crawlWiseapp } from './sites/wiseapp';
-import { crawlOpenads } from './sites/openads';
-import { crawlRetailtalk } from './sites/retailtalk';
-import { crawlStonebc } from './sites/stonebc';
-import { crawlBuybrand } from './sites/buybrand';
-
-// Legacy crawler registry
-const LEGACY_CRAWLER_REGISTRY: Record<string, (source: CrawlSource) => Promise<CrawledArticle[]>> = {
-  '아이컨슈머': crawlIconsumer,
-  '브런치-모비인사이드': crawlBrunch,
-  '브런치-스타트업': crawlBrunch,
-  '브런치-트렌드미디엄': crawlBrunch,
-  '와이즈앱': crawlWiseapp,
-  '오픈애즈': crawlOpenads,
-  '리테일톡': crawlRetailtalk,
-  '스톤브릿지': crawlStonebc,
-  '바이브랜드': crawlBuybrand,
-};
 
 /**
  * RawContentItem을 CrawledArticle로 변환
@@ -50,7 +25,6 @@ function convertToArticle(
     source_name: source.name,
     source_url: item.link,
     title: item.title,
-    thumbnail_url: item.thumbnail || undefined,
     content_preview: item.content,
     author: item.author || undefined,
     published_at: parseDateToISO(item.dateStr),
@@ -242,6 +216,8 @@ function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
   switch (primaryType) {
     case 'RSS':
       return ['STATIC'];
+    case 'SITEMAP':
+      return ['STATIC'];
     case 'SPA':
       return ['STATIC'];
     case 'STATIC':
@@ -376,15 +352,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
                   const item = recoveryItems[idx];
                   if (!item.content && recoveryStrategy.crawlContent) {
                     try {
-                      const result = await recoveryStrategy.crawlContent(item.link, config.content_selectors);
-                      if (typeof result === 'string') {
-                        item.content = result;
-                      } else {
-                        item.content = result.content;
-                        if (!item.thumbnail && result.thumbnail) {
-                          item.thumbnail = result.thumbnail;
-                        }
-                      }
+                      item.content = await recoveryStrategy.crawlContent(item.link, config.content_selectors);
                     } catch (error) {
                       console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
                     }
@@ -433,16 +401,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         if (!item.content && strategy.crawlContent) {
           try {
             console.log(`      [${idx + 1}/${rawItems.length}] "${item.title.substring(0, 40)}..." 본문 추출 중...`);
-            const result = await strategy.crawlContent(item.link, config.content_selectors);
-
-            if (typeof result === 'string') {
-              item.content = result;
-            } else {
-              item.content = result.content;
-              if (!item.thumbnail && result.thumbnail) {
-                item.thumbnail = result.thumbnail;
-              }
-            }
+            item.content = await strategy.crawlContent(item.link, config.content_selectors);
             contentFetchCount++;
             console.log(`      ✅ 본문 추출 완료 (${item.content.length}자)`);
           } catch (error) {
@@ -488,31 +447,15 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
 }
 
 /**
- * 크롤러 선택 (전략 패턴 우선, 레거시 폴백)
+ * 크롤러 선택
  */
 function getCrawler(source: CrawlSource): (source: CrawlSource) => Promise<CrawledArticle[]> {
-  // 1. 레거시 사이트별 크롤러 최우선 (검증된 전용 크롤러)
-  if (LEGACY_CRAWLER_REGISTRY[source.name]) {
-    console.log(`🔄 레거시 크롤러 사용: ${source.name}`);
-    return LEGACY_CRAWLER_REGISTRY[source.name];
-  }
-
-  // 2. crawler_type이 명시적으로 유효한 경우 전략 패턴 사용
   if (source.crawler_type && isValidCrawlerType(source.crawler_type)) {
-    console.log(`✅ 전략 패턴 사용: ${source.crawler_type} (설정됨)`);
-    return crawlWithStrategy;
+    console.log(`✅ 전략 패턴 사용: ${source.crawler_type}`);
+  } else {
+    const inferred = inferCrawlerType(source.base_url);
+    console.log(`🔍 자동 감지된 전략: ${inferred} (URL 기반)`);
   }
-
-  // 3. URL 기반 추론 후 전략 패턴 사용
-  const inferred = inferCrawlerType(source.base_url);
-  console.log(`🔍 자동 감지된 전략: ${inferred} (URL 기반)`);
-  if (isValidCrawlerType(inferred)) {
-    console.log(`✅ 전략 패턴 사용: ${inferred}`);
-    return crawlWithStrategy;
-  }
-
-  // 4. 기본값: 전략 패턴
-  console.log(`✅ 기본 전략 패턴 사용`);
   return crawlWithStrategy;
 }
 
@@ -550,7 +493,6 @@ export async function saveArticles(
         source_name: article.source_name,
         source_url: article.source_url,
         title: article.title,
-        thumbnail_url: article.thumbnail_url,
         content_preview: article.content_preview,
         summary: article.summary,
         author: article.author,
@@ -628,31 +570,8 @@ export async function runCrawler(
       return result;
     }
 
-    // 본문 미리보기 가져오기 (레거시 크롤러용)
-    console.log(`\n📄 본문 미리보기 추출 중...`);
-    let previewCount = 0;
-    for (let idx = 0; idx < articles.length; idx++) {
-      const article = articles[idx];
-      if (!article.content_preview) {
-        try {
-          console.log(`   [${idx + 1}/${articles.length}] "${article.title.substring(0, 40)}..." 추출 중...`);
-          const content = await fetchArticleContent(article.source_url);
-          if (content) {
-            article.content_preview = content.substring(0, 3000);
-            previewCount++;
-            console.log(`   ✅ 추출 완료 (${content.length}자)`);
-          }
-        } catch (error) {
-          if (options?.verbose) {
-            console.error(`   ❌ 추출 실패: ${article.title}`, error);
-          }
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    }
-    if (previewCount > 0) {
-      console.log(`✅ 본문 미리보기 추출 완료: ${previewCount}개`);
-    }
+    // Puppeteer 브라우저 정리
+    await closeBrowser();
 
     // DB 저장 (dry-run이 아닌 경우)
     if (!options?.dryRun) {
@@ -801,16 +720,3 @@ export type { CrawlerType, CrawlResult, CrawledArticle, RawContentItem };
 // Export strategies
 export { getStrategy, inferCrawlerType, isValidCrawlerType, closeBrowser };
 
-// Export legacy crawlers for backward compatibility
-export {
-  crawlIconsumer,
-  crawlBrunch,
-  crawlWiseapp,
-  crawlOpenads,
-  crawlRetailtalk,
-  crawlStonebc,
-  crawlBuybrand,
-  crawlWithCheerio,
-  crawlWithPlaywright,
-  fetchArticleContent,
-};

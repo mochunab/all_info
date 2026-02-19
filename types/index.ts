@@ -5,8 +5,7 @@ export interface Article {
   source_name: string;
   source_url: string;
   title: string;
-  thumbnail_url: string | null;
-  content_preview: string | null;
+  content_preview?: string | null;
   summary: string | null;
   summary_tags: string[]; // 요약 태그 3개
   author: string | null;
@@ -25,6 +24,8 @@ export type CrawlerType =
   | 'STATIC'           // cheerio 기반 정적 HTML 파싱
   | 'SPA'              // puppeteer 기반 동적 렌더링
   | 'RSS'              // RSS/Atom 피드 파싱
+  | 'SITEMAP'          // Sitemap XML 기반 크롤링
+  | 'FIRECRAWL'        // Firecrawl API (수동 선택 옵션)
   | 'PLATFORM_NAVER'   // 네이버 블로그
   | 'PLATFORM_KAKAO'   // 브런치 (카카오)
   | 'NEWSLETTER'       // Stibee, Substack, Mailchimp
@@ -36,7 +37,8 @@ export type CrawlerType =
 export interface CrawlSource {
   id: number;
   name: string;
-  base_url: string;
+  base_url: string; // 사용자가 입력한 원본 URL (UI 표시용)
+  crawl_url?: string | null; // 실제 크롤링할 최적화된 URL (NULL이면 base_url 사용)
   priority: number;
   crawler_type: CrawlerType;
   config: Record<string, unknown>;

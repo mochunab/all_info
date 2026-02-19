@@ -11,6 +11,7 @@ interface ArticleGridProps {
   isLoading?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  onDelete?: (articleId: string) => void;
 }
 
 export default function ArticleGrid({
@@ -19,6 +20,7 @@ export default function ArticleGrid({
   isLoading = false,
   hasMore = false,
   onLoadMore,
+  onDelete,
 }: ArticleGridProps) {
   // Empty state
   if (!isLoading && articles.length === 0) {
@@ -54,7 +56,12 @@ export default function ArticleGrid({
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
         {articles.map((article) => (
-          <ArticleCard key={article.id} article={article} language={language} />
+          <ArticleCard
+            key={article.id}
+            article={article}
+            language={language}
+            onDelete={onDelete}
+          />
         ))}
 
         {/* Loading skeletons */}

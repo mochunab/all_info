@@ -35,10 +35,16 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Build query
+    // Build query — content_preview 제외 (목록에서 불필요, 최대 3000자 절약)
+    const ARTICLE_LIST_COLUMNS = [
+      'id', 'source_id', 'source_name', 'source_url', 'title',
+      'summary', 'summary_tags', 'author',
+      'published_at', 'crawled_at', 'priority', 'category', 'is_active',
+    ].join(', ');
+
     let query = supabase
       .from('articles')
-      .select('*', { count: 'exact' })
+      .select(ARTICLE_LIST_COLUMNS, { count: 'exact' })
       .eq('is_active', true)
       .order('published_at', { ascending: false, nullsFirst: false })
       .order('crawled_at', { ascending: false });

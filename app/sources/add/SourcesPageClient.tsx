@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from '@/components';
-import LanguageSwitcher from '@/components/LanguageSwitcher';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
 import {
@@ -48,16 +47,13 @@ type SortableCategoryProps = {
   language: Language;
 };
 
-const STORAGE_KEY = {
-  LANGUAGE: 'ih:language',
-} as const;
-
 const getCrawlerTypeLabel = (type: string, language: Language): string => {
   const labels: Record<string, Record<Language, string>> = {
     AUTO: { ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测' },
     STATIC: { ko: '정적페이지', en: 'Static', ja: '静的', zh: '静态' },
     SPA: { ko: 'SPA (동적)', en: 'SPA (Dynamic)', ja: 'SPA (動的)', zh: 'SPA (动态)' },
     RSS: { ko: 'RSS 피드', en: 'RSS Feed', ja: 'RSSフィード', zh: 'RSS订阅' },
+    SITEMAP: { ko: 'Sitemap', en: 'Sitemap', ja: 'サイトマップ', zh: '网站地图' },
     PLATFORM_NAVER: { ko: '네이버 블로그', en: 'Naver Blog', ja: 'Naverブログ', zh: 'Naver博客' },
     PLATFORM_KAKAO: { ko: '카카오 브런치', en: 'Kakao Brunch', ja: 'Kakaoブランチ', zh: 'Kakao Brunch' },
     NEWSLETTER: { ko: '뉴스레터', en: 'Newsletter', ja: 'ニュースレター', zh: '新闻订阅' },
@@ -71,6 +67,7 @@ const CRAWLER_TYPES = [
   'STATIC',
   'SPA',
   'RSS',
+  'SITEMAP',
   'PLATFORM_NAVER',
   'PLATFORM_KAKAO',
   'NEWSLETTER',
@@ -168,27 +165,9 @@ export default function SourcesPageClient({
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
-  const [language, setLanguage] = useState<Language>('ko');
+  const language: Language = 'ko';
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
-
-  // Initialize language from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
-      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
-        setLanguage(saved as Language);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Language change handler
-  const handleLanguageChange = useCallback((lang: Language) => {
-    setLanguage(lang);
-    try {
-      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
-    } catch { /* ignore */ }
-  }, []);
 
   // Focus category input
   useEffect(() => {
@@ -216,9 +195,21 @@ export default function SourcesPageClient({
           setCategories([...categories, newCat]);
           setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
           setActiveCategory(trimmed);
+        } else if (response.status === 409) {
+          // 이미 존재하는 카테고리
+          setToastMessage(t(language, 'sources.categoryExists', { name: trimmed }));
+          setShowToast(true);
+        } else {
+          // 기타 에러
+          const data = await response.json().catch(() => ({ error: 'Unknown error' }));
+          setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+          setShowToast(true);
         }
       } catch (err) {
         console.error('Error saving category:', err);
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setToastMessage(t(language, 'toast.networkError', { error: msg }));
+        setShowToast(true);
       }
 
       setNewCategory('');
@@ -450,10 +441,6 @@ export default function SourcesPageClient({
               <span>{t(language, 'sources.back')}</span>
             </Link>
 
-            <LanguageSwitcher
-              currentLang={language}
-              onLanguageChange={handleLanguageChange}
-            />
           </div>
         </div>
       </header>

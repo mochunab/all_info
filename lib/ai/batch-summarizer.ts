@@ -36,7 +36,8 @@ async function withRetry<T>(
       return await fn();
     } catch (error) {
       if (attempt === MAX_RETRIES) throw error;
-      console.warn(`[AI] Retry ${attempt}/${MAX_RETRIES} for ${label}: ${error instanceof Error ? error.message : error}`);
+      const delaySeconds = (RETRY_DELAY_MS * attempt) / 1000;
+      console.warn(`   ⚠️  재시도 ${attempt}/${MAX_RETRIES}: "${label}..." (${delaySeconds}초 대기)`);
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
     }
   }
@@ -136,7 +137,7 @@ export async function processPendingSummaries(
       .limit(batchSize);
 
     if (error || !articlesData) {
-      console.error('Failed to fetch articles:', error);
+      console.error('❌ [AI 요약] 아티클 조회 실패:', error);
       result.errors.push(error?.message || 'Failed to fetch articles');
       return result;
     }
@@ -144,22 +145,25 @@ export async function processPendingSummaries(
     const articles = articlesData as ArticleRow[];
 
     if (articles.length === 0) {
-      console.log('No articles pending summarization');
+      console.log('ℹ️  [AI 요약] 요약 대기 중인 아티클 없음\n');
       return result;
     }
 
     const CONCURRENCY = 5;
-    console.log(`Processing ${articles.length} articles for summarization (${CONCURRENCY} concurrent)`);
+    console.log(`\n📊 [AI 요약] ${articles.length}개 아티클 처리 시작 (${CONCURRENCY}개 동시 처리)\n`);
 
     // 5개씩 청크로 나누어 병렬 처리
     for (let i = 0; i < articles.length; i += CONCURRENCY) {
       const chunk = articles.slice(i, i + CONCURRENCY);
-      console.log(`[AI] Batch ${Math.floor(i / CONCURRENCY) + 1}: processing ${chunk.length} articles`);
+      const batchNum = Math.floor(i / CONCURRENCY) + 1;
+      const totalBatches = Math.ceil(articles.length / CONCURRENCY);
+
+      console.log(`🔄 [배치 ${batchNum}/${totalBatches}] ${chunk.length}개 아티클 처리 중...`);
 
       const chunkResults = await Promise.allSettled(
         chunk.map(async (article) => {
           if (!article.content_preview) {
-            console.log(`Skipping ${article.title}: No content preview`);
+            console.log(`   ⏭️  건너뜀: "${article.title.substring(0, 40)}..." (본문 없음)`);
             return { article, skipped: true } as const;
           }
 
@@ -173,7 +177,7 @@ export async function processPendingSummaries(
                 supabaseKey
               );
               if (!res.success) {
-                console.log(`[AI] Edge Function failed, falling back to local: ${res.error}`);
+                console.log(`   🔄 Edge Function 실패, 로컬 OpenAI로 재시도: ${res.error}`);
                 res = await generateAISummary(
                   article.title,
                   article.content_preview!
@@ -204,7 +208,7 @@ export async function processPendingSummaries(
             throw new Error(`Update failed: ${article.title} - ${updateError.message}`);
           }
 
-          console.log(`Summary generated for: ${article.title}`);
+          console.log(`   ✅ 요약 완료: "${article.title.substring(0, 50)}..."`);
           return { article, skipped: false } as const;
         })
       );
@@ -221,18 +225,22 @@ export async function processPendingSummaries(
         } else {
           result.failed++;
           result.errors.push(settled.reason?.message || 'Unknown error');
-          console.error(`[AI] Error:`, settled.reason);
+          console.error(`   ❌ 오류:`, settled.reason);
         }
       }
+
+      console.log(`   📊 배치 ${batchNum} 완료: ${chunk.length}개 처리\n`);
     }
   } catch (error) {
-    console.error('Batch summarization error:', error);
+    console.error('❌ [AI 요약] 배치 처리 오류:', error);
     result.errors.push(error instanceof Error ? error.message : 'Unknown error');
   }
 
-  console.log(
-    `Batch complete: ${result.success}/${result.processed} successful`
-  );
+  const successRate = result.processed > 0
+    ? ((result.success / result.processed) * 100).toFixed(1)
+    : '0';
+
+  console.log(`\n✅ [AI 요약] 배치 완료: ${result.success}/${result.processed}개 성공 (${successRate}%)\n`);
   return result;
 }
 

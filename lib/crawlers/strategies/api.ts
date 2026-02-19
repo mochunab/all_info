@@ -310,21 +310,6 @@ export class APIStrategy implements CrawlStrategy {
           link = `${transformBase}${link.startsWith('/') ? '' : '/'}${link}`;
         }
 
-        // 선택 필드: 썸네일
-        let thumbnail: string | null = null;
-        if (mapping.thumbnail) {
-          thumbnail = (this.getNestedValue(item, mapping.thumbnail) as string) || null;
-          if (thumbnail) {
-            // 썸네일 prefix 적용
-            if (urlTransform?.thumbnailPrefix && !thumbnail.startsWith('http')) {
-              thumbnail = `${urlTransform.thumbnailPrefix}${thumbnail}`;
-            } else if (!thumbnail.startsWith('http')) {
-              const transformBase = urlTransform?.baseUrl || origin;
-              thumbnail = `${transformBase}${thumbnail.startsWith('/') ? '' : '/'}${thumbnail}`;
-            }
-          }
-        }
-
         // 선택 필드: 작성자
         let author: string | null = null;
         if (mapping.author) {
@@ -359,7 +344,6 @@ export class APIStrategy implements CrawlStrategy {
         items.push({
           title,
           link: this.normalizeUrl(link),
-          thumbnail,
           author,
           dateStr,
           content,

@@ -141,7 +141,6 @@ export function filterGarbageArticles(
     const rawItem: RawContentItem = {
       title: article.title,
       link: article.source_url,
-      thumbnail: article.thumbnail_url ?? null,
       author: article.author ?? null,
       dateStr: article.published_at ?? null,
       content: article.content_preview,

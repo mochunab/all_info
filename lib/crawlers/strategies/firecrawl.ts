@@ -21,7 +21,6 @@ const ARTICLE_LIST_SCHEMA = {
           title: { type: 'string', description: '아티클 제목' },
           url: { type: 'string', description: '아티클 전체 URL (상대 경로면 절대 경로로 변환)' },
           date: { type: 'string', description: '게시 날짜 (YYYY-MM-DD 또는 상대 날짜)' },
-          thumbnail_url: { type: 'string', description: '썸네일 이미지 URL (선택)' },
           content_preview: { type: 'string', description: '아티클 요약/발췌문 (선택)' },
         },
         required: ['title', 'url'],
@@ -103,7 +102,6 @@ export const firecrawlStrategy: CrawlStrategy = {
             title: article.title,
             link: normalizedUrl,
             dateStr: article.date || undefined,
-            thumbnail: article.thumbnail_url || undefined,
             content: article.content_preview || undefined,
             author: undefined,
           };

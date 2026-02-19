@@ -40,9 +40,6 @@ export default function FilterBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // All categories including "전체"
-  const allCategories = [t(language, 'filter.allCategory'), ...categories];
-
   return (
     <div className="space-y-4">
       {/* Top Row: Search + Add Source Button */}
@@ -120,7 +117,7 @@ export default function FilterBar({
         {/* Content Count */}
         {totalCount !== undefined && (
           <p className="text-sm text-[var(--text-tertiary)]">
-            {search || category !== t(language, 'filter.allCategory')
+            {search
               ? t(language, 'filter.searchResult', { count: String(totalCount) })
               : t(language, 'filter.totalCount', { count: String(totalCount) })}
           </p>
@@ -132,7 +129,7 @@ export default function FilterBar({
             onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors min-w-[140px]"
           >
-            <span className="font-medium">{category || t(language, 'filter.allCategory')}</span>
+            <span className="font-medium">{category || categories[0] || ''}</span>
             <svg
               className={`w-4 h-4 ml-auto transition-transform ${
                 isCategoryDropdownOpen ? 'rotate-180' : ''
@@ -154,9 +151,8 @@ export default function FilterBar({
           {isCategoryDropdownOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-lg z-50 overflow-hidden">
               <div className="py-1 max-h-64 overflow-y-auto custom-scrollbar">
-                {allCategories.map((cat) => {
-                  const isAllCategory = cat === t(language, 'filter.allCategory');
-                  const isActive = category === cat || (isAllCategory && !category);
+                {categories.map((cat) => {
+                  const isActive = category === cat;
                   return (
                     <button
                       key={cat}

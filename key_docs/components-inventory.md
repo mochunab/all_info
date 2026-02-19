@@ -30,14 +30,25 @@
 
 ### AddSourcePage (소스 추가)
 
+**Server Component Wrapper**
 | 항목 | 값 |
 |------|-----|
 | **파일** | `app/sources/add/page.tsx` |
+| **타입** | Server Component (async) |
+| **역할** | 데이터 fetch 후 SourcesPageClient에 전달 (SSR 최적화) |
+| **데이터 fetch** | Supabase 직접 조회 (crawl_sources, categories) |
+| **자식 컴포넌트** | SourcesPageClient |
+
+**Client Component (실제 UI)**
+| 항목 | 값 |
+|------|-----|
+| **파일** | `app/sources/add/SourcesPageClient.tsx` |
 | **타입** | Client Component (`'use client'`) |
-| **역할** | 크롤링 소스 URL 추가 페이지 |
-| **상태** | category, categories, sources (SourceLink[]), isSaving, showToast |
-| **API 호출** | GET /api/sources, GET /api/categories, POST /api/sources |
-| **자식 컴포넌트** | Toast |
+| **역할** | 크롤링 소스 URL 추가/수정/삭제 + 드래그앤드롭 카테고리 관리 |
+| **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language |
+| **API 호출** | POST /api/sources (저장), POST /api/categories (카테고리 추가) |
+| **자식 컴포넌트** | LanguageSwitcher, Toast |
+| **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행 |
 
 ---
 

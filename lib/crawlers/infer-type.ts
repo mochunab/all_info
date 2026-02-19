@@ -341,24 +341,40 @@ ${truncatedHtml}
 ## HOW TO IDENTIFY REAL ARTICLE CARDS
 
 Real article cards have ALL of these:
-1. A link pointing to a UNIQUE DETAIL PAGE — URL contains a slug or ID (e.g. /posts/abc123, /articles/my-title, /p/12345, /2024/01/title)
-2. A TITLE — a sentence of text longer than 10 characters (NOT a number, NOT a one-word menu label)
+1. A link pointing to a UNIQUE DETAIL PAGE — URL contains a numeric ID or slug (e.g. /article/25405445, /posts/abc-title, /p/12345)
+2. A TITLE — a meaningful sentence longer than 15 characters (NOT a brand name, NOT a one-word label like "COOKING" or "Tech")
 3. They REPEAT in a grid or list (typically 5–20 cards per page)
+4. BONUS signals: each card also has a date, an excerpt/description snippet, or a thumbnail image
 
-## WHAT TO REJECT (these look like lists but are NOT articles)
+## WHAT TO REJECT (these look like article lists but are NOT)
 
-- ❌ Category / tag FILTER TABS: links to /c/category, ?tag=topic, /type/name, /category/name
+- ❌ Newsletter/channel directory: collections of newsletter subscriptions or column series. Titles are short brand/channel names (e.g. "COOKING", "hello! Parents", "김영주의 칼럼"). Links go to section pages like /newsletter/cooking or /column/name — NOT to individual articles.
+- ❌ Category / tag filter tabs: links to /c/category, ?tag=topic, /type/name, /section/name
 - ❌ Navigation links: /about, /login, /signup, /comments, /stories, /users/
 - ❌ Stat numbers: subscriber counts ("1.2K followers"), view counts ("202 reads"), like counts
+- ❌ Items WITHOUT dates AND without excerpt text — these are navigation/directory cards, not content
 - ❌ Social media links: Twitter, Instagram, YouTube icons/buttons
 - ❌ "Load more" buttons, pagination numbers
+
+## PRIORITY ORDERING (when multiple groups exist on the same page)
+
+If the page has MULTIPLE candidate groups, always pick the one that has:
+1. LONGEST title text (real article titles are sentences, not brand names)
+2. DATES visible on each item (publish date = strong article signal)
+3. EXCERPT/DESCRIPTION text on each item
+4. URLs with numeric IDs or slugs (e.g. /article/12345, /posts/my-article-title-here)
+
+DEPRIORITIZE groups where:
+- Titles are short (< 3 words or < 20 chars) and look like brand/category names
+- No dates are shown on items
+- URLs are bare section names without IDs (e.g. /newsletter/cooking, /section/tech)
 
 ## STEP-BY-STEP PROCESS
 
 STEP 1: Find all repeating element groups in the HTML (3+ similar elements in a container)
-STEP 2: For each group, check: do the child <a> links point to UNIQUE DETAIL PAGES or to CATEGORY/FILTER pages?
-STEP 3: Select the group whose links point to DETAIL PAGES with slugs/IDs
-STEP 4: Write specific CSS selectors for that group
+STEP 2: For each group, check: do links point to UNIQUE ARTICLE DETAIL PAGES (with IDs/slugs) or to SECTION/DIRECTORY pages?
+STEP 3: If multiple groups match, apply PRIORITY ORDERING above to pick the best one
+STEP 4: Write specific CSS selectors for the chosen group
 
 ## SPA SHELL DETECTION
 

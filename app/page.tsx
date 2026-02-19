@@ -16,7 +16,7 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState<string>('');
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -32,9 +32,16 @@ export default function Home() {
   const searchRef = useRef(search);
   const categoryRef = useRef(category);
 
-  // 언어 설정 초기화 (localStorage에서)
+  // 언어 설정 초기화 (URL 파라미터 우선, localStorage 차선)
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const urlLang = params.get('lang');
+      if (urlLang && ['ko', 'en', 'ja', 'zh'].includes(urlLang)) {
+        setLanguage(urlLang as Language);
+        localStorage.setItem(STORAGE_KEY.LANGUAGE, urlLang);
+        return;
+      }
       const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
       if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
         setLanguage(saved as Language);
@@ -42,21 +49,17 @@ export default function Home() {
     } catch { /* 무시 */ }
   }, []);
 
-  // 언어 변경 핸들러
+  // 언어 변경 핸들러 (localStorage + URL 파라미터 동시 업데이트)
   const handleLanguageChange = useCallback((lang: Language) => {
     setLanguage(lang);
-    // 카테고리가 "전체"(번역된 값)면 빈 문자열로 리셋
-    setCategory((prev) => {
-      const prevAllCategory = t(language, 'filter.allCategory');
-      if (prev === prevAllCategory || !prev) {
-        return '';
-      }
-      return prev;
-    });
     try {
       localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
+      // URL 파라미터 업데이트 (영어권 공유 링크 등에 활용)
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', lang);
+      window.history.replaceState(null, '', url.toString());
     } catch { /* 무시 */ }
-  }, [language]);
+  }, []);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false) => {
@@ -70,8 +73,7 @@ export default function Home() {
         params.set('limit', '12');
 
         if (search) params.set('search', search);
-        const allCategory = t(language, 'filter.allCategory');
-        if (category && category !== allCategory) params.set('category', category);
+        if (category) params.set('category', category);
 
         const response = await fetch(`/api/articles?${params.toString()}`);
 
@@ -86,8 +88,7 @@ export default function Home() {
         } else {
           setArticles(data.articles);
           // 초기 로드 (page 1, 필터 없음) 시 sessionStorage에 캐시
-          const allCategory = t(language, 'filter.allCategory');
-          if (pageNum === 1 && !search && (!category || category === allCategory)) {
+          if (pageNum === 1 && !search && category === categories[0]) {
             try {
               sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify(data));
             } catch { /* quota 초과 시 무시 */ }
@@ -148,6 +149,8 @@ export default function Home() {
               (c: { name: string }) => c.name
             );
             setCategories(categoryNames);
+            // 항상 첫 번째 카테고리를 기본값으로 설정
+            setCategory(categoryNames[0] || '');
             try {
               sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify(categoryNames));
             } catch { /* 무시 */ }
@@ -177,6 +180,10 @@ export default function Home() {
   // Debounced search
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
+  }, []);
+
+  const handleCategoryChange = useCallback((value: string) => {
+    setCategory(value);
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -230,9 +237,7 @@ export default function Home() {
         params.set('page', '1');
         params.set('limit', '12');
         if (searchRef.current) params.set('search', searchRef.current);
-        if (categoryRef.current && categoryRef.current !== '전체') {
-          params.set('category', categoryRef.current);
-        }
+        if (categoryRef.current) params.set('category', categoryRef.current);
 
         const res = await fetch(`/api/articles?${params.toString()}`);
         if (res.ok) {
@@ -244,8 +249,14 @@ export default function Home() {
       } catch { /* 무시 */ }
     }, 4000);
 
-    // 트리거 호출 (완료 시 폴링 중단)
-    fetch('/api/crawl/trigger', { method: 'POST' })
+    // 트리거 호출 - 선택된 카테고리 전달
+    const requestCategory = category || undefined;
+
+    fetch('/api/crawl/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: requestCategory }),
+    })
       .then((res) => res.json())
       .then((data) => {
         stopPolling();
@@ -286,6 +297,22 @@ export default function Home() {
       });
   };
 
+  // Handle article deletion
+  const handleArticleDelete = useCallback((articleId: string) => {
+    // 삭제된 아티클을 목록에서 제거
+    setArticles((prev) => prev.filter((article) => article.id !== articleId));
+    setTotalCount((prev) => Math.max(0, prev - 1));
+
+    // 성공 토스트 표시
+    setToastMessage(t(language, 'toast.articleDeleted'));
+    setShowToast(true);
+
+    // sessionStorage 캐시 무효화
+    try {
+      sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
+    } catch { /* 무시 */ }
+  }, [language]);
+
   // Handle add category
   return (
     <div className="min-h-screen">
@@ -296,6 +323,7 @@ export default function Home() {
         crawlProgress={crawlProgress}
         language={language}
         onLanguageChange={handleLanguageChange}
+        selectedCategory={category}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -305,7 +333,7 @@ export default function Home() {
             search={search}
             onSearchChange={handleSearchChange}
             category={category}
-            onCategoryChange={setCategory}
+            onCategoryChange={handleCategoryChange}
             categories={categories}
             totalCount={totalCount}
             language={language}
@@ -319,45 +347,11 @@ export default function Home() {
           isLoading={isLoading}
           hasMore={hasMore}
           onLoadMore={handleLoadMore}
+          onDelete={handleArticleDelete}
         />
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[var(--border)] mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-white flex items-center justify-center">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M3 6h18v2H3z" fill="currentColor" />
-                  <rect x="4" y="8" width="16" height="12" rx="1" />
-                  <path d="M9 12h6M9 15h4" strokeWidth="1.5" />
-                </svg>
-              </div>
-              <span
-                className="text-lg font-bold text-[var(--text-primary)]"
-                style={{ fontFamily: 'Pretendard, sans-serif' }}
-              >
-                아카인포
-              </span>
-            </div>
-            <p className="text-sm text-[var(--text-tertiary)]">
-              {t(language, 'footer.description')}
-            </p>
-          </div>
-        </div>
-      </footer>
-
-      {/* Toast */}
+{/* Toast */}
       <Toast
         message={toastMessage}
         isVisible={showToast}
