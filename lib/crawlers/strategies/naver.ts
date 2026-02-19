@@ -272,13 +272,23 @@ export class NaverStrategy implements CrawlStrategy {
   }
 
   private extractBlogId(url: string): string | null {
+    // blogId 쿼리 파라미터 우선 확인
+    // (예: /PostList.naver?blogId=amprists 형식)
+    try {
+      const urlObj = new URL(url);
+      const queryBlogId = urlObj.searchParams.get('blogId');
+      if (queryBlogId) return queryBlogId;
+    } catch {
+      // URL 파싱 실패
+    }
+
     // https://blog.naver.com/blogId 형식
     const match = url.match(NAVER_BLOG_ID_REGEX);
     if (match) {
       return match[1];
     }
 
-    // config에서 지정된 경우
+    // 경로에서 추출
     try {
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
