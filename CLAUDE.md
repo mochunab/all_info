@@ -44,7 +44,7 @@
 
 ```
 크롤링 → HTML 파싱 → Readability → content_preview (500자)
-         → Edge Function (GPT-5-nano) → summary + summary_tags
+         → Edge Function (GPT-5-nano) → title_ko + summary + summary_tags
            └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
 
@@ -68,7 +68,7 @@
 | `/api/summarize` | POST | Bearer | 기본 |
 | `/api/summarize/batch` | POST | Bearer | **300초** |
 | `/api/sources/recommend` | POST | Same-Origin | 기본 |
-| `/api/categories` | GET/POST | 없음 | 기본 |
+| `/api/categories` | GET/POST/PATCH/DELETE | Same-Origin | 기본 |
 | `/api/image-proxy` | GET | 없음 | 기본 |
 
 ---

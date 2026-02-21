@@ -46,9 +46,9 @@
 | **타입** | Client Component (`'use client'`) |
 | **역할** | 크롤링 소스 URL 추가/수정/삭제 + 드래그앤드롭 카테고리 관리 |
 | **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language, showScopeDialog, showRecommendDialog, recommendProgress |
-| **API 호출** | POST /api/sources (저장), POST /api/sources/recommend (AI 추천), POST /api/categories (카테고리 추가) |
+| **API 호출** | POST /api/sources (저장), POST /api/sources/recommend (AI 추천), POST /api/categories (추가), PATCH /api/categories (이름 변경) |
 | **자식 컴포넌트** | LanguageSwitcher, Toast |
-| **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행<br>- **AI 소스 추천**: "콘텐츠 링크 추천받기" 버튼 → 범위 선택(국내/해외/혼합) → AI가 최대 5개 소스 자동 입력 |
+| **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행<br>- **AI 소스 추천**: "콘텐츠 링크 추천받기" 버튼 → 범위 선택(국내/해외/혼합) → AI가 최대 5개 소스 자동 입력<br>- **카테고리 더블클릭 이름 변경**: SortableCategory 인라인 편집 (Enter 확인, Escape 취소) |
 
 ---
 
@@ -92,7 +92,7 @@
 | **타입** | Client Component |
 | **역할** | 개별 아티클 카드 - 썸네일, 제목, AI 요약, 태그, 소스 뱃지 |
 | **Props** | `article: Article` |
-| **특징** | 이미지 프록시 (getProxiedImageUrl), 호버 시 외부 링크 아이콘, 소스별 브랜드 컬러 뱃지, lazy loading |
+| **특징** | 이미지 프록시 (getProxiedImageUrl), 호버 시 외부 링크 아이콘, 소스별 브랜드 컬러 뱃지, lazy loading, 한국어 선택 시 `title_ko` 우선 표시 |
 
 ### Toast
 
