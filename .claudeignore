@@ -1,0 +1,35 @@
+# 의존성 파일 (대용량)
+node_modules/
+package-lock.json
+
+# 빌드 결과물
+.next/
+build/
+dist/
+.vercel/
+
+# 로그 파일
+logs/
+*.log
+
+# 환경 변수 (보안)
+.env
+.env.local
+.env.production
+
+# 대용량 데이터
+*.csv
+*.sql
+*.db
+data/
+
+# Git 내부 파일
+.git/
+
+# Supabase 로컬
+supabase/.temp/
+
+# 기타
+coverage/
+.turbo/
+*.tsbuildinfo

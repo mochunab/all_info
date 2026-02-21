@@ -8,10 +8,10 @@
 
 | # | 함수명 | 역할 | 모델 | 상태 | 추가일 |
 |---|--------|------|------|------|--------|
-| 1 | `summarize-article` | AI 요약 생성 (1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2025-01 |
+| 1 | `summarize-article` | AI 요약 생성 (title_ko + 1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4.1-mini (fallback) | 운영 중 | 2025-01 |
 | 2 | `detect-crawler-type` | HTML 구조 분석 → 크롤러 타입 자동 결정 | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2026-02-14 |
 | 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | GPT-5-nano | 운영 중 | 2026-02-19 |
-| 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 기반) | GPT-5-nano + web_search / GPT-4o-mini (fallback) | 운영 중 | 2026-02-21 |
+| 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 + URL 검증) | GPT-5-nano + web_search / GPT-4.1-mini (fallback) | 운영 중 | 2026-02-21 |
 
 > 현재 4개의 Edge Function이 배포되어 있습니다.
 
@@ -25,7 +25,7 @@
 |------|-----|
 | **파일** | `supabase/functions/summarize-article/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano (기본) → GPT-4o-mini (fallback) |
+| **모델** | GPT-5-nano (기본) → GPT-4.1-mini (fallback) |
 | **환경변수** | `OPENAI_API_KEY` |
 | **CORS** | 모든 Origin 허용 |
 
@@ -57,6 +57,7 @@ Authorization: Bearer {SUPABASE_ANON_KEY or SERVICE_ROLE_KEY}
 ```json
 {
   "success": true,
+  "title_ko": "한국어 번역 제목 (이미 한국어면 원본 그대로)",
   "summary": "핵심 내용을 한 줄로 압축한 요약 (80자 이내)",
   "summary_tags": ["태그1", "태그2", "태그3"]
 }
@@ -78,27 +79,28 @@ Authorization: Bearer {SUPABASE_ANON_KEY or SERVICE_ROLE_KEY}
 목표: 사용자의 클릭을 유도하는 결정적인 '잣대' 역할
 
 지시사항:
-1. 1줄 요약글 작성
-2. 전문 용어 배제, 일상적이고 친근한 말투
-3. 구체적인 상황이나 이득 명시
-4. 핵심 키워드 3개 태그
+1. title_ko: 원본 제목의 한국어 번역 (이미 한국어면 원본 그대로)
+2. 1줄 요약글 작성
+3. 전문 용어 배제, 일상적이고 친근한 말투
+4. 구체적인 상황이나 이득 명시
+5. 핵심 키워드 3개 태그
 
 제약조건:
 - 길이: 공백 포함 80자 이내 (엄수)
 - 형식: 이모지 및 마크다운 금지
 - 톤: 친근하고 쉬운 구어체
 
-출력: JSON { "summary": "...", "summary_tag": ["...", "...", "..."] }
+출력: JSON { "title_ko": "...", "summary": "...", "summary_tag": ["...", "...", "..."] }
 ```
 
 ### API 호출 흐름
 
 ```
 1. GPT-5-nano (responses.create API) 시도
-   ├── 성공 → JSON 파싱 후 반환
+   ├── 성공 → JSON 파싱 후 반환 (title_ko + summary + tags)
    └── 404 → Fallback 실행
 
-2. Fallback: GPT-4o-mini (chat.completions API)
+2. Fallback: GPT-4.1-mini (chat.completions API, max_tokens: 700)
    ├── 성공 → JSON 파싱 후 반환
    └── 실패 → 에러 반환
 ```
@@ -323,7 +325,7 @@ crawler_type: SPA → API (전환)
 |------|-----|
 | **파일** | `supabase/functions/recommend-sources/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano + `web_search_preview` (기본) → GPT-4o-mini (fallback, 웹검색 없이 학습 데이터 기반) |
+| **모델** | GPT-5-nano + `web_search_preview` (기본) → GPT-4.1-mini (fallback, 웹검색 없이 학습 데이터 기반) |
 | **환경변수** | `OPENAI_API_KEY` |
 | **호출 시점** | 소스 관리 페이지 "콘텐츠 링크 추천받기" 클릭 시 |
 
@@ -342,7 +344,8 @@ Authorization: Bearer {SUPABASE_ANON_KEY}
 ```json
 {
   "category": "AI",
-  "scope": "domestic"
+  "scope": "domestic",
+  "existingUrls": ["https://already-registered.com/blog"]
 }
 ```
 
@@ -350,6 +353,7 @@ Authorization: Bearer {SUPABASE_ANON_KEY}
 |----------|------|------|------|
 | `category` | string | O | 추천 대상 카테고리명 |
 | `scope` | `'domestic' \| 'international' \| 'both'` | O | 국내만 / 해외만 / 혼합 |
+| `existingUrls` | string[] | X | 이미 등록된 소스 URL 목록 (중복 방지) |
 
 ### 응답 (Response)
 
@@ -379,13 +383,21 @@ Authorization: Bearer {SUPABASE_ANON_KEY}
 
 ```
 1. GPT-5-nano (responses API + web_search_preview 도구) 시도
-   ├── 성공 → JSON 파싱 후 최대 5개 필터링하여 반환
+   ├── 성공 → JSON 파싱 시도
+   │   ├── 파싱 성공 → URL 접근 검증 후 반환
+   │   └── 파싱 실패 → Fallback 실행
    └── 404 → Fallback 실행
 
-2. Fallback: GPT-4o-mini (chat.completions API, 웹검색 없음)
-   ├── 성공 → JSON 파싱 후 반환
+2. Fallback: GPT-4.1-mini (chat.completions API, response_format: json_object)
+   ├── 성공 → JSON 파싱 → URL 접근 검증 후 반환
    └── 실패 → 에러 반환
+
+3. URL 접근 검증 (filterAccessibleUrls)
+   └── HEAD 요청 (5초 타임아웃) → 405면 GET 재시도
+   └── 접속 불가 URL 제거 후 반환
 ```
+
+> **주의**: GPT-5-nano + `web_search_preview`는 `text.format: json_object` 미지원. 응답에서 `{...}` 패턴을 직접 추출하여 파싱.
 
 ### 배포 방법
 

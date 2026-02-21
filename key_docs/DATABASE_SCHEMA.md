@@ -50,6 +50,7 @@
 | `source_name` | `text` | NOT NULL | 출처 이름 (와이즈앱, 브런치 등) |
 | `source_url` | `text` | NOT NULL | 원본 아티클 URL |
 | `title` | `text` | NOT NULL | 아티클 제목 |
+| `title_ko` | `text` | NULL | 한국어 번역 제목 (AI 요약 시 생성, 이미 한국어면 원본 그대로) |
 | `content_preview` | `text` | NULL | 본문 미리보기 (크롤링 시 추출) |
 | `summary` | `text` | NULL | 상세 요약 (헤드라인 + 2~3문장 설명) |
 | `summary_tags` | `text[]` | `'{}'` | AI 태그 3개 |
