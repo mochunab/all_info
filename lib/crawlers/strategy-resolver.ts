@@ -516,9 +516,66 @@ async function discoverRSS(url: string, $: cheerio.CheerioAPI): Promise<string |
 }
 
 /**
+ * URL 패턴으로 기사 URL 여부를 스코어링
+ * - 경로 깊이, 숫자 세그먼트, 날짜 패턴, 긴 슬러그 등을 종합 판단
+ * - score >= 1 → 기사 URL로 판정
+ */
+function scoreUrlArticleLikelihood(url: string): number {
+  let score = 0;
+  try {
+    const pathname = new URL(url).pathname;
+    const segments = pathname.split('/').filter(Boolean);
+
+    // 경로 깊이 >= 3 → 기사일 가능성 높음
+    if (segments.length >= 3) score += 1;
+
+    // 경로 깊이 <= 1 → 홈/섹션 페이지
+    if (segments.length <= 1) score -= 2;
+
+    // 숫자 세그먼트 존재 (기사 ID)
+    if (segments.some(s => /^\d+$/.test(s))) score += 1;
+
+    // 날짜 패턴 (YYYY/MM 또는 YYYY-MM)
+    if (/\/\d{4}\/\d{1,2}(\/|$)/.test(pathname) || /\/\d{4}-\d{2}/.test(pathname)) score += 1;
+
+    // 긴 슬러그 세그먼트 (>20자, 하이픈 포함)
+    if (segments.some(s => s.length > 20 && s.includes('-'))) score += 1;
+  } catch {
+    return 0;
+  }
+  return score;
+}
+
+/**
+ * Sitemap XML 스니펫에서 URL 품질을 검증
+ * - <loc> URL을 최대 30개 샘플링하여 기사 URL 비율 검사
+ * - 기사 URL 비율 >= 30% → true (유효한 기사 sitemap)
+ */
+function isArticleSitemap(xmlSnippet: string): boolean {
+  const locMatches = xmlSnippet.match(/<loc>(.*?)<\/loc>/g);
+  if (!locMatches || locMatches.length === 0) return false;
+
+  // 최대 30개 샘플링
+  const urls = locMatches.slice(0, 30).map(m => {
+    const match = m.match(/<loc>(.*?)<\/loc>/);
+    return match ? match[1] : '';
+  }).filter(Boolean);
+
+  if (urls.length === 0) return false;
+
+  const articleCount = urls.filter(u => scoreUrlArticleLikelihood(u) >= 1).length;
+  const ratio = articleCount / urls.length;
+
+  console.log(`   📊 Sitemap URL 품질 검사: ${urls.length}개 샘플 중 기사 URL ${articleCount}개 (${(ratio * 100).toFixed(0)}%)`);
+
+  return ratio >= 0.3;
+}
+
+/**
  * Sitemap 자동 발견
  * - /sitemap.xml, /sitemap_index.xml 경로 시도
  * - XML 응답에 <urlset> 또는 <sitemapindex> 포함 여부로 유효성 판단
+ * - <urlset>인 경우 URL 품질 검증 (기사 URL 비율 >= 30%)
  */
 async function discoverSitemap(url: string): Promise<string | null> {
   const origin = (() => {
@@ -551,15 +608,44 @@ async function discoverSitemap(url: string): Promise<string | null> {
         const isXml = contentType.includes('xml') || candidate.endsWith('.xml');
         if (!isXml) return null;
 
-        // 첫 2KB만 읽어서 sitemap 태그 확인
+        // 첫 16KB 읽어서 sitemap 태그 확인 + URL 품질 검증
         const reader = response.body?.getReader();
         if (!reader) return null;
 
-        const { value } = await reader.read();
-        reader.cancel();
-        const text = value ? new TextDecoder().decode(value.slice(0, 2048)) : '';
+        const chunks: Uint8Array[] = [];
+        let totalLength = 0;
+        const MAX_BYTES = 16384; // 16KB
 
-        return (text.includes('<urlset') || text.includes('<sitemapindex')) ? candidate : null;
+        while (totalLength < MAX_BYTES) {
+          const { value, done } = await reader.read();
+          if (done || !value) break;
+          chunks.push(value);
+          totalLength += value.length;
+        }
+        reader.cancel();
+
+        if (totalLength === 0) return null;
+        const merged = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        }
+        const text = new TextDecoder().decode(merged.slice(0, MAX_BYTES));
+
+        // <sitemapindex>는 서브 sitemap 목록 → 기존 scoreSitemapUrl이 필터링하므로 그대로 통과
+        if (text.includes('<sitemapindex')) return candidate;
+
+        // <urlset>은 직접 URL 목록 → 기사 URL 비율 검증
+        if (text.includes('<urlset')) {
+          if (isArticleSitemap(text)) {
+            return candidate;
+          }
+          console.log(`   ⚠️  Sitemap 거부 (기사 URL 비율 부족): ${candidate}`);
+          return null;
+        }
+
+        return null;
       } catch {
         return null;
       }

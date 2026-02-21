@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -16,17 +17,29 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     const supabase = createServiceClient();
 
-    // 소프트 삭제: is_active를 false로 업데이트
+    // 완전 삭제: DB에서 row 제거
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from('articles')
-      .update({ is_active: false })
-      .eq('id', id);
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .single();
 
     if (error) {
-      console.error('[DELETE] Article update error:', error);
+      console.error('[DELETE] Article delete error:', error);
       return NextResponse.json({ error: 'Failed to delete article' }, { status: 500 });
     }
+
+    if (!data) {
+      console.error('[DELETE] Article not found:', id);
+      return NextResponse.json({ error: 'Article not found' }, { status: 404 });
+    }
+
+    console.log(`[DELETE] Article permanently deleted: ${id}`);
+
+    // 아티클 목록 캐시 무효화
+    invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

@@ -231,12 +231,10 @@ export default function Home() {
 
           if (status.isRunning) {
             crawlSeenRunning.current = true;
-            if (status.totalSources > 0) {
-              const progress = status.newArticles > 0
-                ? `${status.completedSources}/${status.totalSources} 소스 완료 · ${status.newArticles}개 새 아티클`
-                : `${status.completedSources}/${status.totalSources} 소스 완료`;
-              setCrawlProgress(progress);
-            }
+            const progress = status.newArticles > 0
+              ? `${status.newArticles}개 콘텐츠 가져오는 중...`
+              : '콘텐츠 검색 중...';
+            setCrawlProgress(progress);
           } else if (crawlSeenRunning.current) {
             // 크롤이 DB에서 완료 감지 → trigger fetch 응답 없어도 UI 정리
             stopPolling();

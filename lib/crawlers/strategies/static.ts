@@ -6,7 +6,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
-import { isWithinDays } from '../date-parser';
+import { isWithinDays, extractDateFromText } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 
 // 기본 헤더
@@ -202,6 +202,10 @@ export class StaticStrategy implements CrawlStrategy {
         $date.attr('content') ||
         $date.text().trim() ||
         null;
+    }
+    // fallback: 셀렉터로 날짜 못 찾으면 아이템 텍스트에서 패턴 추출
+    if (!dateStr) {
+      dateStr = extractDateFromText($el.text());
     }
 
     return {

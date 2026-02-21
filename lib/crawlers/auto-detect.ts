@@ -250,7 +250,18 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
     score += 0.3;
   }
 
-  return Math.min(score, 1.0);
+  // 10. SSR 역지표: 풍부한 body 텍스트 + 구조적 콘텐츠 → 감점
+  const articleCount = $('article').length;
+  const mainContentLength = $('body').text().replace(/\s+/g, ' ').trim().length;
+
+  if (mainContentLength > 3000 && articleCount >= 3) {
+    // 본문 텍스트 풍부 + article 태그 다수 = SSR 가능성 높음
+    score -= 0.3;
+  } else if (mainContentLength > 2000 && (articleCount >= 2 || $('main article, section article').length >= 2)) {
+    score -= 0.2;
+  }
+
+  return Math.min(Math.max(score, 0), 1.0);
 }
 
 /**
@@ -619,8 +630,16 @@ export async function detectCrawlerTypeByAI(
   }
 
   try {
-    // HTML 정리: 처음 5000자만 전송
-    const truncatedHtml = html.length > 5000 ? html.substring(0, 5000) + '\n... (truncated)' : html;
+    // HTML 정리: head/script/style 제거 후 5000자만 전송 (infer-type.ts와 동일한 전처리)
+    const cleanedHtml = html
+      .replace(/<head[\s\S]*?<\/head>/i, '')
+      .replace(/<script[^>]*>[\s\S]{200,}?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]{200,}?<\/style>/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    const truncatedHtml = cleanedHtml.length > 5000
+      ? cleanedHtml.substring(0, 5000) + '\n... (truncated)'
+      : cleanedHtml;
 
     console.log(`[AI-TYPE-DETECT] 🤖 Edge Function 호출 중...`);
 

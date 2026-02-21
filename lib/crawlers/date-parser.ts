@@ -2,6 +2,24 @@
 // 다양한 포맷 지원: 고정 포맷, 상대 시간, 영문/한글
 
 /**
+ * 임의 텍스트에서 날짜 패턴을 추출하는 범용 함수
+ * 예: "이두현 기자 | 2026-02-21 06:55" → "2026-02-21 06:55"
+ */
+export function extractDateFromText(text: string): string | null {
+  if (!text) return null;
+  const patterns = [
+    /(\d{4}[-./]\d{1,2}[-./]\d{1,2}\s+\d{1,2}:\d{2})/,
+    /(\d{4}[-./]\d{1,2}[-./]\d{1,2})/,
+    /(\d{4}년\s*\d{1,2}월\s*\d{1,2}일)/,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
  * 다양한 형식의 날짜 문자열을 Date 객체로 파싱
  * @param dateStr 날짜 문자열
  * @returns Date 객체 또는 null

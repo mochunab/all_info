@@ -221,7 +221,7 @@ function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
     case 'SPA':
       return ['STATIC'];
     case 'STATIC':
-      return [];
+      return ['SPA'];
     case 'FIRECRAWL':
       return ['STATIC'];
     case 'API':
@@ -300,7 +300,10 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         }
 
         // 마지막 전략이면 자동 복구 시도 (하이브리드 전략)
-        if (i === strategyChain.length - 1 && validation.stats && validation.stats.garbageRatio > 0.5) {
+        if (i === strategyChain.length - 1 && (
+          (validation.stats && validation.stats.garbageRatio > 0.5) ||
+          validation.reason === 'No items found'
+        )) {
           console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 8단계 파이프라인 재분석 시도...`);
 
           try {

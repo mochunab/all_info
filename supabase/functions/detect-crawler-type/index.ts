@@ -80,9 +80,11 @@ const CRAWLER_TYPE_DETECTION_PROMPT = `### **역할**
 1. **정부/공공기관은 무조건 SPA**:
    - .go.kr, .or.kr, nipa.kr 등은 복잡한 구조로 Puppeteer 필요
 
-2. **의심스러우면 SPA**:
-   - STATIC과 SPA 사이 애매하면 SPA 선택 (안전한 선택)
-   - SPA로 STATIC 크롤링 가능하지만, 반대는 실패
+2. **SSR 판별 우선**:
+   - HTML body에 실제 기사 제목, 날짜, 본문 텍스트가 직접 포함되어 있으면 → STATIC
+   - JavaScript가 있더라도(페이지네이션, onclick 등) 콘텐츠 자체가 HTML에 있으면 STATIC
+   - SPA는 body가 거의 비어있고 JS로 콘텐츠를 로드하는 경우에만 선택
+   - 판단 기준: "HTML 소스만으로 기사 목록을 볼 수 있는가?" → Yes면 STATIC
 
 3. **Confidence 기준**:
    - 0.9~1.0: 명확한 지표 (도메인 매칭, RSS 태그, 프레임워크 확실)

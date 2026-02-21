@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
-import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getCache, setCache, invalidateCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 type CategoryResponse = {
   categories: { id: number; name: string; is_default: boolean }[];
@@ -82,7 +82,20 @@ export async function DELETE(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    // 1. Delete all crawl_sources with this category in config
+    // 1. Delete all articles with this category
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: deletedArticles, error: artDeleteError } = await (supabase as any)
+      .from('articles')
+      .delete()
+      .eq('category', trimmedName)
+      .select('id');
+
+    const deletedArticleCount = deletedArticles?.length || 0;
+    if (artDeleteError) {
+      console.error('Error deleting articles for category:', artDeleteError);
+    }
+
+    // 2. Delete all crawl_sources with this category in config
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sourcesToDelete } = await (supabase as any)
       .from('crawl_sources')
@@ -105,7 +118,7 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 2. Delete the category itself
+    // 3. Delete the category itself
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: catDeleteError } = await (supabase as any)
       .from('categories')
@@ -117,11 +130,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: catDeleteError.message }, { status: 500 });
     }
 
-    console.log(`[CATEGORIES] Deleted category "${trimmedName}" with ${deletedSourceCount} sources`);
+    console.log(`[CATEGORIES] Deleted category "${trimmedName}" with ${deletedSourceCount} sources, ${deletedArticleCount} articles`);
 
     // 캐시 무효화
     invalidateCache(CACHE_KEYS.CATEGORIES);
     invalidateCache(CACHE_KEYS.SOURCES);
+    invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     return NextResponse.json({
       success: true,

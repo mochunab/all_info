@@ -245,11 +245,84 @@ export async function detectContentSelectors(
 
     // 3. 시맨틱 실패 시 AI 감지
     console.log('[detectContentSelectors] 🤖 AI 기반 감지 시작...');
-    return await detectSelectorsWithAI(url, pageHtml);
+    const aiResult = await detectSelectorsWithAI(url, pageHtml);
+
+    // 4. AI 셀렉터 사후 검증: 실제 HTML에서 매칭되는지 확인
+    if (aiResult.confidence >= 0.5 && pageHtml) {
+      const matchCount = validateSelectorsAgainstHtml(pageHtml, aiResult.selectors);
+      if (matchCount === 0) {
+        console.warn(`[detectContentSelectors] ⚠️  AI 셀렉터 검증 실패: 0건 매칭 (item: "${aiResult.selectors.item}")`);
+        console.log(`[detectContentSelectors] 🔄 AI 재시도 (첫 번째 결과를 거부 피드백 포함)...`);
+
+        // 재시도: 실패한 셀렉터를 명시적으로 거부하고 재호출
+        const retryResult = await detectSelectorsWithAI(url, pageHtml, {
+          rejectedSelector: aiResult.selectors.item,
+          rejectedReason: `Selector "${aiResult.selectors.item}" matched 0 elements in the actual HTML. This was likely a sidebar/widget selector. Find a DIFFERENT group — look for table structures (table > tbody > tr), or the largest repeating group in the main content area.`,
+        });
+
+        const retryCount = validateSelectorsAgainstHtml(pageHtml, retryResult.selectors);
+        if (retryCount > 0) {
+          console.log(`[detectContentSelectors] ✅ 재시도 성공: ${retryCount}건 매칭 (item: "${retryResult.selectors.item}")`);
+          return retryResult;
+        }
+        console.warn(`[detectContentSelectors] ⚠️  재시도도 실패: ${retryCount}건 매칭`);
+      } else {
+        console.log(`[detectContentSelectors] ✅ AI 셀렉터 검증 통과: ${matchCount}건 매칭`);
+      }
+    }
+
+    return aiResult;
   } catch (error) {
     console.error('[detectContentSelectors] ❌ 감지 실패:', error);
     // Fallback: 범용 셀렉터 반환
     return getFallbackSelectors();
+  }
+}
+
+/**
+ * AI 셀렉터를 실제 HTML에 대해 검증 (0건 매칭 = 오탐)
+ */
+function validateSelectorsAgainstHtml(
+  html: string,
+  selectors: { container?: string; item: string },
+): number {
+  try {
+    // cheerio는 이미 상위에서 import되지 않으므로 동적 import 대신 정규식 기반 간이 검증
+    // item 셀렉터에서 클래스명 추출하여 HTML에 존재하는지 확인
+    const itemSelector = selectors.item;
+
+    // 클래스 기반 셀렉터인 경우: .className → class="...className..."
+    const classMatch = itemSelector.match(/\.([a-zA-Z0-9_-]+)/g);
+    if (classMatch && classMatch.length > 0) {
+      // 모든 클래스가 HTML에 존재하는지 확인
+      const allClassesExist = classMatch.every(cls => {
+        const className = cls.slice(1); // . 제거
+        const regex = new RegExp(`class="[^"]*\\b${className}\\b[^"]*"`, 'i');
+        return regex.test(html);
+      });
+
+      if (!allClassesExist) return 0;
+
+      // 마지막 클래스 기준으로 대략적 매칭 수 세기
+      const lastClass = classMatch[classMatch.length - 1].slice(1);
+      const countRegex = new RegExp(`class="[^"]*\\b${lastClass}\\b[^"]*"`, 'gi');
+      const matches = html.match(countRegex);
+      return matches ? matches.length : 0;
+    }
+
+    // 태그 기반 셀렉터 (tbody > tr 등)
+    const tagMatch = itemSelector.match(/(\w+)$/);
+    if (tagMatch) {
+      const tag = tagMatch[1];
+      const tagRegex = new RegExp(`<${tag}[\\s>]`, 'gi');
+      const matches = html.match(tagRegex);
+      return matches ? matches.length : 0;
+    }
+
+    // 판단 불가 → 검증 통과로 처리
+    return -1;
+  } catch {
+    return -1;
   }
 }
 
@@ -311,7 +384,8 @@ function escapeTailwindColons(selector: string | undefined | null): string | und
  */
 async function detectSelectorsWithAI(
   url: string,
-  html: string
+  html: string,
+  retry?: { rejectedSelector: string; rejectedReason: string }
 ): Promise<SelectorDetectionResult> {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   if (!OPENAI_API_KEY) {
@@ -329,10 +403,14 @@ async function detectSelectorsWithAI(
     .trim();
   const truncatedHtml = cleanedHtml.substring(0, 50000);
 
+  const retryContext = retry
+    ? `\n## PREVIOUS ATTEMPT REJECTED\nYour previous selector "${retry.rejectedSelector}" was WRONG. ${retry.rejectedReason}\nYou MUST choose a COMPLETELY DIFFERENT selector group this time.\n`
+    : '';
+
   const prompt = `You are a web scraping expert. Your task: find CSS selectors for the MAIN ARTICLE LIST on this page — the repeating cards/rows where each one is a unique article, blog post, or newsletter issue.
 
 URL: ${url}
-
+${retryContext}
 HTML (first 50KB):
 \`\`\`html
 ${truncatedHtml}
@@ -355,26 +433,35 @@ Real article cards have ALL of these:
 - ❌ Items WITHOUT dates AND without excerpt text — these are navigation/directory cards, not content
 - ❌ Social media links: Twitter, Instagram, YouTube icons/buttons
 - ❌ "Load more" buttons, pagination numbers
+- ❌ SIDEBAR/WIDGET items: elements inside <aside>, sidebar containers,
+  or secondary columns. If a similar group exists in the MAIN content area
+  with MORE items, always prefer the main area group.
+- When multiple repeating groups exist, count the items in each group.
+  The LARGEST group (most items) in the MAIN content area is most likely
+  the article list. Smaller groups in sidebars are widgets.
 
 ## PRIORITY ORDERING (when multiple groups exist on the same page)
 
 If the page has MULTIPLE candidate groups, always pick the one that has:
-1. LONGEST title text (real article titles are sentences, not brand names)
-2. DATES visible on each item (publish date = strong article signal)
-3. EXCERPT/DESCRIPTION text on each item
-4. URLs with numeric IDs or slugs (e.g. /article/12345, /posts/my-article-title-here)
+1. MOST items (the largest repeating group is almost always the main article list)
+2. LONGEST title text (real article titles are sentences, not brand names)
+3. DATES visible on each item (publish date = strong article signal)
+4. EXCERPT/DESCRIPTION text on each item
+5. URLs with numeric IDs or slugs (e.g. /article/12345, /posts/my-article-title-here)
 
 DEPRIORITIZE groups where:
 - Titles are short (< 3 words or < 20 chars) and look like brand/category names
 - No dates are shown on items
 - URLs are bare section names without IDs (e.g. /newsletter/cooking, /section/tech)
+- The group has FEWER items than another candidate group on the same page
 
 ## STEP-BY-STEP PROCESS
 
-STEP 1: Find all repeating element groups in the HTML (3+ similar elements in a container)
-STEP 2: For each group, check: do links point to UNIQUE ARTICLE DETAIL PAGES (with IDs/slugs) or to SECTION/DIRECTORY pages?
-STEP 3: If multiple groups match, apply PRIORITY ORDERING above to pick the best one
-STEP 4: Write specific CSS selectors for the chosen group
+STEP 1: Find ALL repeating element groups in the HTML (3+ similar elements in a container).
+        Include TABLE structures (table > tbody > tr) — many Korean news/portal sites use tables for article lists.
+STEP 2: For EACH group, count: (a) number of items, (b) average title length, (c) whether items have dates/excerpts, (d) whether links point to unique detail pages (with IDs/slugs) or to section/directory pages.
+STEP 3: Compare all groups side by side. The group with the MOST items AND longest titles in the MAIN content area (NOT sidebar/widget) wins. If a smaller group (e.g. 5-10 items) exists in a sidebar but a larger group (e.g. 15-20 items) exists in the main area, ALWAYS pick the larger main area group.
+STEP 4: Write specific CSS selectors for the chosen group.
 
 ## SPA SHELL DETECTION
 
