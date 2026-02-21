@@ -280,6 +280,17 @@ async function discoverFromHtml(url: string): Promise<UrlOptimizationResult | nu
         if (linkUrlObj.hostname !== urlObj.hostname) continue;
         // 원본 URL과 동일하면 스킵
         if (linkUrlObj.pathname === urlObj.pathname) continue;
+
+        // 섹션 교차 리다이렉트 방지:
+        // 원본 URL이 특정 섹션(/bicnic/trend)인데 다른 섹션(/plus)으로 바꾸는 것을 차단
+        // 루트 URL(/)은 제한 없이 어디든 리다이렉트 가능
+        const originalSegments = urlObj.pathname.split('/').filter(Boolean);
+        if (originalSegments.length > 0) {
+          const linkSegments = linkUrlObj.pathname.split('/').filter(Boolean);
+          if (linkSegments.length > 0 && linkSegments[0] !== originalSegments[0]) {
+            continue; // 다른 섹션이므로 스킵
+          }
+        }
       } catch {
         continue;
       }
