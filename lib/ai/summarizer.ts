@@ -14,7 +14,8 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 ### **지시사항**
 
-1. 아래 '본문글'을 읽고 2가지를 작성할 것:
+1. 아래 '본문글'을 읽고 3가지를 작성할 것:
+   - **title_ko**: 원본 제목의 자연스러운 한국어 번역 (이미 한국어면 그대로 사용)
    - **summary_tag**: 핵심 키워드 태그 3개
    - **detailed_summary**: 헤드라인 + 핵심 설명 3~4문장
 
@@ -37,6 +38,7 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 \`\`\`json
 {
+  "title_ko": "원본 제목의 한국어 번역 (이미 한국어면 그대로)",
   "summary_tag": [
     "주제 태그1 (7자 내외)",
     "주제 태그2 (7자 내외)",
@@ -52,6 +54,7 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 // AI 요약 결과 타입
 export type AISummaryResult = {
+  title_ko: string | null;
   summary_tags: string[];
   detailed_summary: string;
   success: boolean;
@@ -71,9 +74,9 @@ export async function generateAISummary(
     const fullContent = `제목: ${title}\n\n${truncatedContent}`;
     const prompt = UNIFIED_SUMMARY_PROMPT.replace('{content}', fullContent);
 
-    // OpenAI API 호출 (gpt-4o-mini 사용, gpt-5-nano가 출시되면 변경)
+    // OpenAI API 호출 (gpt-4.1-mini fallback)
     const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [
         {
           role: 'system',
@@ -86,7 +89,7 @@ export async function generateAISummary(
         },
       ],
       temperature: 0.5,
-      max_tokens: 600,
+      max_tokens: 700,
       response_format: { type: 'json_object' },
     });
 
@@ -95,6 +98,7 @@ export async function generateAISummary(
     try {
       const parsed = JSON.parse(rawText);
       return {
+        title_ko: parsed.title_ko || null,
         summary_tags: parsed.summary_tag || [],
         detailed_summary: parsed.detailed_summary || '',
         success: true,
@@ -102,6 +106,7 @@ export async function generateAISummary(
     } catch {
       console.error('Failed to parse AI response:', rawText);
       return {
+        title_ko: null,
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -111,6 +116,7 @@ export async function generateAISummary(
   } catch (error) {
     console.error('AI summary generation failed:', error);
     return {
+      title_ko: null,
       summary_tags: [],
       detailed_summary: '',
       success: false,

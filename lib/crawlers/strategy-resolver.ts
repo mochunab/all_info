@@ -3,10 +3,135 @@
 
 import * as cheerio from 'cheerio';
 import type { CrawlerType, StrategyResolution } from './types';
-import { inferCrawlerTypeEnhanced, detectContentSelectors } from './infer-type';
-import { fetchPage, calculateSPAScore, detectByRules, detectCrawlerTypeByAI } from './auto-detect';
+import { inferCrawlerTypeEnhanced } from './infer-type';
+import type { SelectorDetectionResult } from './infer-type';
+import { fetchPage, calculateSPAScore, detectByRules } from './auto-detect';
 import { optimizeUrl } from './url-optimizer';
 import { detectApiEndpoint } from './api-detector';
+
+/**
+ * 통합 AI 감지 (타입 + 셀렉터) — detect-crawler-type Edge Function 호출
+ */
+export async function detectByUnifiedAI(
+  html: string,
+  url: string
+): Promise<{
+  type: CrawlerType;
+  confidence: number;
+  reasoning: string;
+  selectorResult: SelectorDetectionResult | null;
+} | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('[UNIFIED-AI] Supabase credentials not configured');
+    return null;
+  }
+
+  try {
+    // HTML 전처리: head/script/style + aside/nav/sidebar 제거 후 50000자
+    // aside/nav 제거로 AI가 사이드바 콘텐츠를 메인으로 오인하는 문제 방지
+    const $ = cheerio.load(html);
+    $('head, nav, aside, [role="navigation"], [role="complementary"], [role="banner"], [role="contentinfo"]').remove();
+    $('script').filter((_, el) => ($(el).html() || '').length > 200).remove();
+    $('style').filter((_, el) => ($(el).html() || '').length > 200).remove();
+    // id/class에 sidebar, widget, banner 포함하는 요소 제거
+    $('[id*="sidebar"], [id*="side-"], [class*="sidebar"], [class*="side-bar"], [id*="widget"], [class*="widget"], [id*="banner"], [class*="banner"]').remove();
+
+    const cleanedHtml = $.html()
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    const truncatedHtml = cleanedHtml.substring(0, 50000);
+
+    console.log(`[UNIFIED-AI] 🤖 Edge Function 호출 중... (HTML ${truncatedHtml.length}자)`);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/detect-crawler-type`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, html: truncatedHtml }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[UNIFIED-AI] Edge Function error: ${response.status}`, errorText);
+      return null;
+    }
+
+    const result = await response.json();
+
+    if (!result.success || !result.crawlerType) {
+      console.warn(`[UNIFIED-AI] ❌ Failed: ${result.error}`);
+      return null;
+    }
+
+    console.log(`[UNIFIED-AI] ✅ Type: ${result.crawlerType} (${result.confidence})`);
+    console.log(`[UNIFIED-AI] 💡 Reasoning: ${result.reasoning}`);
+
+    // 셀렉터 결과 변환
+    let selectorResult: SelectorDetectionResult | null = null;
+    if (result.selectors && result.selectors.item) {
+      // Tailwind 콜론 이스케이프: .word:word- → .word\:word-
+      const escape = (s: string | undefined | null): string | undefined => {
+        if (!s) return s ?? undefined;
+        return s.replace(
+          /(\.[a-zA-Z0-9]+):([a-zA-Z][a-zA-Z0-9]*-)/g,
+          '$1\\:$2'
+        );
+      };
+
+      selectorResult = {
+        selectors: {
+          item: escape(result.selectors.item) ?? result.selectors.item,
+          title: escape(result.selectors.title) ?? result.selectors.title,
+          link: escape(result.selectors.link) ?? result.selectors.link,
+          ...(result.selectors.container ? { container: escape(result.selectors.container) } : {}),
+          ...(result.selectors.date ? { date: escape(result.selectors.date) } : {}),
+          ...(result.selectors.thumbnail ? { thumbnail: escape(result.selectors.thumbnail) } : {}),
+        },
+        excludeSelectors: result.excludeSelectors || ['nav', 'header', 'footer'],
+        confidence: result.confidence || 0.7,
+        method: 'ai',
+        reasoning: result.reasoning,
+      };
+
+      console.log(`[UNIFIED-AI] 📝 Selectors: item=${selectorResult.selectors.item}, title=${selectorResult.selectors.title}`);
+
+      // Cheerio 기반 후검증: AI 셀렉터가 실제 HTML에서 매칭되는지 확인
+      try {
+        const $ = cheerio.load(html);
+        const fullSelector = selectorResult.selectors.container
+          ? `${selectorResult.selectors.container} ${selectorResult.selectors.item}`
+          : selectorResult.selectors.item;
+        const matchCount = $(fullSelector).length;
+
+        const MIN_ITEMS_FOR_LIST = 3;
+        if (matchCount < MIN_ITEMS_FOR_LIST) {
+          console.warn(`[UNIFIED-AI] ⚠️  셀렉터 후검증 실패: "${fullSelector}" → ${matchCount}건 매칭 (최소 ${MIN_ITEMS_FOR_LIST}건 필요) — 셀렉터 폐기`);
+          selectorResult = null;
+        } else {
+          console.log(`[UNIFIED-AI] ✅ 셀렉터 후검증 통과: ${matchCount}건 매칭`);
+        }
+      } catch (validationError) {
+        console.warn(`[UNIFIED-AI] ⚠️  셀렉터 후검증 오류 (Cheerio 파싱 실패):`, validationError instanceof Error ? validationError.message : validationError);
+        // 검증 불가 시 셀렉터 유지 (보수적 접근)
+      }
+    }
+
+    return {
+      type: result.crawlerType as CrawlerType,
+      confidence: result.confidence,
+      reasoning: result.reasoning,
+      selectorResult,
+    };
+  } catch (error) {
+    console.error('[UNIFIED-AI] Error:', error);
+    return null;
+  }
+}
 
 /**
  * URL을 분석하여 최적의 크롤링 전략 결정
@@ -287,42 +412,67 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     // 6. Rule-based 셀렉터 분석 — 비활성화 (코드 보존)
     // detectByRules()는 auto-detect.ts에 보존됨. resolveStrategyV2에서는 여전히 사용.
 
-    // 7 + 8. AI 타입 감지 & AI 셀렉터 탐지 — 병렬 실행
+    // 7 + 8. 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function 호출
     const needsAIVerification = !preliminaryType || preliminaryConfidence < 0.85;
 
-    console.log(`\n🤖 [7+8단계/9단계] AI 타입 감지 + AI 셀렉터 탐지 병렬 실행`);
-    if (!needsAIVerification) {
-      console.log(`   ✅ 타입 확정됨 (${preliminaryType}, ${(preliminaryConfidence * 100).toFixed(0)}%) — 타입 AI 건너뜀, 셀렉터만 탐지`);
+    // 시맨틱 빠른 경로: <article> 태그 3개 이상 + 타입 확정 → AI 건너뛰기
+    let selectorResult: SelectorDetectionResult | null = null;
+    const articleTagCount = (html.match(/<article[\s>]/gi) || []).length;
+    if (articleTagCount >= 3 && preliminaryType && preliminaryConfidence >= 0.85) {
+      console.log(`\n⚡ [7+8단계/9단계] 시맨틱 빠른 경로 — <article> ${articleTagCount}개, 타입 확정 (${preliminaryType})`);
+      selectorResult = {
+        selectors: {
+          container: 'main, [role="main"], body',
+          item: 'article',
+          title: 'h1, h2, h3, .title, .headline',
+          link: 'a',
+        },
+        excludeSelectors: ['nav', 'header', 'footer', 'aside'],
+        confidence: 0.8,
+        method: 'semantic',
+      };
     }
-    console.log(`   🔧 모델: GPT-5-nano (타입) + GPT-4o-mini (셀렉터)`);
 
-    const parallelStart = Date.now();
-    const [aiTypeResult, initialSelectorResult] = await Promise.all([
-      needsAIVerification
-        ? detectCrawlerTypeByAI(html, url)
-        : Promise.resolve(null),
-      detectContentSelectors(url, html),
-    ]);
-    let selectorResult = initialSelectorResult;
-    console.log(`   ⏱️  병렬 AI 완료: ${Date.now() - parallelStart}ms`);
-
-    // 7. AI 타입 결과 처리
-    if (aiTypeResult && aiTypeResult.confidence >= 0.6) {
-      const aiConfidencePercent = (aiTypeResult.confidence * 100).toFixed(0);
-      console.log(`   ✅ AI 타입: ${aiTypeResult.type} (${aiConfidencePercent}%) — ${aiTypeResult.reasoning}`);
-
-      if (aiTypeResult.confidence > preliminaryConfidence) {
-        if (preliminaryType && preliminaryType !== aiTypeResult.type) {
-          console.log(`   🔄 타입 변경: ${preliminaryType} → ${aiTypeResult.type}`);
-        }
-        preliminaryType = aiTypeResult.type;
-        preliminaryConfidence = aiTypeResult.confidence;
-        preliminaryMethod = 'ai-type-detection';
-      } else {
-        console.log(`   ℹ️  기존 타입(${preliminaryType}) 유지 — 신뢰도 더 높음`);
+    // 시맨틱 빠른 경로 미사용 시 통합 AI 호출
+    if (!selectorResult || selectorResult.confidence < 0.6) {
+      console.log(`\n🤖 [7+8단계/9단계] 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function`);
+      if (!needsAIVerification) {
+        console.log(`   ✅ 타입 확정됨 (${preliminaryType}, ${(preliminaryConfidence * 100).toFixed(0)}%) — 셀렉터 위주 탐지`);
       }
-    } else if (needsAIVerification) {
-      console.log(`   ❌ AI 타입 감지 실패 (신뢰도 낮음)`);
+      console.log(`   🔧 모델: GPT-5-nano (통합 감지)`);
+
+      const aiStart = Date.now();
+      const unifiedResult = await detectByUnifiedAI(html, url);
+      console.log(`   ⏱️  통합 AI 완료: ${Date.now() - aiStart}ms`);
+
+      // AI 타입 결과 처리
+      const aiTypeResult = unifiedResult && unifiedResult.confidence >= 0.6
+        ? { type: unifiedResult.type, confidence: unifiedResult.confidence, reasoning: unifiedResult.reasoning }
+        : null;
+
+      // AI 셀렉터 결과 처리
+      if (unifiedResult?.selectorResult && unifiedResult.selectorResult.confidence >= 0.5) {
+        selectorResult = unifiedResult.selectorResult;
+      }
+
+      // AI 타입 결과 처리
+      if (aiTypeResult && aiTypeResult.confidence >= 0.6) {
+        const aiConfidencePercent = (aiTypeResult.confidence * 100).toFixed(0);
+        console.log(`   ✅ AI 타입: ${aiTypeResult.type} (${aiConfidencePercent}%) — ${aiTypeResult.reasoning}`);
+
+        if (aiTypeResult.confidence > preliminaryConfidence) {
+          if (preliminaryType && preliminaryType !== aiTypeResult.type) {
+            console.log(`   🔄 타입 변경: ${preliminaryType} → ${aiTypeResult.type}`);
+          }
+          preliminaryType = aiTypeResult.type;
+          preliminaryConfidence = aiTypeResult.confidence;
+          preliminaryMethod = 'ai-type-detection';
+        } else {
+          console.log(`   ℹ️  기존 타입(${preliminaryType}) 유지 — 신뢰도 더 높음`);
+        }
+      } else if (needsAIVerification) {
+        console.log(`   ❌ AI 타입 감지 실패 (신뢰도 낮음)`);
+      }
     }
 
     // 7.5. 숨겨진 API 엔드포인트 자동 감지 (step 5.5 미실행 + SPA 확정된 경우)
@@ -384,9 +534,10 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
         const { getRenderedHTML } = await import('./strategies/spa');
         const renderedHtml = await getRenderedHTML(url);
         if (renderedHtml) {
-          const renderedResult = await detectContentSelectors(url, renderedHtml);
-          console.log(`   📊 재감지 신뢰도: ${(renderedResult.confidence * 100).toFixed(0)}%`);
-          if (renderedResult.confidence > (selectorResult?.confidence || 0)) {
+          const renderedUnified = await detectByUnifiedAI(renderedHtml, url);
+          const renderedResult = renderedUnified?.selectorResult;
+          console.log(`   📊 재감지 신뢰도: ${((renderedResult?.confidence || 0) * 100).toFixed(0)}%`);
+          if (renderedResult && renderedResult.confidence > (selectorResult?.confidence || 0)) {
             console.log(`   ✅ 재감지 성공 — Puppeteer 렌더링 HTML 셀렉터 채택`);
             selectorResult = renderedResult;
           } else {
@@ -400,7 +551,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       }
     }
 
-    // 8. AI 셀렉터 결과 처리 (Stage 7+8 병렬 실행에서 이미 완료됨)
+    // 8. AI 셀렉터 결과 처리 (통합 AI 감지에서 이미 완료됨)
     if (selectorResult && selectorResult.confidence >= 0.6) {
       const confidencePercent = (selectorResult.confidence * 100).toFixed(0);
       console.log(`\n🔍 [8단계/9단계] AI 셀렉터 결과 (병렬 완료)`);

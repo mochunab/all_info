@@ -57,6 +57,7 @@ async function generateAISummaryViaEdgeFunction(
 ): Promise<AISummaryResult> {
   if (!EDGE_FUNCTION_URL) {
     return {
+      title_ko: null,
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -78,6 +79,7 @@ async function generateAISummaryViaEdgeFunction(
       const errorText = await response.text();
       console.error('[Edge Function] Error:', response.status, errorText);
       return {
+        title_ko: null,
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -89,12 +91,14 @@ async function generateAISummaryViaEdgeFunction(
 
     if (result.success) {
       return {
+        title_ko: result.title_ko || null,
         summary_tags: result.summary_tags || [],
         detailed_summary: result.detailed_summary || '',
         success: true,
       };
     } else {
       return {
+        title_ko: null,
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -104,6 +108,7 @@ async function generateAISummaryViaEdgeFunction(
   } catch (error) {
     console.error('[Edge Function] Request failed:', error);
     return {
+      title_ko: null,
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -198,6 +203,7 @@ export async function processPendingSummaries(
           const { error: updateError } = await (supabase as any)
             .from('articles')
             .update({
+              title_ko: aiResult.title_ko || null,
               summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
               summary: aiResult.detailed_summary || null,
               updated_at: new Date().toISOString(),
@@ -309,6 +315,7 @@ export async function processArticleSummary(
     const { error: updateError } = await (supabase as any)
       .from('articles')
       .update({
+        title_ko: aiResult.title_ko || null,
         summary_tags: aiResult.summary_tags,
         summary: aiResult.detailed_summary || null,
         updated_at: new Date().toISOString(),

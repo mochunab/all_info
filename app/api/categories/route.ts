@@ -237,6 +237,111 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PATCH /api/categories - Rename a category (requires auth)
+export async function PATCH(request: NextRequest) {
+  try {
+    if (!verifySameOrigin(request) && !verifyCronAuth(request)) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const supabase = createServiceClient();
+    const body = await request.json();
+    const { oldName, newName } = body;
+
+    if (!oldName || !newName || typeof oldName !== 'string' || typeof newName !== 'string') {
+      return NextResponse.json(
+        { error: 'oldName and newName are required' },
+        { status: 400 }
+      );
+    }
+
+    const trimmedOld = oldName.trim();
+    const trimmedNew = newName.trim();
+
+    if (!trimmedNew) {
+      return NextResponse.json(
+        { error: 'New category name cannot be empty' },
+        { status: 400 }
+      );
+    }
+
+    if (trimmedOld === trimmedNew) {
+      return NextResponse.json({ success: true });
+    }
+
+    // 중복 확인
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (supabase as any)
+      .from('categories')
+      .select('id')
+      .eq('name', trimmedNew)
+      .single();
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Category name already exists' },
+        { status: 409 }
+      );
+    }
+
+    // 1. categories 테이블 이름 변경
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: catError } = await (supabase as any)
+      .from('categories')
+      .update({ name: trimmedNew })
+      .eq('name', trimmedOld);
+
+    if (catError) {
+      console.error('Error renaming category:', catError);
+      return NextResponse.json({ error: catError.message }, { status: 500 });
+    }
+
+    // 2. articles.category 일괄 변경
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from('articles')
+      .update({ category: trimmedNew })
+      .eq('category', trimmedOld);
+
+    // 3. crawl_sources.config 내 category 변경
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: sources } = await (supabase as any)
+      .from('crawl_sources')
+      .select('id, config')
+      .eq('config->>category', trimmedOld);
+
+    if (sources && sources.length > 0) {
+      await Promise.all(
+        sources.map((s: { id: number; config: Record<string, unknown> }) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any)
+            .from('crawl_sources')
+            .update({ config: { ...s.config, category: trimmedNew } })
+            .eq('id', s.id)
+        )
+      );
+    }
+
+    console.log(`[CATEGORIES] Renamed "${trimmedOld}" → "${trimmedNew}" (${sources?.length || 0} sources updated)`);
+
+    // 캐시 무효화
+    invalidateCache(CACHE_KEYS.CATEGORIES);
+    invalidateCache(CACHE_KEYS.SOURCES);
+    invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+
+    return NextResponse.json({ success: true, oldName: trimmedOld, newName: trimmedNew });
+  } catch (error) {
+    console.error('Error in PATCH /api/categories:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 // PUT /api/categories - Reorder categories (requires auth)
 export async function PUT(request: NextRequest) {
   try {

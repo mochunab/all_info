@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
-import { DEFAULT_CATEGORIES } from '@/types';
+
 import { t } from '@/lib/i18n';
 
 const STORAGE_KEY = {
@@ -17,7 +17,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('');
-  const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -136,7 +136,10 @@ export default function Home() {
       const cachedCats = sessionStorage.getItem(STORAGE_KEY.HOME_CATEGORIES);
       if (cachedCats) {
         const names: string[] = JSON.parse(cachedCats);
-        if (names.length > 0) setCategories(names);
+        if (names.length > 0) {
+          setCategories(names);
+          setCategory(names[0]);
+        }
       }
     } catch { /* 무시 */ }
 
@@ -166,8 +169,9 @@ export default function Home() {
     revalidateCategories();
   }, []);
 
-  // Fetch articles when filters change
+  // Fetch articles when filters change (카테고리가 설정된 후에만)
   useEffect(() => {
+    if (!category) return;
     setPage(1);
     fetchArticles(1, false);
   }, [search, category]); // eslint-disable-line react-hooks/exhaustive-deps

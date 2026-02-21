@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySameOrigin } from '@/lib/auth';
+import { createClient } from '@/lib/supabase/server';
 
 // POST /api/sources/recommend - AI 콘텐츠 소스 추천
 export async function POST(request: NextRequest) {
@@ -29,6 +30,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 동일 카테고리 내 기존 소스 URL 조회 (중복 추천 방지)
+    const supabase = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existingSources } = await (supabase as any)
+      .from('crawl_sources')
+      .select('base_url')
+      .eq('is_active', true)
+      .filter('config->>category', 'eq', category);
+
+    const existingUrls = (existingSources || []).map((s: { base_url: string }) => s.base_url);
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -52,7 +64,7 @@ export async function POST(request: NextRequest) {
             'Authorization': `Bearer ${supabaseAnonKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ category, scope }),
+          body: JSON.stringify({ category, scope, existingUrls }),
           signal: controller.signal,
         }
       );

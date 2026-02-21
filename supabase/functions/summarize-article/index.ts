@@ -19,7 +19,8 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 ### **지시사항**
 
-1. 아래 '본문글'을 읽고 2가지를 작성할 것:
+1. 아래 '본문글'을 읽고 3가지를 작성할 것:
+   - **title_ko**: 원본 제목의 자연스러운 한국어 번역 (이미 한국어면 그대로 사용)
    - **summary_tag**: 핵심 키워드 태그 3개
    - **detailed_summary**: 헤드라인 + 핵심 설명 3~4문장
 
@@ -42,6 +43,7 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 \`\`\`json
 {
+  "title_ko": "원본 제목의 한국어 번역 (이미 한국어면 그대로)",
   "summary_tag": [
     "주제 태그1 (7자 내외)",
     "주제 태그2 (7자 내외)",
@@ -63,6 +65,7 @@ interface SummaryRequest {
 
 interface SummaryResponse {
   success: boolean;
+  title_ko?: string;
   summary_tags?: string[];
   detailed_summary?: string;
   error?: string;
@@ -146,7 +149,7 @@ async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | n
   return { output_text: text };
 }
 
-// Fallback: chat.completions API (gpt-4o-mini)
+// Fallback: chat.completions API (gpt-4.1-mini)
 async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -155,7 +158,7 @@ async function fallbackToChatCompletions(prompt: string, apiKey: string): Promis
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [
         {
           role: 'system',
@@ -167,7 +170,7 @@ async function fallbackToChatCompletions(prompt: string, apiKey: string): Promis
         },
       ],
       temperature: 0.5,
-      max_tokens: 600,
+      max_tokens: 700,
       response_format: { type: 'json_object' },
     }),
   });
@@ -203,6 +206,7 @@ async function generateSummary(title: string, content: string): Promise<SummaryR
       const parsed = JSON.parse(result.output_text);
       return {
         success: true,
+        title_ko: parsed.title_ko || null,
         summary_tags: parsed.summary_tag || [],
         detailed_summary: parsed.detailed_summary || '',
       };
