@@ -53,15 +53,6 @@ export async function fetchPage(url: string): Promise<string | null> {
 }
 
 /**
- * SPA 감지: React/Vue/Next.js + JSP/ASP 등 레거시 동적 페이지 지원
- * - 스코어링 기반 (0~1), 임계값 0.5 이상이면 SPA 판정
- */
-function detectSPA($: cheerio.CheerioAPI): boolean {
-  const score = calculateSPAScore($);
-  return score >= 0.5;
-}
-
-/**
  * SPA 스코어 계산 (0~1)
  * @public strategy-resolver에서 재사용
  */
