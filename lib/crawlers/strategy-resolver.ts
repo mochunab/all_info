@@ -543,6 +543,32 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
           } else {
             console.log(`   ℹ️  기존 결과 유지 (재감지 신뢰도가 더 낮음)`);
           }
+
+          // Rule-based 폴백 (AI 재감지 실패 시)
+          if (!selectorResult || selectorResult.confidence < 0.5) {
+            console.log(`   🔄 Rule-based 폴백 시도 (AI 재감지 실패)...`);
+            const rendered$ = cheerio.load(renderedHtml);
+            const ruleResult = detectByRules(rendered$, url);
+            if (ruleResult && ruleResult.score >= 0.5) {
+              console.log(`   ✅ Rule-based 폴백 성공! (${ruleResult.count}개 아이템, score: ${ruleResult.score.toFixed(2)})`);
+              selectorResult = {
+                selectors: {
+                  container: ruleResult.container,
+                  item: ruleResult.item,
+                  title: ruleResult.title,
+                  link: ruleResult.link,
+                  ...(ruleResult.date && { date: ruleResult.date }),
+                  ...(ruleResult.thumbnail && { thumbnail: ruleResult.thumbnail }),
+                },
+                excludeSelectors: ['nav', 'header', 'footer', 'aside'],
+                confidence: ruleResult.score,
+                method: 'fallback' as const,
+                reasoning: `Rule-based detection on Puppeteer HTML (${ruleResult.count} items, score: ${ruleResult.score.toFixed(2)})`,
+              };
+            } else {
+              console.log(`   ℹ️  Rule-based 폴백도 실패 (score: ${(ruleResult?.score || 0).toFixed(2)})`);
+            }
+          }
         } else {
           console.log(`   ⚠️  렌더링 HTML 수신 실패`);
         }
