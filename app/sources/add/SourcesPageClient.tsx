@@ -63,6 +63,9 @@ const getCrawlerTypeLabel = (type: string, language: Language): string => {
   return labels[type]?.[language] || type;
 };
 
+const MAX_LINKS_PER_CATEGORY = 10;
+const MAX_CATEGORIES = 20;
+
 const CRAWLER_TYPES = [
   'AUTO',
   'STATIC',
@@ -460,6 +463,11 @@ export default function SourcesPageClient({
   };
 
   const handleAddLink = () => {
+    if (currentSources.length >= MAX_LINKS_PER_CATEGORY) {
+      setToastMessage(t(language, 'sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
+      setShowToast(true);
+      return;
+    }
     setSourcesByCategory({
       ...sourcesByCategory,
       [activeCategory]: [
@@ -573,6 +581,15 @@ export default function SourcesPageClient({
 
   const handleRecommendSources = async (scope: 'domestic' | 'international' | 'both') => {
     setShowScopeDialog(false);
+
+    const currentCount = (sourcesByCategory[activeCategory] || []).length;
+    if (currentCount >= MAX_LINKS_PER_CATEGORY) {
+      setToastMessage(t(language, 'sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
+      setShowToast(true);
+      return;
+    }
+
+    const remainingSlots = MAX_LINKS_PER_CATEGORY - currentCount;
     startRecommendProgress();
 
     try {
@@ -587,7 +604,7 @@ export default function SourcesPageClient({
       if (response.ok && data.success && data.recommendations?.length > 0) {
         stopRecommendProgress(true);
 
-        const newLinks: SourceLink[] = data.recommendations.map(
+        const allRecs: SourceLink[] = data.recommendations.map(
           (rec: { url: string; name: string; description: string }, i: number) => ({
             id: `new-rec-${Date.now()}-${i}`,
             url: rec.url,
@@ -597,12 +614,19 @@ export default function SourcesPageClient({
           })
         );
 
+        const newLinks = allRecs.slice(0, remainingSlots);
+
         setSourcesByCategory((prev) => ({
           ...prev,
           [activeCategory]: [...(prev[activeCategory] || []), ...newLinks],
         }));
 
-        setToastMessage(t(language, 'sources.recommendSuccess', { count: String(newLinks.length) }));
+        const isPartial = allRecs.length > remainingSlots;
+        setToastMessage(
+          isPartial
+            ? t(language, 'sources.recommendLimitPartial', { count: String(remainingSlots) })
+            : t(language, 'sources.recommendSuccess', { count: String(newLinks.length) })
+        );
         setShowToast(true);
       } else if (response.ok && data.success && (!data.recommendations || data.recommendations.length === 0)) {
         stopRecommendProgress(false);
@@ -880,7 +904,14 @@ export default function SourcesPageClient({
               </div>
             ) : (
               <button
-                onClick={() => setIsAddingCategory(true)}
+                onClick={() => {
+                  if (categories.length >= MAX_CATEGORIES) {
+                    setToastMessage(t(language, 'sources.maxCategoriesReached', { max: String(MAX_CATEGORIES) }));
+                    setShowToast(true);
+                    return;
+                  }
+                  setIsAddingCategory(true);
+                }}
                 className="flex items-center gap-1 px-3 py-2 rounded-full text-sm text-[var(--accent)] bg-[var(--bg-secondary)] border border-dashed border-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors"
               >
                 <svg

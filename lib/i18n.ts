@@ -75,6 +75,9 @@ export const translations = {
     'sources.recommendSuccess': '{count}개 콘텐츠 소스가 추천되었습니다',
     'sources.recommendFailed': '추천 실패: {error}',
     'sources.recommendEmpty': '추천된 소스가 없습니다',
+    'sources.maxLinksReached': '링크는 카테고리당 최대 {max}개까지 추가할 수 있습니다.',
+    'sources.maxCategoriesReached': '카테고리는 최대 {max}개까지 추가할 수 있습니다.',
+    'sources.recommendLimitPartial': '남은 슬롯 {count}개만큼 추가되었습니다.',
   },
   en: {
     // Header
@@ -150,6 +153,9 @@ export const translations = {
     'sources.recommendSuccess': '{count} content sources recommended',
     'sources.recommendFailed': 'Recommendation failed: {error}',
     'sources.recommendEmpty': 'No sources recommended',
+    'sources.maxLinksReached': 'You can add up to {max} links per category.',
+    'sources.maxCategoriesReached': 'You can add up to {max} categories.',
+    'sources.recommendLimitPartial': 'Only {count} remaining slots were filled.',
   },
   ja: {
     // Header
@@ -225,6 +231,9 @@ export const translations = {
     'sources.recommendSuccess': '{count}件のコンテンツソースが推薦されました',
     'sources.recommendFailed': '推薦失敗: {error}',
     'sources.recommendEmpty': '推薦されたソースがありません',
+    'sources.maxLinksReached': 'カテゴリごとに最大{max}個のリンクを追加できます。',
+    'sources.maxCategoriesReached': 'カテゴリは最大{max}個まで追加できます。',
+    'sources.recommendLimitPartial': '残り{count}スロット分のみ追加されました。',
   },
   zh: {
     // Header
@@ -300,6 +309,9 @@ export const translations = {
     'sources.recommendSuccess': '已推荐{count}个内容来源',
     'sources.recommendFailed': '推荐失败：{error}',
     'sources.recommendEmpty': '没有推荐的来源',
+    'sources.maxLinksReached': '每个类别最多可添加{max}个链接。',
+    'sources.maxCategoriesReached': '最多可添加{max}个类别。',
+    'sources.recommendLimitPartial': '仅添加了剩余的{count}个名额。',
   },
 } as const;
 
