@@ -434,6 +434,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     }
 
     // 시맨틱 빠른 경로 미사용 시 통합 AI 호출
+    let aiDetectedSPA = false; // AI가 낮은 confidence라도 SPA 감지 시 플래그 (Stage 8.5용)
     if (!selectorResult || selectorResult.confidence < 0.6) {
       console.log(`\n🤖 [7+8단계/9단계] 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function`);
       if (!needsAIVerification) {
@@ -444,6 +445,17 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       const aiStart = Date.now();
       const unifiedResult = await detectByUnifiedAI(html, url);
       console.log(`   ⏱️  통합 AI 완료: ${Date.now() - aiStart}ms`);
+
+      // AI가 SPA로 판단했으면 플래그 + 타입 세팅 (confidence 무관)
+      // IGN 같은 SPA 셸은 정적 HTML이 거의 비어 AI confidence가 낮지만 SPA는 확실
+      if (unifiedResult?.type === 'SPA') {
+        aiDetectedSPA = true;
+        if (!preliminaryType) {
+          preliminaryType = 'SPA';
+          preliminaryConfidence = Math.max(preliminaryConfidence, 0.5);
+          preliminaryMethod = 'ai-type-detection';
+        }
+      }
 
       // AI 타입 결과 처리
       const aiTypeResult = unifiedResult && unifiedResult.confidence >= 0.6
@@ -477,7 +489,7 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
 
     // 7.5. 숨겨진 API 엔드포인트 자동 감지 (step 5.5 미실행 + SPA 확정된 경우)
     // step 5.5는 calculateSPAScore >= 0.5일 때만 실행 — 정적 HTML에 SPA 마커 없는 사이트는 여기서 재시도
-    if (!spaDetected && preliminaryType === 'SPA') {
+    if (!spaDetected && (preliminaryType === 'SPA' || aiDetectedSPA)) {
       console.log(`\n🔌 [7.5단계/9단계] 숨겨진 API 엔드포인트 자동 감지 (AI SPA 확정 후 재시도)`);
       console.log(`   🔍 Puppeteer 네트워크 가로채기로 XHR/fetch 분석...`);
       console.log(`   ⏱️  최대 대기시간: 30초`);
@@ -526,7 +538,8 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
 
     // 8.5. SPA 페이지 셀렉터 재감지 (정적 HTML 신뢰도 낮을 때 Puppeteer 렌더링 HTML 사용)
     // SPA 페이지는 JS로 목록을 로드하므로 정적 HTML에 아티클 목록이 없을 수 있음
-    const isSpaPage = spaDetected || preliminaryType === 'SPA';
+    // aiDetectedSPA: AI가 낮은 confidence(< 0.6)로 SPA 감지 시에도 Puppeteer 재감지 트리거
+    const isSpaPage = spaDetected || preliminaryType === 'SPA' || aiDetectedSPA;
     if (isSpaPage && (!selectorResult || selectorResult.confidence < 0.5)) {
       console.log(`\n🎭 [8.5단계/9단계] SPA 렌더링 HTML로 셀렉터 재감지 시도...`);
       console.log(`   💡 이유: 정적 HTML에 JS 로드 기사 목록 없음 (신뢰도: ${((selectorResult?.confidence || 0) * 100).toFixed(0)}%)`);
