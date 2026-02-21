@@ -63,6 +63,18 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' 카테고리가 삭제되었습니다.",
     'sources.categoryExists': "'{name}' 카테고리가 이미 존재합니다.",
     'sources.autoAnalysis': '{count}개 소스 저장 (자동분석: {methods})',
+
+    // Sources Recommend
+    'sources.recommendLink': '콘텐츠 링크 추천받기',
+    'sources.recommendScope': '크롤링 범위를 정해주세요',
+    'sources.scopeDomestic': '국내만',
+    'sources.scopeInternational': '해외만',
+    'sources.scopeBoth': '국내 + 해외',
+    'sources.recommendLoading': 'AI 콘텐츠 소스 추천 중',
+    'sources.recommendLoadingDesc': 'AI가 최적의 콘텐츠 소스를 찾고 있어요',
+    'sources.recommendSuccess': '{count}개 콘텐츠 소스가 추천되었습니다',
+    'sources.recommendFailed': '추천 실패: {error}',
+    'sources.recommendEmpty': '추천된 소스가 없습니다',
   },
   en: {
     // Header
@@ -126,6 +138,18 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' category has been deleted.",
     'sources.categoryExists': "Category '{name}' already exists.",
     'sources.autoAnalysis': '{count} sources saved (auto-analysis: {methods})',
+
+    // Sources Recommend
+    'sources.recommendLink': 'Get link recommendations',
+    'sources.recommendScope': 'Choose crawling scope',
+    'sources.scopeDomestic': 'Domestic only',
+    'sources.scopeInternational': 'International only',
+    'sources.scopeBoth': 'Domestic + International',
+    'sources.recommendLoading': 'AI recommending sources',
+    'sources.recommendLoadingDesc': 'AI is finding the best content sources',
+    'sources.recommendSuccess': '{count} content sources recommended',
+    'sources.recommendFailed': 'Recommendation failed: {error}',
+    'sources.recommendEmpty': 'No sources recommended',
   },
   ja: {
     // Header
@@ -189,6 +213,18 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' カテゴリが削除されました。",
     'sources.categoryExists': "カテゴリ '{name}' は既に存在します。",
     'sources.autoAnalysis': '{count} ソース保存 (自動分析: {methods})',
+
+    // Sources Recommend
+    'sources.recommendLink': 'リンクをおすすめ',
+    'sources.recommendScope': 'クロール範囲を選択してください',
+    'sources.scopeDomestic': '国内のみ',
+    'sources.scopeInternational': '海外のみ',
+    'sources.scopeBoth': '国内 + 海外',
+    'sources.recommendLoading': 'AIがソースを推薦中',
+    'sources.recommendLoadingDesc': 'AIが最適なコンテンツソースを探しています',
+    'sources.recommendSuccess': '{count}件のコンテンツソースが推薦されました',
+    'sources.recommendFailed': '推薦失敗: {error}',
+    'sources.recommendEmpty': '推薦されたソースがありません',
   },
   zh: {
     // Header
@@ -252,6 +288,18 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' 类别已删除。",
     'sources.categoryExists': "类别 '{name}' 已存在。",
     'sources.autoAnalysis': '{count} 来源已保存（自动分析：{methods}）',
+
+    // Sources Recommend
+    'sources.recommendLink': '获取链接推荐',
+    'sources.recommendScope': '请选择抓取范围',
+    'sources.scopeDomestic': '仅国内',
+    'sources.scopeInternational': '仅海外',
+    'sources.scopeBoth': '国内 + 海外',
+    'sources.recommendLoading': 'AI正在推荐来源',
+    'sources.recommendLoadingDesc': 'AI正在寻找最佳内容来源',
+    'sources.recommendSuccess': '已推荐{count}个内容来源',
+    'sources.recommendFailed': '推荐失败：{error}',
+    'sources.recommendEmpty': '没有推荐的来源',
   },
 } as const;
 

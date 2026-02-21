@@ -159,12 +159,20 @@ export default function SourcesPageClient({
   );
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
+  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const analysisTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showScopeDialog, setShowScopeDialog] = useState(false);
+  const [showRecommendDialog, setShowRecommendDialog] = useState(false);
+  const [recommendProgress, setRecommendProgress] = useState(0);
+  const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
   const language: Language = 'ko';
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
@@ -177,6 +185,28 @@ export default function SourcesPageClient({
   }, [isAddingCategory]);
 
   const currentSources = sourcesByCategory[activeCategory] || [];
+
+  const handleNewCategoryChange = (value: string) => {
+    setNewCategory(value);
+    const trimmed = value.trim();
+    if (trimmed.length >= 1 && !categories.some((c) => c.name === trimmed)) {
+      // 이전 pending 카테고리 정리 (소스가 비어있으면 제거)
+      if (pendingCategory && pendingCategory !== trimmed) {
+        const prevSources = sourcesByCategory[pendingCategory] || [];
+        if (prevSources.length === 0) {
+          const updated = { ...sourcesByCategory };
+          delete updated[pendingCategory];
+          setSourcesByCategory(updated);
+        }
+      }
+      // 즉시 활성 카테고리로 설정 (아직 DB 저장 안 함)
+      if (!sourcesByCategory[trimmed]) {
+        setSourcesByCategory((prev) => ({ ...prev, [trimmed]: [] }));
+      }
+      setPendingCategory(trimmed);
+      setActiveCategory(trimmed);
+    }
+  };
 
   const handleAddCategory = async () => {
     const trimmed = newCategory.trim();
@@ -193,14 +223,15 @@ export default function SourcesPageClient({
           const data = await response.json();
           const newCat: Category = data.category || { id: Date.now(), name: trimmed, is_default: false };
           setCategories([...categories, newCat]);
-          setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
+          if (!sourcesByCategory[trimmed]) {
+            setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
+          }
           setActiveCategory(trimmed);
+          setPendingCategory(null);
         } else if (response.status === 409) {
-          // 이미 존재하는 카테고리
           setToastMessage(t(language, 'sources.categoryExists', { name: trimmed }));
           setShowToast(true);
         } else {
-          // 기타 에러
           const data = await response.json().catch(() => ({ error: 'Unknown error' }));
           setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
           setShowToast(true);
@@ -255,6 +286,20 @@ export default function SourcesPageClient({
     if (e.key === 'Enter') {
       handleAddCategory();
     } else if (e.key === 'Escape') {
+      if (pendingCategory) {
+        const prevSources = sourcesByCategory[pendingCategory] || [];
+        if (prevSources.length === 0) {
+          setSourcesByCategory((prev) => {
+            const updated = { ...prev };
+            delete updated[pendingCategory];
+            return updated;
+          });
+        }
+        if (categories.length > 0) {
+          setActiveCategory(categories[0].name);
+        }
+        setPendingCategory(null);
+      }
       setIsAddingCategory(false);
       setNewCategory('');
     }
@@ -330,7 +375,179 @@ export default function SourcesPageClient({
     });
   };
 
+  const startAnalysisProgress = () => {
+    setAnalysisProgress(0);
+    setShowAnalysisDialog(true);
+
+    const INTERVAL = 200;
+    let elapsed = 0;
+
+    analysisTimerRef.current = setInterval(() => {
+      elapsed += INTERVAL;
+
+      // 0~25초: 0% → 95% (일정 속도)
+      // 25~30초: 95% → 99% (천천히)
+      let progress: number;
+      if (elapsed <= 25000) {
+        progress = (elapsed / 25000) * 95;
+      } else {
+        progress = 95 + ((elapsed - 25000) / 5000) * 4;
+      }
+
+      progress = Math.min(progress, 99);
+      setAnalysisProgress(progress);
+
+      if (progress >= 99) {
+        clearInterval(analysisTimerRef.current!);
+        analysisTimerRef.current = null;
+      }
+    }, INTERVAL);
+  };
+
+  const stopAnalysisProgress = (success: boolean) => {
+    if (analysisTimerRef.current) {
+      clearInterval(analysisTimerRef.current);
+      analysisTimerRef.current = null;
+    }
+    if (success) {
+      setAnalysisProgress(100);
+      setTimeout(() => {
+        setShowAnalysisDialog(false);
+        setAnalysisProgress(0);
+      }, 600);
+    } else {
+      setShowAnalysisDialog(false);
+      setAnalysisProgress(0);
+    }
+  };
+
+  const startRecommendProgress = () => {
+    setRecommendProgress(0);
+    setShowRecommendDialog(true);
+
+    const INTERVAL = 200;
+    let elapsed = 0;
+
+    recommendTimerRef.current = setInterval(() => {
+      elapsed += INTERVAL;
+
+      // 0~15초: 0% → 90%, 15~20초: 90% → 99%
+      let progress: number;
+      if (elapsed <= 15000) {
+        progress = (elapsed / 15000) * 90;
+      } else {
+        progress = 90 + ((elapsed - 15000) / 5000) * 9;
+      }
+
+      progress = Math.min(progress, 99);
+      setRecommendProgress(progress);
+
+      if (progress >= 99) {
+        clearInterval(recommendTimerRef.current!);
+        recommendTimerRef.current = null;
+      }
+    }, INTERVAL);
+  };
+
+  const stopRecommendProgress = (success: boolean) => {
+    if (recommendTimerRef.current) {
+      clearInterval(recommendTimerRef.current);
+      recommendTimerRef.current = null;
+    }
+    if (success) {
+      setRecommendProgress(100);
+      setTimeout(() => {
+        setShowRecommendDialog(false);
+        setRecommendProgress(0);
+      }, 600);
+    } else {
+      setShowRecommendDialog(false);
+      setRecommendProgress(0);
+    }
+  };
+
+  const handleRecommendSources = async (scope: 'domestic' | 'international' | 'both') => {
+    setShowScopeDialog(false);
+    startRecommendProgress();
+
+    try {
+      const response = await fetch('/api/sources/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: activeCategory, scope }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.recommendations?.length > 0) {
+        stopRecommendProgress(true);
+
+        const newLinks: SourceLink[] = data.recommendations.map(
+          (rec: { url: string; name: string; description: string }, i: number) => ({
+            id: `new-rec-${Date.now()}-${i}`,
+            url: rec.url,
+            name: rec.name,
+            crawlerType: 'AUTO',
+            isExisting: false,
+          })
+        );
+
+        setSourcesByCategory((prev) => ({
+          ...prev,
+          [activeCategory]: [...(prev[activeCategory] || []), ...newLinks],
+        }));
+
+        setToastMessage(t(language, 'sources.recommendSuccess', { count: String(newLinks.length) }));
+        setShowToast(true);
+      } else if (response.ok && data.success && (!data.recommendations || data.recommendations.length === 0)) {
+        stopRecommendProgress(false);
+        setToastMessage(t(language, 'sources.recommendEmpty'));
+        setShowToast(true);
+      } else {
+        stopRecommendProgress(false);
+        setToastMessage(t(language, 'sources.recommendFailed', { error: data.error || `HTTP ${response.status}` }));
+        setShowToast(true);
+      }
+    } catch (error) {
+      stopRecommendProgress(false);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      setToastMessage(t(language, 'sources.recommendFailed', { error: msg }));
+      setShowToast(true);
+    }
+  };
+
   const handleSave = async () => {
+    // pending 카테고리가 있으면 먼저 DB에 생성
+    if (pendingCategory && !categories.some((c) => c.name === pendingCategory)) {
+      try {
+        const response = await fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: pendingCategory }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const newCat: Category = data.category || { id: Date.now(), name: pendingCategory, is_default: false };
+          setCategories((prev) => [...prev, newCat]);
+        } else if (response.status !== 409) {
+          const data = await response.json().catch(() => ({ error: 'Unknown error' }));
+          setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+          setShowToast(true);
+          return;
+        }
+      } catch (err) {
+        console.error('Error saving pending category:', err);
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        setToastMessage(t(language, 'toast.networkError', { error: msg }));
+        setShowToast(true);
+        return;
+      }
+      setPendingCategory(null);
+      setNewCategory('');
+      setIsAddingCategory(false);
+    }
+
     // Collect all valid sources from all categories
     const allSources: { url: string; name: string; category: string; crawlerType: string }[] = [];
     for (const [cat, sources] of Object.entries(sourcesByCategory)) {
@@ -348,7 +565,15 @@ export default function SourcesPageClient({
 
     if (allSources.length === 0) return;
 
+    // 신규 소스 또는 AUTO 타입이 있을 때만 분석 다이얼로그 표시
+    const needsAnalysis = Object.values(sourcesByCategory).some((sources) =>
+      sources.some((s) => s.url.trim() && (!s.isExisting || s.crawlerType === 'AUTO'))
+    );
+
     setIsSaving(true);
+    if (needsAnalysis) {
+      startAnalysisProgress();
+    }
     try {
       const response = await fetch('/api/sources', {
         method: 'POST',
@@ -362,6 +587,8 @@ export default function SourcesPageClient({
       const data = await response.json();
 
       if (response.ok) {
+        stopAnalysisProgress(true);
+
         // 분석 결과를 토스트 메시지에 포함
         let message = t(language, 'sources.saved');
         if (data.analysis && data.analysis.length > 0) {
@@ -377,22 +604,40 @@ export default function SourcesPageClient({
             });
           }
         }
+        // 분석 결과로 크롤러 타입 UI 업데이트
+        if (data.analysis && data.analysis.length > 0) {
+          setSourcesByCategory((prev) => {
+            const updated = { ...prev };
+            for (const [cat, sources] of Object.entries(updated)) {
+              updated[cat] = (sources as SourceLink[]).map((s) => {
+                const match = data.analysis.find(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (a: any) => a.url === s.url && a.crawlerType
+                );
+                if (match) {
+                  return { ...s, crawlerType: match.crawlerType, isExisting: true };
+                }
+                return s;
+              });
+            }
+            return updated;
+          });
+        }
+
         setPendingDeleteIds([]);
         setToastMessage(message);
         setShowToast(true);
 
-        // RSC 캐시 무효화
+        // RSC 캐시 무효화 (페이지에 머무르며 데이터 갱신)
         router.refresh();
-
-        setTimeout(() => {
-          router.push('/');
-        }, 2200);
       } else {
+        stopAnalysisProgress(false);
         const detail = data.error || `HTTP ${response.status}`;
         setToastMessage(t(language, 'toast.crawlFailed', { error: detail }));
         setShowToast(true);
       }
     } catch (error) {
+      stopAnalysisProgress(false);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       setToastMessage(t(language, 'toast.networkError', { error: msg }));
       setShowToast(true);
@@ -485,7 +730,7 @@ export default function SourcesPageClient({
                   ref={categoryInputRef}
                   type="text"
                   value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
+                  onChange={(e) => handleNewCategoryChange(e.target.value)}
                   onKeyDown={handleCategoryKeyDown}
                   placeholder={
                     language === 'ko' ? '분류명 입력...' :
@@ -503,6 +748,22 @@ export default function SourcesPageClient({
                 </button>
                 <button
                   onClick={() => {
+                    // pending 카테고리 정리 (소스가 비어있으면 제거)
+                    if (pendingCategory) {
+                      const prevSources = sourcesByCategory[pendingCategory] || [];
+                      if (prevSources.length === 0) {
+                        setSourcesByCategory((prev) => {
+                          const updated = { ...prev };
+                          delete updated[pendingCategory];
+                          return updated;
+                        });
+                      }
+                      // 기존 카테고리로 복귀
+                      if (categories.length > 0) {
+                        setActiveCategory(categories[0].name);
+                      }
+                      setPendingCategory(null);
+                    }
                     setIsAddingCategory(false);
                     setNewCategory('');
                   }}
@@ -539,9 +800,20 @@ export default function SourcesPageClient({
         {/* Source Links for Active Category */}
         {activeCategory && (
           <div className="mb-6">
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-              {t(language, 'sources.linkLabel')}
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-[var(--text-secondary)]">
+                {t(language, 'sources.linkLabel')}
+              </label>
+              <button
+                onClick={() => setShowScopeDialog(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--accent)] bg-[var(--accent)]/10 rounded-full hover:bg-[var(--accent)]/20 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
+                </svg>
+                {t(language, 'sources.recommendLink')}
+              </button>
+            </div>
             <div className="space-y-3">
               {currentSources.map((source) => (
                 <div key={source.id} className="relative">
@@ -670,6 +942,117 @@ export default function SourcesPageClient({
               >
                 {isDeleting ? t(language, 'sources.deleting') : t(language, 'sources.delete')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analysis Progress Dialog */}
+      {showAnalysisDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-[var(--accent)] animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                    크롤링 전략 분석 중
+                  </h3>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                    AI가 최적의 크롤링 방식을 찾고 있어요
+                  </p>
+                </div>
+              </div>
+              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-[var(--accent)] rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${analysisProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
+                {Math.round(analysisProgress)}%
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scope Selection Dialog */}
+      {showScopeDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+                {t(language, 'sources.recommendScope')}
+              </h3>
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleRecommendSources('domestic')}
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                >
+                  {t(language, 'sources.scopeDomestic')}
+                </button>
+                <button
+                  onClick={() => handleRecommendSources('international')}
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                >
+                  {t(language, 'sources.scopeInternational')}
+                </button>
+                <button
+                  onClick={() => handleRecommendSources('both')}
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                >
+                  {t(language, 'sources.scopeBoth')}
+                </button>
+              </div>
+            </div>
+            <div className="border-t border-[var(--border)]">
+              <button
+                onClick={() => setShowScopeDialog(false)}
+                className="w-full py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+              >
+                {t(language, 'sources.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recommend Loading Dialog */}
+      {showRecommendDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-[var(--accent)] animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                    {t(language, 'sources.recommendLoading')}
+                  </h3>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                    {t(language, 'sources.recommendLoadingDesc')}
+                  </p>
+                </div>
+              </div>
+              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-[var(--accent)] rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${recommendProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
+                {Math.round(recommendProgress)}%
+              </p>
             </div>
           </div>
         </div>
