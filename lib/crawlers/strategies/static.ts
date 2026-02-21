@@ -95,9 +95,16 @@ export class StaticStrategy implements CrawlStrategy {
       const baseUrl = config.link_processing?.baseUrl || new URL(url).origin;
 
       // 컨테이너가 있으면 그 안에서만 찾기
-      const $container = config.selectors?.container
-        ? $(config.selectors.container)
-        : $('body');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let $container: cheerio.Cheerio<any> = $('body');
+      if (config.selectors?.container) {
+        const $custom = $(config.selectors.container);
+        if ($custom.length > 0) {
+          $container = $custom;
+        } else {
+          console.warn(`[STATIC] ⚠️  Container not found: "${config.selectors.container}" → body fallback`);
+        }
+      }
 
       $container.find(selectors.item).each((_, element) => {
         try {

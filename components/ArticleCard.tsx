@@ -26,9 +26,9 @@ export default function ArticleCard({ article, language, onDelete }: ArticleCard
   const tags = article.summary_tags?.length > 0 ? article.summary_tags : [];
 
   useEffect(() => {
-    // 한국어면 번역 불필요
+    // 한국어면 번역 불필요 (title_ko가 있으면 사용, 없으면 원본 title)
     if (language === 'ko') {
-      setTranslatedTitle(article.title);
+      setTranslatedTitle(article.title_ko || article.title);
       setTranslatedSummary(article.summary || '');
       return;
     }

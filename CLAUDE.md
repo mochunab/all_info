@@ -33,9 +33,11 @@
 4. URL 패턴 (0.85~0.95) — .go.kr, naver.com, /feed
 5. SPA 스코어링 — body < 500자, #root/#app
 [Stage 6 제거 — v1.5.1]
-7+8. AI 타입 감지 + AI 셀렉터 감지 — Promise.all 병렬
+7+8. 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function 호출 (Cheerio 전처리: aside/nav/sidebar 제거)
+     후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
 7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
+9. 사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차
 ```
 
 ### 데이터 파이프라인
@@ -43,7 +45,7 @@
 ```
 크롤링 → HTML 파싱 → Readability → content_preview (500자)
          → Edge Function (GPT-5-nano) → summary + summary_tags
-           └→ 실패 시 → 로컬 OpenAI (GPT-4o-mini), 최대 3회 재시도
+           └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
 
 ### 인증 (`lib/auth.ts`)
@@ -237,12 +239,12 @@ app/api/
 lib/crawlers/
   index.ts              오케스트레이터 (runCrawler)
   strategy-resolver.ts  AUTO 9단계 감지 파이프라인
-  infer-type.ts         AI 셀렉터 감지 (HTML 전처리 + GPT-4o-mini)
+  infer-type.ts         URL 패턴 기반 크롤러 타입 추론
   strategies/           STATIC / SPA / RSS / SITEMAP / NAVER / KAKAO / NEWSLETTER / API
 
 lib/ai/
   batch-summarizer.ts   배치 요약 (Edge Function 우선 → 로컬 fallback)
-  summarizer.ts         로컬 OpenAI (GPT-4o-mini)
+  summarizer.ts         로컬 OpenAI (gpt-4.1-mini)
 
 supabase/functions/
   summarize-article/    AI 요약 (GPT-5-nano)

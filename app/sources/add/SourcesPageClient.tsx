@@ -44,6 +44,7 @@ type SortableCategoryProps = {
   count: number;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (newName: string) => void;
   language: Language;
 };
 
@@ -74,8 +75,12 @@ const CRAWLER_TYPES = [
   'API',
 ] as const;
 
-// SortableCategory component for drag & drop
-function SortableCategory({ category, isActive, count, onSelect, onDelete, language }: SortableCategoryProps) {
+// SortableCategory component for drag & drop + double-click rename
+function SortableCategory({ category, isActive, count, onSelect, onDelete, onRename, language }: SortableCategoryProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(category);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const {
     attributes,
     listeners,
@@ -91,10 +96,41 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, langu
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(category);
+    setIsEditing(true);
+  };
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleRenameSubmit = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== category) {
+      onRename(trimmed);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleRenameSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditValue(category);
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style} className="relative group flex items-center">
       <button
         onClick={onSelect}
+        onDoubleClick={handleDoubleClick}
         className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${
           isActive
             ? 'bg-[var(--accent)] text-white'
@@ -111,8 +147,22 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, langu
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
           </svg>
         </span>
-        <span>{category}</span>
-        {count > 0 && (
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleRenameSubmit}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-transparent outline-none border-b border-current text-sm font-medium w-20 min-w-0"
+            style={{ color: 'inherit' }}
+          />
+        ) : (
+          <span>{category}</span>
+        )}
+        {count > 0 && !isEditing && (
           <span className={`text-xs ${
             isActive ? 'text-white/70' : 'text-[var(--text-tertiary)]'
           }`}>
@@ -228,6 +278,11 @@ export default function SourcesPageClient({
           }
           setActiveCategory(trimmed);
           setPendingCategory(null);
+          // 홈 화면 캐시 무효화
+          try {
+            sessionStorage.removeItem('ih:home:categories');
+            sessionStorage.removeItem('ih:home:articles');
+          } catch { /* 무시 */ }
         } else if (response.status === 409) {
           setToastMessage(t(language, 'sources.categoryExists', { name: trimmed }));
           setShowToast(true);
@@ -305,6 +360,51 @@ export default function SourcesPageClient({
     }
   };
 
+  const handleRenameCategory = async (oldName: string, newName: string) => {
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldName, newName }),
+      });
+
+      if (response.ok) {
+        // 로컬 상태 업데이트
+        setCategories((prev) =>
+          prev.map((c) => (c.name === oldName ? { ...c, name: newName } : c))
+        );
+        setSourcesByCategory((prev) => {
+          const updated = { ...prev };
+          if (updated[oldName]) {
+            updated[newName] = updated[oldName];
+            delete updated[oldName];
+          }
+          return updated;
+        });
+        if (activeCategory === oldName) {
+          setActiveCategory(newName);
+        }
+        // 홈 화면 캐시 무효화
+        try {
+          sessionStorage.removeItem('ih:home:categories');
+          sessionStorage.removeItem('ih:home:articles');
+        } catch { /* 무시 */ }
+      } else if (response.status === 409) {
+        setToastMessage(t(language, 'sources.categoryExists', { name: newName }));
+        setShowToast(true);
+      } else {
+        const data = await response.json().catch(() => ({ error: 'Unknown error' }));
+        setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+        setShowToast(true);
+      }
+    } catch (err) {
+      console.error('Error renaming category:', err);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setToastMessage(t(language, 'toast.networkError', { error: msg }));
+      setShowToast(true);
+    }
+  };
+
   const handleDeleteCategory = async () => {
     if (!deletingCategory) return;
 
@@ -330,6 +430,11 @@ export default function SourcesPageClient({
 
         setToastMessage(t(language, 'sources.categoryDeleted', { name: deletingCategory }));
         setShowToast(true);
+        // 홈 화면 캐시 무효화
+        try {
+          sessionStorage.removeItem('ih:home:categories');
+          sessionStorage.removeItem('ih:home:articles');
+        } catch { /* 무시 */ }
       }
     } catch (error) {
       console.error('Error deleting category:', error);
@@ -719,6 +824,7 @@ export default function SourcesPageClient({
                     count={sourcesByCategory[cat.name]?.length || 0}
                     onSelect={() => setActiveCategory(cat.name)}
                     onDelete={() => setDeletingCategory(cat.name)}
+                    onRename={(newName) => handleRenameCategory(cat.name, newName)}
                     language={language}
                   />
                 ))}

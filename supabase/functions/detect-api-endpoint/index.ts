@@ -200,7 +200,7 @@ async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | n
   return { output_text: text };
 }
 
-// Fallback: chat.completions (gpt-4o-mini)
+// Fallback: chat.completions (gpt-4.1-mini)
 async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -209,7 +209,7 @@ async function fallbackToChatCompletions(prompt: string, apiKey: string): Promis
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [
         {
           role: 'system',
