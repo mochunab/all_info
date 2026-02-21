@@ -39,9 +39,21 @@ export async function detectByUnifiedAI(
     // id/class에 sidebar, widget, banner 포함하는 요소 제거
     $('[id*="sidebar"], [id*="side-"], [class*="sidebar"], [class*="side-bar"], [id*="widget"], [class*="widget"], [id*="banner"], [class*="banner"]').remove();
 
-    const cleanedHtml = $.html()
+    let cleanedHtml = $.html()
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+
+    // 전처리 품질 검사: 과도한 제거로 텍스트가 거의 안 남으면 경량 버전으로 재시도
+    const cleanedText = cleanedHtml.replace(/<[^>]+>/g, '').trim();
+    if (cleanedText.length < 1000) {
+      console.warn(`[UNIFIED-AI] ⚠️  전처리 후 텍스트 ${cleanedText.length}자 — 과도 제거 감지, 경량 전처리로 재시도`);
+      const $light = cheerio.load(html);
+      $light('head, script, style').remove();
+      cleanedHtml = $light.html()
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
     const truncatedHtml = cleanedHtml.substring(0, 50000);
 
     console.log(`[UNIFIED-AI] 🤖 Edge Function 호출 중... (HTML ${truncatedHtml.length}자)`);
