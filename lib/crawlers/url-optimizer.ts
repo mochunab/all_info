@@ -199,47 +199,87 @@ async function discoverFromHtml(url: string): Promise<UrlOptimizationResult | nu
   const $ = cheerio.load(html);
   const urlObj = new URL(url);
 
-  // 1. RSS/Atom 링크 확인
-  const rssLink = $(
-    'link[type="application/rss+xml"], link[type="application/atom+xml"]'
-  ).first();
-  if (rssLink.length > 0) {
-    const href = rssLink.attr('href');
-    if (href) {
-      const rssUrl = normalizeUrl(href, url);
-      console.log(`   🔍 RSS 링크 발견: ${rssUrl}`);
-      return {
-        originalUrl: url,
-        optimizedUrl: rssUrl,
-        reason: 'RSS 피드 (자동 발견)',
-        confidence: 0.9,
-        method: 'html-discovery',
-      };
-    }
-  }
+  // RSS 발견은 strategy-resolver 2단계에서 처리 (여기서 하면 optimizedUrl이 RSS XML로 교체되는 버그)
 
-  // 2. 네비게이션 메뉴에서 블로그/아티클 링크 찾기
+  // 네비게이션 메뉴에서 블로그/아티클 링크 찾기
   const navLinks = $('nav a, header a, .menu a, .navigation a');
-  const keywords = ['blog', 'article', 'news', 'post', '블로그', '아티클', '뉴스', '콘텐츠'];
+
+  // 콘텐츠 페이지 href 경로 키워드 (언어 무관, 가장 신뢰도 높음)
+  const contentPathKeywords = [
+    'blog', 'article', 'news', 'post', 'stories', 'insights',
+    'magazine', 'journal', 'press', 'content', 'archive',
+  ];
+
+  // 콘텐츠 텍스트 키워드 (한국어 + 영어)
+  const contentTextKeywords = [
+    'blog', 'article', 'news', 'post', 'stories', 'insights',
+    '블로그', '아티클', '뉴스', '콘텐츠', '소식', '매거진', '인사이트',
+  ];
+
+  // 비콘텐츠 제외 — href 경로 패턴 (핵심 필터, 언어 무관)
+  const excludePathPatterns = [
+    // 구독/뉴스레터
+    'newsletter', 'subscribe', 'subscription', 'mailing',
+    // 인증/계정
+    'login', 'signin', 'signup', 'register', 'auth', 'oauth', 'account', 'profile', 'mypage',
+    // 정보 페이지
+    'about', 'contact', 'faq', 'help', 'support', 'intro',
+    // 법률/정책
+    'privacy', 'terms', 'policy', 'legal', 'cookie', 'consent',
+    // 커머스
+    'shop', 'store', 'cart', 'checkout', 'order', 'pricing', 'plan', 'payment',
+    // 유틸리티
+    'search', 'download', 'install', 'setting', 'preference',
+    // 소셜 외부 링크
+    'facebook.com', 'twitter.com', 'instagram.com', 'youtube.com', 'linkedin.com',
+    // 피드 (RSS는 strategy-resolver에서 처리)
+    'feed', 'rss', 'atom',
+  ];
+
+  // 비콘텐츠 제외 — 텍스트 키워드 (한국어 + 영어)
+  const excludeTextKeywords = [
+    // 구독/뉴스레터
+    'newsletter', '뉴스레터', 'subscribe', '구독', '구독하기', '구독신청',
+    // 인증/계정
+    'login', 'sign in', 'sign up', '로그인', '회원가입', '마이페이지',
+    // 정보 페이지
+    '소개', '회사소개', '서비스소개', '문의', '연락처', '고객센터',
+    // 법률/정책
+    '이용약관', '개인정보', '쿠키',
+    // 커머스
+    '쇼핑', '장바구니', '결제', '주문',
+    // 유틸리티
+    '검색', '다운로드', '설정', '도움말',
+  ];
 
   for (const el of navLinks.toArray()) {
     const linkEl = $(el);
     const text = linkEl.text().toLowerCase().trim();
     const href = linkEl.attr('href');
 
-    if (!href) continue;
+    if (!href || !text) continue;
 
-    // 키워드 매칭
-    const hasKeyword = keywords.some((keyword) => text.includes(keyword.toLowerCase()));
-    if (hasKeyword) {
+    const hrefLower = href.toLowerCase();
+
+    // 1차: href 경로에서 제외 패턴 (가장 신뢰도 높음)
+    if (excludePathPatterns.some(p => hrefLower.includes(p))) continue;
+
+    // 2차: 텍스트에서 제외 키워드
+    if (excludeTextKeywords.some(kw => text.includes(kw))) continue;
+
+    // 3차: href 경로 또는 텍스트에서 콘텐츠 키워드 매칭
+    const hrefMatch = contentPathKeywords.some(kw => hrefLower.includes(kw));
+    const textMatch = contentTextKeywords.some(kw => text.includes(kw));
+
+    if (hrefMatch || textMatch) {
       const linkUrl = normalizeUrl(href, url);
 
-      // 같은 도메인인지 확인
       try {
         const linkUrlObj = new URL(linkUrl);
-        if (linkUrlObj.hostname !== urlObj.hostname) {
-          continue; // 외부 링크는 제외
-        }
+        // 외부 도메인 제외
+        if (linkUrlObj.hostname !== urlObj.hostname) continue;
+        // 원본 URL과 동일하면 스킵
+        if (linkUrlObj.pathname === urlObj.pathname) continue;
       } catch {
         continue;
       }
