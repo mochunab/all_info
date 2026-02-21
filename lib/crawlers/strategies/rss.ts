@@ -39,46 +39,42 @@ export class RSSStrategy implements CrawlStrategy {
 
     console.log(`[RSS] Fetching feed: ${rssUrl}`);
 
-    try {
-      const feed = await parser.parseURL(rssUrl);
+    // 피드 fetch/parse 실패 시 에러 전파 → crawlWithStrategy에서 fallback 처리
+    const feed = await parser.parseURL(rssUrl);
 
-      console.log(`[RSS] Feed title: ${feed.title}`);
-      console.log(`[RSS] Items count: ${feed.items?.length || 0}`);
+    console.log(`[RSS] Feed title: ${feed.title}`);
+    console.log(`[RSS] Items count: ${feed.items?.length || 0}`);
 
-      if (!feed.items || feed.items.length === 0) {
-        console.log('[RSS] No items in feed');
-        return [];
-      }
-
-      for (const feedItem of feed.items) {
-        try {
-          const item = this.parseFeedItem(feedItem, config);
-
-          if (!item || !item.title || !item.link) {
-            continue;
-          }
-
-          // 7일 이내 필터링
-          if (!isWithinDays(item.dateStr, 14, item.title)) {
-            console.log(`[RSS] SKIP (too old): ${item.title.substring(0, 40)}...`);
-            continue;
-          }
-
-          console.log(
-            `[RSS] Found: "${item.title.substring(0, 40)}..." | Date: ${item.dateStr || 'N/A'}`
-          );
-          items.push(item);
-        } catch (error) {
-          console.error('[RSS] Parse item error:', error);
-        }
-      }
-
-      console.log(`[RSS] Total valid items: ${items.length}`);
-      return items;
-    } catch (error) {
-      console.error(`[RSS] Feed fetch error:`, error);
+    if (!feed.items || feed.items.length === 0) {
+      console.log('[RSS] No items in feed');
       return [];
     }
+
+    for (const feedItem of feed.items) {
+      try {
+        const item = this.parseFeedItem(feedItem, config);
+
+        if (!item || !item.title || !item.link) {
+          continue;
+        }
+
+        // 7일 이내 필터링
+        if (!isWithinDays(item.dateStr, 14, item.title)) {
+          console.log(`[RSS] SKIP (too old): ${item.title.substring(0, 40)}...`);
+          continue;
+        }
+
+        console.log(
+          `[RSS] Found: "${item.title.substring(0, 40)}..." | Date: ${item.dateStr || 'N/A'}`
+        );
+        items.push(item);
+      } catch (error) {
+        console.error('[RSS] Parse item error:', error);
+      }
+    }
+
+    console.log(`[RSS] Total valid items: ${items.length}`);
+    return items;
   }
 
   async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<string> {
