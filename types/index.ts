@@ -5,6 +5,7 @@ export interface Article {
   source_name: string;
   source_url: string;
   title: string;
+  title_ko: string | null;
   content_preview?: string | null;
   summary: string | null;
   summary_tags: string[]; // 요약 태그 3개

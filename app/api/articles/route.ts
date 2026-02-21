@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     // Build query — content_preview 제외 (목록에서 불필요, 최대 3000자 절약)
     const ARTICLE_LIST_COLUMNS = [
-      'id', 'source_id', 'source_name', 'source_url', 'title',
+      'id', 'source_id', 'source_name', 'source_url', 'title', 'title_ko',
       'summary', 'summary_tags', 'author',
       'published_at', 'crawled_at', 'priority', 'category', 'is_active',
     ].join(', ');

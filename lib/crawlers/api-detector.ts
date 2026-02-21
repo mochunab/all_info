@@ -196,7 +196,7 @@ const ANALYZE_PROMPT = `웹 페이지에서 가로챈 XHR/fetch API 요청들을
 아티클 API가 없으면: {"found": false, "confidence": 0.1, "reasoning": "이유"}`;
 
 /**
- * OpenAI 직접 호출로 API 분석 (gpt-4o-mini)
+ * OpenAI 직접 호출로 API 분석 (gpt-4.1-mini)
  */
 async function analyzeWithOpenAI(
   pageUrl: string,
@@ -218,7 +218,7 @@ async function analyzeWithOpenAI(
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: [
         { role: 'system', content: '당신은 웹 API 분석 전문가입니다. 반드시 JSON 형식으로만 응답하세요.' },
         { role: 'user', content: prompt },
@@ -335,7 +335,7 @@ async function analyzeWithEdgeFunction(
     return null;
   }
 
-  console.log(`[API-DETECT] 🤖 로컬 OpenAI(gpt-4o-mini) fallback 분석...`);
+  console.log(`[API-DETECT] 🤖 로컬 OpenAI(gpt-4.1-mini) fallback 분석...`);
   try {
     const config = await analyzeWithOpenAI(pageUrl, requests);
     if (config) {

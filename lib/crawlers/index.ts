@@ -248,6 +248,88 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
     ? inferred
     : ((source.crawler_type as CrawlerType) || inferred);
 
+  // 1.5. 사전 셀렉터 감지: STATIC 소스에 셀렉터 없으면 AI 자동 감지
+  if (primaryType === 'STATIC' && !config.selectors) {
+    console.log(`\n🔍 [사전 감지] STATIC 소스에 셀렉터 없음 — 자동 감지 시도...`);
+    try {
+      const { fetchPage, detectByRules } = await import('./auto-detect');
+      const { detectByUnifiedAI } = await import('./strategy-resolver');
+      const cheerioLib = await import('cheerio');
+
+      const html = await fetchPage(source.base_url);
+      if (html) {
+        // 1차: AI 통합 감지 (Edge Function)
+        console.log(`   🤖 [1차] AI 통합 감지 시도...`);
+        const aiResult = await detectByUnifiedAI(html, source.base_url);
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let detectedSelectors: any = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let detectedExclude: any = null;
+        let detectionMethod = 'ai-selector-detection';
+        let detectionConfidence = 0;
+
+        if (aiResult?.selectorResult) {
+          detectedSelectors = aiResult.selectorResult.selectors;
+          detectedExclude = aiResult.selectorResult.excludeSelectors;
+          detectionConfidence = aiResult.confidence;
+        }
+
+        // 2차: AI 실패 시 Rule-based 감지 (nav/aside 제거 후 테이블/리스트/반복 구조 분석)
+        if (!detectedSelectors) {
+          console.log(`   🎯 [2차] Rule-based 셀렉터 분석 시도...`);
+          const $ = cheerioLib.load(html);
+          const ruleResult = detectByRules($, source.base_url);
+
+          if (ruleResult && ruleResult.score >= 0.5) {
+            console.log(`   ✅ Rule-based 감지 성공! (score: ${ruleResult.score.toFixed(2)}, ${ruleResult.count}개 매칭)`);
+            detectedSelectors = {
+              container: ruleResult.container,
+              item: ruleResult.item,
+              title: ruleResult.title,
+              link: ruleResult.link,
+              ...(ruleResult.date && { date: ruleResult.date }),
+              ...(ruleResult.thumbnail && { thumbnail: ruleResult.thumbnail }),
+            };
+            detectedExclude = ['nav', 'header', 'footer', 'aside'];
+            detectionMethod = 'rule-analysis';
+            detectionConfidence = ruleResult.score;
+          }
+        }
+
+        if (detectedSelectors) {
+          console.log(`   ✅ 셀렉터 감지 성공! (방법: ${detectionMethod})`);
+          console.log(`      • container: ${detectedSelectors.container || 'N/A'}`);
+          console.log(`      • item: ${detectedSelectors.item}`);
+          console.log(`      • title: ${detectedSelectors.title}`);
+          console.log(`      • link: ${detectedSelectors.link}`);
+
+          // in-memory source config 업데이트 (이번 크롤링에 즉시 반영)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (source as any).config = {
+            ...source.config,
+            selectors: detectedSelectors,
+            excludeSelectors: detectedExclude,
+          };
+          config.selectors = detectedSelectors;
+          config.excludeSelectors = detectedExclude;
+
+          // DB config 업데이트 (향후 크롤링에 반영)
+          await updateSourceConfig(source.id, {
+            crawlerType: primaryType,
+            selectors: detectedSelectors as unknown as Record<string, unknown>,
+            confidence: detectionConfidence,
+            detectionMethod,
+          });
+        } else {
+          console.log(`   ⚠️  모든 감지 실패 — DEFAULT_SELECTORS 사용`);
+        }
+      }
+    } catch (error) {
+      console.warn(`   ⚠️  사전 감지 오류:`, error instanceof Error ? error.message : error);
+    }
+  }
+
   // 2. Fallback 체인 구성
   const fallbacks = config._detection?.fallbackStrategies || getDefaultFallbacks(primaryType);
   const strategyChain = [primaryType, ...fallbacks].filter(
