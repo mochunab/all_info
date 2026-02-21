@@ -240,16 +240,9 @@ export default function Home() {
               : '콘텐츠 검색 중...';
             setCrawlProgress(progress);
           } else if (crawlSeenRunning.current) {
-            // 크롤이 DB에서 완료 감지 → trigger fetch 응답 없어도 UI 정리
-            stopPolling();
-            setIsCrawling(false);
-            setCrawlProgress('');
-            setPage(1);
-            fetchArticles(1, false);
-            setLastUpdated(new Date().toISOString());
-            setToastMessage(t(language, 'toast.noNewInsights'));
-            setShowToast(true);
-            return;
+            // 크롤 로그 완료 감지 — 요약은 아직 진행 중일 수 있으므로
+            // UI 완료 처리하지 않고, 진행률만 업데이트하고 trigger 응답을 기다림
+            setCrawlProgress('AI 요약 생성 중...');
           }
         }
       } catch { /* 무시 */ }
@@ -311,15 +304,54 @@ export default function Home() {
         );
         setShowToast(true);
 
-        // 최종 갱신
+        // 최종 갱신 — 요약 완료된 데이터를 확실히 가져오기 위해 캐시 우회
         setPage(1);
-        fetchArticles(1, false);
+        const params = new URLSearchParams();
+        params.set('page', '1');
+        params.set('limit', '12');
+        if (searchRef.current) params.set('search', searchRef.current);
+        if (categoryRef.current) params.set('category', categoryRef.current);
+        params.set('_t', Date.now().toString());
+
+        fetch(`/api/articles?${params.toString()}`, { cache: 'no-store' })
+          .then(res => res.ok ? res.json() : null)
+          .then((freshData: ArticleListResponse | null) => {
+            if (freshData) {
+              setArticles(freshData.articles);
+              setHasMore(freshData.hasMore);
+              setTotalCount(freshData.total);
+            }
+          })
+          .catch(() => { /* fallback: 다음 폴링이나 새로고침에서 갱신 */ });
         setLastUpdated(new Date().toISOString());
       })
       .catch((error) => {
         clearTimeout(timeoutId);
-        // AbortError = 타임아웃 또는 사용자 중단 (폴링에서 이미 완료 처리했을 수 있음)
-        if ((error as Error).name === 'AbortError') return;
+        if ((error as Error).name === 'AbortError') {
+          // 타임아웃: 폴링 정리 + 현재 데이터로 UI 갱신
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          crawlSeenRunning.current = false;
+          setIsCrawling(false);
+          setCrawlProgress('');
+          setPage(1);
+          const abortParams = new URLSearchParams();
+          abortParams.set('page', '1');
+          abortParams.set('limit', '12');
+          if (searchRef.current) abortParams.set('search', searchRef.current);
+          if (categoryRef.current) abortParams.set('category', categoryRef.current);
+          abortParams.set('_t', Date.now().toString());
+          fetch(`/api/articles?${abortParams.toString()}`, { cache: 'no-store' })
+            .then(res => res.ok ? res.json() : null)
+            .then((d: ArticleListResponse | null) => {
+              if (d) { setArticles(d.articles); setHasMore(d.hasMore); setTotalCount(d.total); }
+            })
+            .catch(() => {});
+          setLastUpdated(new Date().toISOString());
+          return;
+        }
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');
