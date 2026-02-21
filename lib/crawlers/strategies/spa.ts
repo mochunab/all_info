@@ -58,8 +58,20 @@ async function getBrowser(): Promise<Browser> {
 
 export async function closeBrowser(): Promise<void> {
   if (browserInstance) {
-    await browserInstance.close();
+    const browser = browserInstance;
     browserInstance = null;
+    try {
+      // 5초 내 정상 종료 시도, 실패 시 프로세스 강제 종료
+      await Promise.race([
+        browser.close(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Browser close timeout')), 5000)
+        ),
+      ]);
+    } catch {
+      console.warn('[SPA] ⚠️  브라우저 정상 종료 실패 — 프로세스 강제 종료');
+      browser.process()?.kill('SIGKILL');
+    }
   }
 }
 
