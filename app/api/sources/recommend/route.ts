@@ -39,21 +39,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/recommend-sources`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ category, scope }),
-      }
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const data = await response.json();
+    let response: Response;
+    try {
+      response = await fetch(
+        `${supabaseUrl}/functions/v1/recommend-sources`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ category, scope }),
+          signal: controller.signal,
+        }
+      );
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      const msg = fetchError instanceof Error ? fetchError.message : 'Edge Function fetch failed';
+      console.error('[POST /api/sources/recommend] Fetch error:', msg);
+      return NextResponse.json(
+        { error: msg.includes('abort') ? 'Request timeout (30s)' : msg },
+        { status: 504 }
+      );
+    }
+    clearTimeout(timeout);
+
+    const text = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error('[POST /api/sources/recommend] Invalid JSON from Edge Function:', text.slice(0, 200));
+      return NextResponse.json(
+        { error: `Edge Function returned invalid response (HTTP ${response.status})` },
+        { status: 502 }
+      );
+    }
 
     if (!response.ok) {
+      console.error('[POST /api/sources/recommend] Edge Function error:', response.status, data);
       return NextResponse.json(
         { error: data.error || `Edge Function error: ${response.status}` },
         { status: response.status }
