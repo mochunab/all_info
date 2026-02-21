@@ -572,17 +572,21 @@ export async function saveArticles(
       }
 
       // 새 아티클 저장
+      // varchar 길이 제한 방어 (source_name: 100, author: 100, category: 50)
+      const safeName = article.source_name?.substring(0, 100);
+      const safeAuthor = article.author?.substring(0, 100);
+      const safeCategory = article.category?.substring(0, 50);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).from('articles').insert({
         source_id: article.source_id,
-        source_name: article.source_name,
+        source_name: safeName,
         source_url: article.source_url,
         title: article.title,
         content_preview: article.content_preview,
         summary: article.summary,
-        author: article.author,
+        author: safeAuthor,
         published_at: article.published_at,
-        category: article.category,
+        category: safeCategory,
       });
 
       if (error) {
