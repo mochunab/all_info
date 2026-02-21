@@ -381,6 +381,13 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
           console.warn(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 쓰레기 비율 ${(validation.stats.garbageRatio * 100).toFixed(1)}%`);
         }
 
+        // 전략이 정상 실행되었지만 최신 콘텐츠가 없는 경우 → fallback하지 않음
+        // 예외: STATIC → SPA fallback만 허용 (JS 렌더링 필요할 수 있음)
+        if (validation.reason === 'No items found' && strategyType !== 'STATIC') {
+          console.log(`   ℹ️  ${strategyType} 정상 실행 — 최신 콘텐츠 없음 (fallback 생략)`);
+          return [];
+        }
+
         // 마지막 전략이면 자동 복구 시도 (하이브리드 전략)
         if (i === strategyChain.length - 1 && (
           (validation.stats && validation.stats.garbageRatio > 0.5) ||
