@@ -11,8 +11,9 @@
 | 1 | `summarize-article` | AI 요약 생성 (1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2025-01 |
 | 2 | `detect-crawler-type` | HTML 구조 분석 → 크롤러 타입 자동 결정 | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2026-02-14 |
 | 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | GPT-5-nano | 운영 중 | 2026-02-19 |
+| 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 기반) | GPT-5-nano + web_search / GPT-4o-mini (fallback) | 운영 중 | 2026-02-21 |
 
-> 현재 3개의 Edge Function이 배포되어 있습니다.
+> 현재 4개의 Edge Function이 배포되어 있습니다.
 
 ---
 
@@ -314,6 +315,87 @@ crawler_type: SPA → API (전환)
 개선 효과: Puppeteer 불필요 → fetch 크롤링 3배 빠름
 ```
 
+## 4. recommend-sources
+
+### 개요
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `supabase/functions/recommend-sources/index.ts` |
+| **런타임** | Deno |
+| **모델** | GPT-5-nano + `web_search_preview` (기본) → GPT-4o-mini (fallback, 웹검색 없이 학습 데이터 기반) |
+| **환경변수** | `OPENAI_API_KEY` |
+| **호출 시점** | 소스 관리 페이지 "콘텐츠 링크 추천받기" 클릭 시 |
+
+### 역할
+
+카테고리와 범위(국내/해외/혼합)를 입력받아 실시간 웹 검색을 통해 해당 분야의 고품질 콘텐츠 소스를 최대 5개 추천합니다.
+
+### 요청 (Request)
+
+```
+POST /functions/v1/recommend-sources
+Content-Type: application/json
+Authorization: Bearer {SUPABASE_ANON_KEY}
+```
+
+```json
+{
+  "category": "AI",
+  "scope": "domestic"
+}
+```
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `category` | string | O | 추천 대상 카테고리명 |
+| `scope` | `'domestic' \| 'international' \| 'both'` | O | 국내만 / 해외만 / 혼합 |
+
+### 응답 (Response)
+
+**성공 (200)**:
+```json
+{
+  "success": true,
+  "recommendations": [
+    {
+      "url": "https://example.com/blog",
+      "name": "Example Blog",
+      "description": "이 소스를 추천하는 이유"
+    }
+  ]
+}
+```
+
+**실패 (400/500)**:
+```json
+{
+  "success": false,
+  "error": "에러 메시지"
+}
+```
+
+### API 호출 흐름
+
+```
+1. GPT-5-nano (responses API + web_search_preview 도구) 시도
+   ├── 성공 → JSON 파싱 후 최대 5개 필터링하여 반환
+   └── 404 → Fallback 실행
+
+2. Fallback: GPT-4o-mini (chat.completions API, 웹검색 없음)
+   ├── 성공 → JSON 파싱 후 반환
+   └── 실패 → 에러 반환
+```
+
+### 배포 방법
+
+```bash
+supabase functions deploy recommend-sources
+# OPENAI_API_KEY는 다른 함수와 공유 (이미 설정됨)
+```
+
+---
+
 ## Edge Function 개발 가이드
 
 ### 새 Edge Function 추가 시
@@ -385,7 +467,7 @@ return new Response(JSON.stringify(data), {
 
 | Secret | 용도 | 사용 함수 |
 |--------|------|-----------|
-| `OPENAI_API_KEY` | OpenAI API 키 | `summarize-article`, `detect-crawler-type`, `detect-api-endpoint` (공유) |
+| `OPENAI_API_KEY` | OpenAI API 키 | `summarize-article`, `detect-crawler-type`, `detect-api-endpoint`, `recommend-sources` (공유) |
 
 ```bash
 # Secret 확인

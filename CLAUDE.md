@@ -25,6 +25,7 @@
 ### 자동 감지 파이프라인 (`lib/crawlers/strategy-resolver.ts`)
 
 ```
+0. URL 최적화 (url-optimizer.ts) — 4단계 필터 + 섹션 교차 리다이렉트 방지
 1. HTML 다운로드 (15s timeout)
 2. RSS 발견 (confidence 0.95) — 6개 경로 Promise.all
 2.5. Sitemap 발견 (0.90) — 2개 후보 Promise.all
@@ -60,10 +61,11 @@
 | `/api/articles` | GET | 없음 | 기본 |
 | `/api/sources` | GET/POST | Same-Origin | **300초** |
 | `/api/crawl/run` | POST | Bearer | **300초** |
-| `/api/crawl/trigger` | POST | Rate Limit 30s | 기본 |
+| `/api/crawl/trigger` | POST | Rate Limit 30s | **300초** |
 | `/api/crawl/status` | GET | 없음 | 기본 |
 | `/api/summarize` | POST | Bearer | 기본 |
 | `/api/summarize/batch` | POST | Bearer | **300초** |
+| `/api/sources/recommend` | POST | Same-Origin | 기본 |
 | `/api/categories` | GET/POST | 없음 | 기본 |
 | `/api/image-proxy` | GET | 없음 | 기본 |
 
@@ -85,6 +87,7 @@
 | AI 셀렉터 오탐 | `infer-type.ts` 프롬프트 고도화 |
 | 시맨틱 감지 오작동 | `trySemanticDetection` 조건 강화 |
 | 크롤러 타입 오탐 | `strategy-resolver.ts` 파이프라인 개선 |
+| URL 최적화 오탐 | `url-optimizer.ts` 필터/검증 강화 |
 | 특정 패턴 일관 실패 | 해당 패턴의 **범용** 감지 규칙 추가 |
 
 ---
@@ -179,6 +182,7 @@ npm run crawl -- --source=<id>                  # 특정 소스만
 supabase functions deploy summarize-article --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-crawler-type --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-api-endpoint --project-ref tcpvxihjswauwrmcxhhh
+supabase functions deploy recommend-sources --project-ref tcpvxihjswauwrmcxhhh
 # Docker 없어도 deploy 가능 (WARNING은 무시)
 
 # Vercel 배포
@@ -224,6 +228,7 @@ npm run crawl:dry -- --source=<id> --verbose
 app/api/
   articles/route.ts         GET 아티클 목록
   sources/route.ts          GET/POST 소스 CRUD + auto-detect
+  sources/recommend/route.ts POST AI 콘텐츠 소스 추천 (Same-Origin)
   crawl/run/route.ts        POST 전체 크롤링 (Bearer, 300s)
   crawl/trigger/route.ts    POST 프론트엔드 프록시 (rate limit)
   summarize/batch/route.ts  POST 배치 요약 (Bearer, 300s)
@@ -243,11 +248,29 @@ supabase/functions/
   summarize-article/    AI 요약 (GPT-5-nano)
   detect-crawler-type/  크롤러 타입 감지 (GPT-5-nano)
   detect-api-endpoint/  API 엔드포인트 감지 (GPT-5-nano)
+  recommend-sources/    AI 콘텐츠 소스 추천 (GPT-5-nano + web_search)
 
 lib/auth.ts             verifyCronAuth, verifySameOrigin
 lib/i18n.ts             4개 언어 번역 (ko, en, ja, zh)
 middleware.ts           Rate Limit, CORS, Security Headers
 ```
+
+---
+
+## Serena Usage (MANDATORY)
+
+코드 탐색 시 파일 전체 읽기 대신 Serena 심볼 도구를 우선 사용할 것.
+
+### Workflow
+1. `get_symbols_overview` — 파일 구조 파악
+2. `find_symbol` — 클래스/함수/변수 위치 탐색 (`include_body=True`로 필요한 부분만)
+3. `find_referencing_symbols` — 수정 전 영향도 분석
+4. `replace_symbol_body` / `insert_after_symbol` / `insert_before_symbol` — 코드 수정
+
+### Rules
+- **파일 전체 읽기 최소화** — 심볼 단위로 필요한 부분만 조회
+- **수정 전 반드시 영향도 분석** (`find_referencing_symbols`)
+- Serena 인덱싱 안 된 파일, 설정 파일(`.yml`, `.json`, `.css`) → 직접 읽기 허용
 
 ---
 

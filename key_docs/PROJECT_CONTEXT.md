@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 시스템 아키텍처 & 디버깅 가이드
 
 > AI와 개발자 모두를 위한 프로젝트 전체 아키텍처 문서
-> 최종 업데이트: 2026-02-19 (v1.5.2)
+> 최종 업데이트: 2026-02-21 (v1.5.3)
 
 ## 시스템 전체 구조
 
@@ -19,6 +19,7 @@
 │  - page.tsx (메인)  │  fetch()  │  /api/articles            │
 │  - AddSourcePage    │ ────────► │  /api/articles/sources    │
 │  - Components (7개) │           │  /api/sources             │
+│                     │           │  /api/sources/recommend   │
 │                     │           │  /api/categories          │
 │                     │           │  /api/crawl/run           │
 │                     │           │  /api/crawl/status        │
@@ -44,8 +45,12 @@
                └──────────────┘     └──────────────────┘    │     │                │
                                            │                │                      │
                                            │                │  3. detect-api-      │
-                                           │                │     endpoint (NEW!)  │
+                                           │                │     endpoint         │
                                            │                │     (API 자동 감지)  │
+                                           │                │                      │
+                                           │                │  4. recommend-       │
+                                           │                │     sources          │
+                                           │                │     (AI 소스 추천)   │
                                            │                │     │                │
                                            │                │     ▼                │
                                            │                │  OpenAI API          │
@@ -85,6 +90,7 @@ app/api/articles/sources/route.ts     → GET - 소스별 아티클
 ```
 app/sources/add/page.tsx              → 소스 추가/편집 페이지 (카테고리 선택, 링크 CRUD)
 app/api/sources/route.ts              → GET/POST - 소스 CRUD (upsert + deleteIds 삭제)
+app/api/sources/recommend/route.ts   → POST - AI 콘텐츠 소스 추천 (Same-Origin Auth)
 app/api/categories/route.ts           → GET/POST - 카테고리 CRUD
 ```
 
@@ -131,13 +137,14 @@ lib/crawlers/infer-type.ts            → URL 패턴 기반 타입 추론 (confi
 lib/crawlers/auto-detect.ts           → detectCrawlerTypeByAI() - AI 타입 감지 함수
                                          detectByRules() - Rule-based 셀렉터 분석
                                          detectByAI() - AI 셀렉터 탐지 (SPA shell 감지 규칙 추가)
-lib/crawlers/url-optimizer.ts         → URL 최적화 (RSS/피드 URL 자동 발견)
+lib/crawlers/url-optimizer.ts         → URL 최적화 (4단계 필터 + 섹션 교차 리다이렉트 방지)
 lib/crawlers/title-cleaner.ts         → 제목 클리닝 유틸리티
 lib/crawlers/quality-filter.ts        → 기사 품질 필터 (광고성 콘텐츠 제거)
 lib/crawlers/firecrawl-client.ts      → Firecrawl API 클라이언트
 lib/crawlers/strategies/firecrawl.ts  → Firecrawl 기반 크롤러 전략
 supabase/functions/detect-crawler-type/index.ts  → Edge Function (GPT-5-nano 크롤러 타입 감지)
 supabase/functions/detect-api-endpoint/index.ts  → Edge Function (Puppeteer+AI API 엔드포인트 탐지)
+supabase/functions/recommend-sources/index.ts    → Edge Function (GPT-5-nano + web_search 소스 추천)
 ```
 
 ### AI 요약
@@ -255,7 +262,10 @@ scripts/crawl.ts                      → 크롤링 CLI (npx tsx)
   │
   2. crawl_sources 테이블 조회 (is_active=true, priority DESC)
   │
-  3. 각 소스별 순차 실행 (for loop):
+  3. 제한 병렬 실행 (워커 풀, v1.5.3):
+  │   ├─ 비SPA 소스: 최대 5개 동시 (runWithConcurrency)
+  │   ├─ SPA 소스: 직렬 (Puppeteer 공유 인스턴스 보호)
+  │
   │
   │   ┌─ crawl_logs 레코드 생성 (status: 'running')
   │   │
@@ -655,7 +665,10 @@ page.tsx (메인 페이지)
             ├─ [URL 최적화] optimizeUrl() 실행 (lib/crawlers/url-optimizer.ts)
             │   ├─ 1. 도메인 매핑 (수동 규칙, confidence: 0.95)
             │   ├─ 2. 경로 패턴 탐색 (/feed, /rss, /blog 등, confidence: 0.8)
-            │   ├─ 3. HTML 링크 발견 (RSS 태그, 네비게이션, confidence: 0.75)
+            │   ├─ 3. HTML 네비게이션 링크 발견 (confidence: 0.75)
+            │   │   ├─ 4단계 필터: excludePath → excludeText → contentPath → contentText
+            │   │   ├─ 섹션 교차 리다이렉트 방지 (첫 번째 경로 세그먼트 비교)
+            │   │   └─ 루트 URL(/)은 제한 없이 탐색 가능
             │   └─ → crawl_url 생성 (최적화 실패 시 NULL)
             ├─ 모든 URL에 대해 resolveStrategy() 실행 (8+단계 파이프라인)
             │   ├─ Rule-based: RSS 발견, CMS 감지, URL 패턴, SPA 스코어링
@@ -1159,7 +1172,7 @@ isWithinDays(publishedAt, 30, title)  // 30일로 확장
 
 | 항목 | 값 |
 |------|-----|
-| 크롤링 전체 소요 시간 | ~60-120초 (소스 수에 비례) |
+| 크롤링 전체 소요 시간 | ~30-60초 (제한 병렬, v1.5.3) |
 | AI 요약 1건 (Edge Function) | ~2-3초 |
 | AI 요약 1건 (로컬 OpenAI) | ~2-3초 |
 | 배치 요약 20건 | ~12초 (5개 병렬 × 4청크) |
@@ -1240,6 +1253,20 @@ isWithinDays(publishedAt, 30, title)  // 30일로 확장
 ---
 
 ## 버전 히스토리 (주요 변경)
+
+### v1.5.3 (2026-02-21)
+- **크롤링 제한 병렬 처리** (`app/api/crawl/trigger/route.ts`)
+  - 워커 풀 패턴 (`runWithConcurrency`): 비SPA 소스 최대 5개 동시, SPA 직렬
+  - `maxDuration = 300` 추가
+- **UI 무한 로딩 수정** (`app/page.tsx`)
+  - 폴링 기반 크롤링 완료 감지 (`crawlSeenRunning` ref)
+  - 10분 AbortController 타임아웃
+- **URL 최적화 필터 강화** (`lib/crawlers/url-optimizer.ts`)
+  - 4단계 필터: `excludePathPatterns` → `excludeTextKeywords` → `contentPathKeywords` → `contentTextKeywords`
+  - 섹션 교차 리다이렉트 방지: 원본 URL의 첫 번째 경로 세그먼트와 다른 섹션으로의 리다이렉트 차단
+    - 예: `/bicnic/trend` → `/plus` 차단 (bicnic ≠ plus), `/` → `/blog` 허용
+  - RSS 발견 로직 제거 (strategy-resolver 2단계와 중복 + optimizedUrl 버그 방지)
+- **아티클 삭제 API** (`app/api/articles/[id]/route.ts`): soft-delete (is_active=false)
 
 ### v1.5.2 (2026-02-19)
 - **STATIC 타이틀 셀렉터 수정** (`lib/crawlers/strategies/static.ts`)
