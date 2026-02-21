@@ -45,10 +45,10 @@
 | **파일** | `app/sources/add/SourcesPageClient.tsx` |
 | **타입** | Client Component (`'use client'`) |
 | **역할** | 크롤링 소스 URL 추가/수정/삭제 + 드래그앤드롭 카테고리 관리 |
-| **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language |
-| **API 호출** | POST /api/sources (저장), POST /api/categories (카테고리 추가) |
+| **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language, showScopeDialog, showRecommendDialog, recommendProgress |
+| **API 호출** | POST /api/sources (저장), POST /api/sources/recommend (AI 추천), POST /api/categories (카테고리 추가) |
 | **자식 컴포넌트** | LanguageSwitcher, Toast |
-| **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행 |
+| **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행<br>- **AI 소스 추천**: "콘텐츠 링크 추천받기" 버튼 → 범위 선택(국내/해외/혼합) → AI가 최대 5개 소스 자동 입력 |
 
 ---
 
