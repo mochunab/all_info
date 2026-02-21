@@ -9,7 +9,7 @@ Insight Hub는 다양한 비즈니스 콘텐츠 소스(블로그, 뉴스레터, 
 ### 핵심 기능
 
 - **다중 소스 크롤링**: 정적 페이지, SPA, RSS, Sitemap, 네이버 블로그, 브런치, 뉴스레터, API + 자동 감지 (9가지 전략)
-- **AI 요약**: OpenAI (GPT-4o-mini / GPT-5-nano) 기반 1줄 요약 + 태그 3개 자동 생성
+- **AI 요약**: OpenAI (GPT-4.1-mini / GPT-5-nano) 기반 1줄 요약 + 태그 3개 + 한국어 제목 번역 자동 생성
 - **다국어 지원**: 한국어, English, 日本語, 中文 4개 언어 UI
 - **실시간 검색/필터**: 키워드 검색, 카테고리 필터링, 소스별 필터링
 - **자동 크롤링**: Vercel Cron으로 매일 아침 9시 자동 수집
@@ -21,7 +21,7 @@ Insight Hub는 다양한 비즈니스 콘텐츠 소스(블로그, 뉴스레터, 
 - 소스 추가 시 "자동지정" 선택만 하면 AI가 최적의 크롤링 방식 결정
 - GPT-5-nano가 웹페이지 HTML 구조를 분석하여 정적/동적 페이지 자동 판별
 - 도메인별 수동 설정 불필요 — 어떤 사이트든 자동으로 크롤링
-- 9단계 파이프라인: RSS/Sitemap 자동 발견 → URL 패턴/CMS/SPA 스코어링 (Rule-based) → AI 타입+셀렉터 병렬 감지 (v1.5.1)
+- 9단계 파이프라인: RSS/Sitemap 자동 발견 → URL 패턴/CMS/SPA 스코어링 (Rule-based) → 통합 AI 감지 (타입+셀렉터 단일 호출, Cheerio 전처리)
 - 상세: [DECISIONS.md → ADR-015](./key_docs/DECISIONS.md#adr-015-ai-기반-크롤러-타입-자동-감지-시스템)
 
 ---
@@ -122,7 +122,7 @@ npm run crawl -- --list
 |------|------|
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Backend | Supabase (PostgreSQL), Supabase Edge Functions |
-| AI | OpenAI API (GPT-4o-mini, GPT-5-nano) |
+| AI | OpenAI API (GPT-4.1-mini, GPT-5-nano) |
 | i18n | 커스텀 번역 시스템 (ko, en, ja, zh) |
 | Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability |
 | Deployment | Vercel (Cron Jobs) |
