@@ -101,12 +101,12 @@ processPendingSummaries()
   ├─ 5개씩 병렬 (Promise.allSettled), 실패 시 최대 3회 재시도 (1s→2s→3s)
   │
   ├─ USE_EDGE_FUNCTION=true (기본):
-  │   └─ Edge Function (GPT-5-nano) → 실패 시 로컬 OpenAI (GPT-4o-mini) fallback
+  │   └─ Edge Function (GPT-5-nano) → 실패 시 로컬 OpenAI (GPT-4.1-mini) fallback
   │
   └─ USE_EDGE_FUNCTION=false:
-      └─ 로컬 OpenAI (GPT-4o-mini) 직접 호출
+      └─ 로컬 OpenAI (GPT-4.1-mini) 직접 호출
   │
-  └─ DB UPDATE: ai_summary (1줄 80자), summary_tags (3개), summary (레거시)
+  └─ DB UPDATE: title_ko (한국어 번역 제목), ai_summary (1줄 80자), summary_tags (3개), summary (레거시)
 ```
 
 ---
@@ -164,12 +164,15 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
   4.  URL 패턴 (0.85~0.95) — .go.kr, naver.com, /feed
   5.  SPA 스코어링 — body < 500자, #root/#app
   [Stage 6 제거 — v1.5.1]
-  7+8 AI 타입 감지 + AI 셀렉터 감지 — Promise.all 병렬
-      ├─ 7. detect-crawler-type Edge Fn (GPT-5-nano, HTML 5000자)
-      └─ 8. infer-type.ts (HTML 전처리 + GPT-4o-mini)
+  7+8 통합 AI 감지 (타입+셀렉터) — 단일 Edge Function 호출
+      ├─ Cheerio 전처리: aside/nav/sidebar 제거 후 50000자 truncate
+      ├─ detect-crawler-type Edge Fn (GPT-5-nano)
+      └─ 후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
   7.5 API 감지 — SPA 확정 후 detect-api-endpoint 호출
       └─ Puppeteer 네트워크 캡처 → GPT-5-nano → crawl_config 생성
   8.5 SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재시도
+  9.  사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면:
+      └─ AI 1차 → Rule-based 2차 → DB 자동 저장
 ```
 
 감지 우선순위 요약:
@@ -181,8 +184,7 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
 | 2 | CMS 감지 | 0.75 | WordPress/Tistory/Ghost |
 | 3 | URL 패턴 | 0.85~0.95 | `.go.kr`, `naver.com` 등 |
 | 4 | SPA 스코어링 | 0.5~1.0 | body 텍스트, 마운트 포인트 |
-| 5 | AI 타입 감지 | 0.6~1.0 | GPT-5-nano (Stage 8과 병렬) |
-| 5.5 | AI 셀렉터 감지 | 0.5~1.0 | infer-type.ts (Stage 7과 병렬) |
+| 5 | 통합 AI 감지 (타입+셀렉터) | 0.6~1.0 | GPT-5-nano 단일 호출 (Cheerio 전처리) |
 | 6 | API 감지 | 자동 | SPA 확정 후에만 실행 |
 | 7 | SPA 셀렉터 재감지 | 재시도 | confidence < 0.5 조건 |
 | 8 | 기본값 | 0.3~0.5 | 모든 분석 실패 시 |
@@ -253,6 +255,15 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.6.0 (2026-02-21)
+- AI 감지 파이프라인 통합 (타입+셀렉터 단일 Edge Function 호출)
+- Cheerio HTML 전처리 (aside/nav/sidebar 제거 후 AI 호출)
+- 셀렉터 후검증 강화 (최소 3건 매칭 필수)
+- 사전 감지 메커니즘 (STATIC 소스 셀렉터 없으면 AI → Rule-based 자동 감지)
+- gpt-4o-mini → gpt-4.1-mini 일괄 교체
+- varchar 길이 초과 방어 (author/source_name/category truncate)
+- categories PATCH API (이름 변경)
 
 ### v1.5.3 (2026-02-21)
 - 크롤링 제한 병렬 처리 (비SPA 5개 동시, SPA 직렬)
