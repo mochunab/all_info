@@ -15,8 +15,9 @@ type Category = {
   is_default: boolean;
 };
 
-// 페이지를 항상 동적으로 렌더링 (캐시 방지)
+// 페이지를 항상 동적으로 렌더링 + fetch Data Cache 비활성화
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export default async function AddSourcePage() {
   const supabase = createServiceClient();
