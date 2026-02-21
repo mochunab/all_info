@@ -81,10 +81,10 @@ CrawlStrategy (인터페이스)
 **일시**: 2025-01-06
 **상태**: 확정
 
-**결정**: AI 요약에 GPT-4o-mini (기본) + GPT-5-nano (Edge Function) 사용.
+**결정**: AI 요약에 GPT-4.1-mini (fallback) + GPT-5-nano (Edge Function 기본) 사용.
 
 **이유**:
-- GPT-4o-mini: 가격 대비 성능 최고 ($0.15/1M input tokens)
+- GPT-4.1-mini: GPT-4o-mini 후속 모델, fallback 용도 (v1.6.0에서 일괄 교체)
 - GPT-5-nano: Edge Function에서 경량 모델로 비용 절감
 - 요약 작업은 복잡한 추론 불필요, 경량 모델로 충분
 - JSON 포맷 응답 지원 (response_format: json_object)
@@ -823,6 +823,57 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 - `lib/crawlers/strategy-resolver.ts` — Stage 6 제거, Stage 7+8 병렬, RSS/Sitemap 병렬
 - `lib/crawlers/infer-type.ts` — HTML 전처리, Tailwind 이스케이프, JSON 수리, 프롬프트 개선
 - `CLAUDE.md` — 범용 크롤러 원칙 추가
+
+---
+
+## ADR-020: AI 요약 시 해외 소스 제목 한국어 번역 (title_ko)
+
+**일시**: 2026-02-21
+**상태**: 확정
+
+**결정**: AI 요약 생성 시 아티클 제목의 한국어 번역도 함께 생성하여 `articles.title_ko` 컬럼에 저장한다.
+
+**배경**:
+- 해외 소스 아티클의 제목이 영문 원본 그대로 표시됨
+- AI 요약(summary + tags)은 이미 한국어로 생성되지만, 제목은 크롤링 원본 그대로 저장
+- 추가 API 호출 없이 기존 요약 프롬프트에 포함하여 비용 최소화 가능
+
+**구현**:
+- Edge Function / 로컬 fallback 프롬프트에 `title_ko` 지시사항 추가 (이미 한국어면 원본 그대로)
+- `max_tokens` 600 → 700 (번역 제목 토큰 여유분)
+- 프론트엔드: `language === 'ko'` → `article.title_ko || article.title` (기존 아티클 fallback)
+
+**대안 검토**:
+- 별도 번역 API (Google Translate, DeepL): 추가 비용 + API 의존성
+- 프론트엔드 실시간 번역: 매 렌더링마다 호출, 비용 과다
+- 기존 요약 호출에 포함 (채택): 추가 비용 거의 없음
+
+**관련 파일**: `supabase/functions/summarize-article/index.ts`, `lib/ai/summarizer.ts`, `lib/ai/batch-summarizer.ts`, `types/index.ts`, `components/ArticleCard.tsx`
+
+---
+
+## ADR-021: 카테고리 더블클릭 이름 변경 (Cascading Update)
+
+**일시**: 2026-02-21
+**상태**: 확정
+
+**결정**: 소스 관리 페이지에서 카테고리를 더블클릭하면 인라인 편집으로 이름을 변경할 수 있다. 이름 변경 시 `categories`, `articles.category`, `crawl_sources.config.category` 3곳을 동시 업데이트한다.
+
+**배경**:
+- 카테고리 이름 변경 기능이 없어 삭제 후 재생성 필요
+- `articles.category`는 FK가 아닌 텍스트 매칭이므로 이름 변경 시 관련 데이터 동기화 필수
+
+**구현**:
+- `PATCH /api/categories` 엔드포인트 추가
+- Cascading update: (1) categories.name → (2) articles.category 일괄 → (3) crawl_sources.config JSONB 순회
+- SortableCategory 컴포넌트에 더블클릭 인라인 편집 UI 추가
+- 중복 이름 검사 (409 Conflict)
+
+**대안 검토**:
+- 모달 다이얼로그: 과도한 UI, 간단한 텍스트 변경에 불필요
+- FK 관계로 변경: DB 구조 대규모 변경 필요, 비용 대비 효과 낮음
+
+**관련 파일**: `app/api/categories/route.ts`, `app/sources/add/SourcesPageClient.tsx`
 
 ---
 
