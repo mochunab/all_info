@@ -203,56 +203,56 @@ export async function POST(request: NextRequest) {
     console.log(`💾 [DB 저장] 소스 정보 저장 시작...`);
     console.log(`${'─'.repeat(80)}\n`);
 
+    // 소스를 스킵/업데이트/신규로 분류 (DB 호출 전 사전 처리)
+    type UpdateTask = {
+      idx: number;
+      url: string;
+      existing: ExistingSource;
+      resolution: Awaited<ReturnType<typeof resolveStrategy>> | undefined;
+      newName: string;
+      finalCrawlerType: string;
+      crawlUrl: string | null;
+      updatedConfig: Record<string, unknown>;
+      crawlUrlChanged: boolean;
+    };
+    type InsertTask = {
+      idx: number;
+      url: string;
+      resolution: Awaited<ReturnType<typeof resolveStrategy>> | undefined;
+      newName: string;
+      crawlerType: string;
+      crawlUrl: string | null;
+    };
+
+    const skipped: { id: number; base_url: string }[] = [];
+    const updateTasks: UpdateTask[] = [];
+    const insertTasks: InsertTask[] = [];
+
     for (let idx = 0; idx < sources.length; idx++) {
       const source = sources[idx];
       const { url, name, category, crawlerType: userCrawlerType } = source;
-
       if (!url) continue;
 
-      console.log(`📌 [${idx + 1}/${sources.length}] 처리 중: ${url}`);
-
       const resolution = resolutionMap.get(url);
-
-      // URL 최적화 결과 적용
       const crawlUrl = resolution?.optimizedUrl && resolution.optimizedUrl !== url
         ? resolution.optimizedUrl
         : null;
-
-      if (crawlUrl) {
-        console.log(`   🔄 URL 최적화됨: ${url}`);
-        console.log(`   ✨ 최적화된 URL: ${crawlUrl}`);
-      }
-
-      // 배치 조회 결과에서 기존 소스 찾기 (개별 SELECT 제거)
       const existing = existingMap.get(url) || null;
 
       if (existing) {
-        console.log(`   🔄 기존 소스 업데이트 모드`);
-        // Update existing source — selectors가 없으면 해석 결과 적용
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existingConfig = (existing.config as Record<string, unknown>) || {};
         const hasSelectors =
           existingConfig.selectors && typeof existingConfig.selectors === 'object';
 
-        console.log(`   📋 기존 설정 확인:`);
-        console.log(`      • 기존 크롤러 타입: ${existing.crawler_type || 'N/A'}`);
-        console.log(`      • 기존 셀렉터: ${hasSelectors ? '있음' : '없음'}`);
-
         const updatedConfig = {
           ...existingConfig,
           category,
-          // selectors가 없고 해석 성공 시 적용
           ...(!hasSelectors && resolution?.selectors && { selectors: resolution.selectors }),
           ...(!hasSelectors && resolution?.excludeSelectors && { excludeSelectors: resolution.excludeSelectors }),
-          ...(!hasSelectors &&
-            resolution?.pagination && { pagination: resolution.pagination }),
-          ...(resolution?.apiConfig && {
-            crawl_config: resolution.apiConfig,
-          }),
-          ...(!resolution?.apiConfig && resolution?.rssUrl && {
-            crawl_config: { rssUrl: resolution.rssUrl },
-          }),
-          // 전략 해석 메타데이터 추가
+          ...(!hasSelectors && resolution?.pagination && { pagination: resolution.pagination }),
+          ...(resolution?.apiConfig && { crawl_config: resolution.apiConfig }),
+          ...(!resolution?.apiConfig && resolution?.rssUrl && { crawl_config: { rssUrl: resolution.rssUrl } }),
           ...(resolution && {
             _detection: {
               method: resolution.detectionMethod,
@@ -262,42 +262,28 @@ export async function POST(request: NextRequest) {
           }),
         };
 
-        // 사용자가 선택한 crawlerType 우선 (단, 'AUTO'면 무시하고 자동 해석 사용)
         let finalCrawlerType = existing.crawler_type;
         if (userCrawlerType && userCrawlerType !== 'AUTO') {
           finalCrawlerType = userCrawlerType;
-          console.log(`   ✅ 크롤러 타입: ${userCrawlerType} (사용자 지정)`);
         } else if (resolution) {
           finalCrawlerType = resolution.primaryStrategy;
-          const confidence = (resolution.confidence * 100).toFixed(0);
-          console.log(`   ✅ 크롤러 타입: ${resolution.primaryStrategy} (자동 감지, 신뢰도 ${confidence}%)`);
-        } else {
-          console.log(`   ⚙️  크롤러 타입: ${existing.crawler_type} (기존 유지)`);
         }
 
-        const crawlerTypeUpdate = finalCrawlerType ? { crawler_type: finalCrawlerType } : {};
+        const newCrawlUrl = crawlUrl !== existing.crawl_url ? crawlUrl : existing.crawl_url;
+        const crawlerTypeChanged = finalCrawlerType !== existing.crawler_type;
+        const crawlUrlChanged = newCrawlUrl !== existing.crawl_url;
+        const configChanged = JSON.stringify(updatedConfig) !== JSON.stringify(existingConfig);
+        const hasChanges = crawlerTypeChanged || crawlUrlChanged || configChanged;
 
-        // crawl_url 업데이트 (최적화된 URL이 있으면 저장)
-        const crawlUrlUpdate = crawlUrl !== existing.crawl_url ? { crawl_url: crawlUrl } : {};
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any)
-          .from('crawl_sources')
-          .update({
-            name: name || extractDomainName(url),
-            ...crawlUrlUpdate,
-            config: updatedConfig,
-            ...crawlerTypeUpdate,
-          })
-          .eq('id', existing.id)
-          .select()
-          .single();
-
-        if (!error && data) {
-          results.push(data);
-          console.log(`   ✅ 업데이트 완료\n`);
+        if (!hasChanges && !resolution) {
+          skipped.push({ id: existing.id, base_url: url });
         } else {
-          console.error(`   ❌ 업데이트 실패:`, error);
+          updateTasks.push({
+            idx, url, existing, resolution,
+            newName: name || extractDomainName(url),
+            finalCrawlerType, crawlUrl: newCrawlUrl,
+            updatedConfig, crawlUrlChanged,
+          });
         }
 
         if (resolution) {
@@ -311,60 +297,112 @@ export async function POST(request: NextRequest) {
           });
         }
       } else {
-        console.log(`   ✨ 신규 소스 생성 모드`);
-        // Insert new source with resolved strategy
         let crawlerType = 'SPA';
         if (userCrawlerType && userCrawlerType !== 'AUTO') {
           crawlerType = userCrawlerType;
-          console.log(`   ✅ 크롤러 타입: ${userCrawlerType} (사용자 지정)`);
         } else if (resolution) {
           crawlerType = resolution.primaryStrategy;
-          const confidence = (resolution.confidence * 100).toFixed(0);
-          const methodLabel = {
-            'domain-override': '도메인 오버라이드',
-            'rss-discovery': 'RSS 자동 발견',
-            'sitemap-discovery': 'Sitemap 자동 발견',
-            'cms-detection': 'CMS 감지',
-            'url-pattern': 'URL 패턴',
-            'rule-analysis': 'Rule-based',
-            'ai-type-detection': 'AI 타입',
-            'ai-selector-detection': 'AI 셀렉터',
-            'ai-content-detection': 'AI 콘텐츠',
-            'spa-detection': 'SPA 감지',
-            'api-detection': 'API 자동 감지',
-            'auto-recovery': '자동 복구',
-            'firecrawl': 'Firecrawl API',
-            'default': '기본값',
-            'error': '오류'
-          }[resolution.detectionMethod] || resolution.detectionMethod;
-
-          console.log(`   ✅ 크롤러 타입: ${crawlerType} (자동 감지)`);
-          console.log(`   📊 감지 방법: ${methodLabel}`);
-          console.log(`   📈 신뢰도: ${confidence}%`);
-        } else {
-          console.log(`   ⚙️  크롤러 타입: SPA (기본값)`);
         }
+
+        insertTasks.push({
+          idx, url, resolution,
+          newName: name || extractDomainName(url),
+          crawlerType, crawlUrl,
+        });
+
+        if (resolution) {
+          analysisResults.push({
+            url,
+            method: resolution.detectionMethod,
+            confidence: resolution.confidence,
+            crawlerType,
+            spaDetected: resolution.spaDetected,
+            ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
+          });
+        }
+      }
+    }
+
+    // 스킵 로그
+    if (skipped.length > 0) {
+      console.log(`⏭️  ${skipped.length}개 변경 없음 (DB 스킵): ${skipped.map(s => s.base_url).slice(0, 3).join(', ')}${skipped.length > 3 ? ` 외 ${skipped.length - 3}개` : ''}\n`);
+    }
+
+    // DB 작업 병렬 실행 (UPDATE + INSERT 동시)
+    const dbOperations = [
+      ...updateTasks.map(async (task) => {
+        const { url, existing, resolution, newName, finalCrawlerType, updatedConfig, crawlUrlChanged } = task;
+        const crawlUrl = task.crawlUrl;
+
+        if (crawlUrl && crawlUrl !== existing.crawl_url) {
+          console.log(`   🔄 [업데이트] ${url} → URL 최적화됨: ${crawlUrl}`);
+        }
+
+        const crawlerTypeUpdate = finalCrawlerType ? { crawler_type: finalCrawlerType } : {};
+        const crawlUrlUpdate = crawlUrlChanged ? { crawl_url: crawlUrl } : {};
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
+          .from('crawl_sources')
+          .update({
+            name: newName,
+            ...crawlUrlUpdate,
+            config: updatedConfig,
+            ...crawlerTypeUpdate,
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          if (resolution) {
+            const confidence = (resolution.confidence * 100).toFixed(0);
+            console.log(`   ✅ [업데이트] ${url} → ${finalCrawlerType} (자동 감지, 신뢰도 ${confidence}%)`);
+          } else {
+            console.log(`   ✅ [업데이트] ${url}`);
+          }
+          return data;
+        } else {
+          console.error(`   ❌ [업데이트 실패] ${url}:`, error);
+          return null;
+        }
+      }),
+      ...insertTasks.map(async (task) => {
+        const { url, resolution, newName, crawlerType, crawlUrl } = task;
+
+        const methodLabel = resolution ? ({
+          'domain-override': '도메인 오버라이드',
+          'rss-discovery': 'RSS 자동 발견',
+          'sitemap-discovery': 'Sitemap 자동 발견',
+          'cms-detection': 'CMS 감지',
+          'url-pattern': 'URL 패턴',
+          'rule-analysis': 'Rule-based',
+          'ai-type-detection': 'AI 타입',
+          'ai-selector-detection': 'AI 셀렉터',
+          'ai-content-detection': 'AI 콘텐츠',
+          'spa-detection': 'SPA 감지',
+          'api-detection': 'API 자동 감지',
+          'auto-recovery': '자동 복구',
+          'firecrawl': 'Firecrawl API',
+          'default': '기본값',
+          'error': '오류'
+        }[resolution.detectionMethod] || resolution.detectionMethod) : null;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
           .from('crawl_sources')
           .insert({
-            name: name || extractDomainName(url),
-            base_url: url, // 사용자 입력 원본 URL
-            crawl_url: crawlUrl, // 최적화된 URL (NULL 가능)
+            name: newName,
+            base_url: url,
+            crawl_url: crawlUrl,
             crawler_type: crawlerType,
             config: {
-              category,
+              category: sources.find((s: { url: string }) => s.url === url)?.category,
               ...(resolution?.selectors && { selectors: resolution.selectors }),
               ...(resolution?.excludeSelectors && { excludeSelectors: resolution.excludeSelectors }),
               ...(resolution?.pagination && { pagination: resolution.pagination }),
-              ...(resolution?.apiConfig && {
-                crawl_config: resolution.apiConfig,
-              }),
-              ...(!resolution?.apiConfig && resolution?.rssUrl && {
-                crawl_config: { rssUrl: resolution.rssUrl },
-              }),
-              // 전략 해석 메타데이터
+              ...(resolution?.apiConfig && { crawl_config: resolution.apiConfig }),
+              ...(!resolution?.apiConfig && resolution?.rssUrl && { crawl_config: { rssUrl: resolution.rssUrl } }),
               ...(resolution && {
                 _detection: {
                   method: resolution.detectionMethod,
@@ -380,23 +418,29 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (!error && data) {
-          results.push(data);
-          console.log(`   ✅ 저장 완료\n`);
+          if (resolution) {
+            const confidence = (resolution.confidence * 100).toFixed(0);
+            console.log(`   ✅ [신규] ${url} → ${crawlerType} (${methodLabel}, 신뢰도 ${confidence}%)`);
+          } else {
+            console.log(`   ✅ [신규] ${url} → ${crawlerType}`);
+          }
+          return data;
         } else {
-          console.error(`   ❌ 저장 실패:`, error);
+          console.error(`   ❌ [신규 실패] ${url}:`, error);
+          return null;
         }
+      }),
+    ];
 
-        if (resolution) {
-          analysisResults.push({
-            url,
-            method: resolution.detectionMethod,
-            confidence: resolution.confidence,
-            crawlerType,
-            spaDetected: resolution.spaDetected,
-            ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
-          });
-        }
+    const dbResults = await Promise.allSettled(dbOperations);
+    for (const entry of dbResults) {
+      if (entry.status === 'fulfilled' && entry.value) {
+        results.push(entry.value);
       }
+    }
+    // 스킵된 소스도 results에 포함
+    for (const s of skipped) {
+      results.push({ id: s.id, base_url: s.base_url, skipped: true });
     }
 
     // 변경 후 캐시 무효화
@@ -406,10 +450,13 @@ export async function POST(request: NextRequest) {
     revalidatePath('/sources/add');
 
     // 요약 로그
+    const skippedCount = results.filter((r: Record<string, unknown>) => r.skipped).length;
+    const savedCount = results.length - skippedCount;
+
     console.log(`\n${'='.repeat(80)}`);
     console.log(`📊 소스 저장 완료 요약`);
     console.log(`${'='.repeat(80)}`);
-    console.log(`💾 총 저장: ${results.length}개 소스`);
+    console.log(`💾 총 처리: ${results.length}개 소스 (저장: ${savedCount}개, 스킵: ${skippedCount}개)`);
 
     if (analysisResults.length > 0) {
       console.log(`\n🔍 자동 분석 통계:`);
