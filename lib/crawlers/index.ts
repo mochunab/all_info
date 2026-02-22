@@ -229,7 +229,7 @@ function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
     case 'PLATFORM_NAVER':
     case 'PLATFORM_KAKAO':
     case 'NEWSLETTER':
-      return ['STATIC'];
+      return ['SPA'];
     default:
       return ['STATIC'];
   }
@@ -381,9 +381,11 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
           console.warn(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 쓰레기 비율 ${(validation.stats.garbageRatio * 100).toFixed(1)}%`);
         }
 
-        // 전략이 정상 실행되었지만 최신 콘텐츠가 없는 경우 → fallback하지 않음
-        // 예외: STATIC → SPA fallback만 허용 (JS 렌더링 필요할 수 있음)
-        if (validation.reason === 'No items found' && strategyType !== 'STATIC') {
+        // Cheerio(정적 HTML) 기반 전략은 0건이어도 SPA fallback 허용 (JS 렌더링 필요 가능)
+        // RSS/SPA/API 등 비HTML 전략은 0건 = 최신 콘텐츠 없음 → fallback 불필요
+        // 단, 마지막 전략이면 auto-recovery(AI 셀렉터 감지) 시도를 위해 계속 진행
+        const cheerioBasedStrategies = ['STATIC', 'PLATFORM_KAKAO', 'PLATFORM_NAVER', 'NEWSLETTER'];
+        if (validation.reason === 'No items found' && !cheerioBasedStrategies.includes(strategyType) && i < strategyChain.length - 1) {
           console.log(`   ℹ️  ${strategyType} 정상 실행 — 최신 콘텐츠 없음 (fallback 생략)`);
           return [];
         }
