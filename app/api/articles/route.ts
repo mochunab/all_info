@@ -46,7 +46,6 @@ export async function GET(request: NextRequest) {
       .from('articles')
       .select(ARTICLE_LIST_COLUMNS, { count: 'exact' })
       .eq('is_active', true)
-      .order('published_at', { ascending: false, nullsFirst: false })
       .order('crawled_at', { ascending: false });
 
     // Apply filters
