@@ -94,6 +94,8 @@
 | 크롤러 타입 오탐 | `strategy-resolver.ts` 파이프라인 개선 |
 | URL 최적화 오탐 | `url-optimizer.ts` 필터/검증 강화 |
 | 특정 패턴 일관 실패 | 해당 패턴의 **범용** 감지 규칙 추가 |
+| fetch redirect loop | `fetchWithTimeout` bot UA 재시도 (base.ts) |
+| 플랫폼 전략 셀렉터 불일치 | auto-recovery → AI 셀렉터 DB 저장 → 다음 크롤링 시 STATIC 위임 |
 
 ---
 
@@ -125,11 +127,12 @@ import { createServiceClient } from '@/lib/supabase/server';
 - Hook 순서: `useState` → `useCallback` → `useEffect` → `return`
 
 ### 크롤러 개발
-- `fetchWithTimeout(url, {}, 15000)` — 15초 타임아웃 필수
+- `fetchWithTimeout(url, {}, 15000)` — 15초 타임아웃 필수, redirect loop 시 bot UA 자동 재시도
 - `isWithinDays(date, 14)` — 최근 14일 필터
 - `maxPages` 제한 필수 (무한 루프 방지)
 - Puppeteer 사용 시 `browser.close()` 필수
 - 새 전략 추가: `strategies/{name}.ts` 생성 → `strategies/index.ts` 등록 → `types.ts` 타입 추가
+- 플랫폼 전략(KAKAO/NAVER/NEWSLETTER)은 config에 AI 감지 셀렉터 있으면 STATIC 위임
 
 ### i18n
 - 번역: `t(language, 'key')` — `lib/i18n.ts`

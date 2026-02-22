@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 데이터 플로우 & 런타임 동작 가이드
 
 > 이 문서의 핵심: **데이터가 시스템을 어떻게 흐르는가**
-> 최종 업데이트: 2026-02-21 (v1.5.3)
+> 최종 업데이트: 2026-02-22 (v1.6.2)
 >
 > **다른 문서 참조**:
 > - 개발 규칙, API Routes, 파일 구조, 환경변수, 디버깅 → [CLAUDE.md](../CLAUDE.md)
@@ -62,10 +62,10 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    ├─ runCrawler(source) 호출
    │   ├─ [URL 결정] effectiveUrl = crawl_url || base_url
    │   │
-   │   ├─ [크롤러 선택] getCrawler() — 우선순위:
-   │   │   1. LEGACY_CRAWLER_REGISTRY (검증된 전용 크롤러 7개)
-   │   │   2. DB crawler_type 명시적 설정 → crawlWithStrategy()
-   │   │   3. URL 패턴 추론 (inferCrawlerType) → 폴백
+   │   ├─ [크롤러 선택] getCrawler() → crawlWithStrategy()
+   │   │   └─ DB crawler_type 또는 URL 패턴 추론 (inferCrawlerType)
+   │   │
+   │   ├─ [셀렉터 위임] config에 AI 감지 셀렉터 있으면 → STATIC 전략 위임
    │   │
    │   ├─ [목록 크롤링] strategy.crawlList() → RawContentItem[]
    │   │
@@ -78,6 +78,14 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   │   ├─ 1차: Cheerio 정적 파싱
    │   │   └─ 2차: Puppeteer JS 렌더링 (load + 3초 대기)
    │   │   └─ 루프 종료 후 closeBrowser()
+   │   │
+   │   ├─ [폴백 체인] 품질 검증 실패 시 → 대체 전략 시도
+   │   │   ├─ 기본: PLATFORM_KAKAO/NAVER/NEWSLETTER → SPA, STATIC → SPA
+   │   │   ├─ Cheerio 0건 → SPA fallback 허용 (JS 렌더링 필요 가능)
+   │   │   └─ 전부 실패 → auto-recovery (resolveStrategy 9단계 재실행)
+   │   │       → AI 셀렉터 감지 → DB config 저장 → 재크롤링
+   │   │
+   │   ├─ [redirect 방어] fetchWithTimeout: redirect loop 감지 시 bot UA 재시도
    │   │
    │   └─ [저장] saveArticles() — source_id UNIQUE로 중복 방지
    │
@@ -150,7 +158,25 @@ page.tsx (메인 페이지)
 
 ---
 
-## 5. 크롤러 타입 자동 감지 파이프라인
+## 5. AI 소스 추천 플로우 (`recommend-sources` Edge Function)
+
+```
+POST /api/sources/recommend (Same-Origin)
+  → Edge Function: recommend-sources
+    ├─ GPT-5-nano + web_search_preview → 최대 5개 URL 추천
+    └─ validateUrl() 6단계 룰베이스 검증 (병렬, 8초 타임아웃, HTML 50KB)
+       1. HTTP 접근성 (GET, response.ok)
+       2. 리다이렉트 감지 (pathname → / 또는 /index)
+       3. 폐쇄/종료 키워드 + alert()+history.back() 패턴
+       4. 빈 페이지 (body < 200자) 또는 에러 title (404/Error)
+       5. 콘텐츠 최신성 (HTML 날짜 추출, 6개월 기준)
+       6. WAF/봇 차단 키워드
+    → 통과한 URL만 사용자에게 반환
+```
+
+---
+
+## 6. 크롤러 타입 자동 감지 파이프라인
 
 > 설계 의도, 대안 검토 → [DECISIONS.md ADR-015, 018, 019](./DECISIONS.md)
 
@@ -255,6 +281,19 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.6.2 (2026-02-22)
+- fetch redirect loop 방어: bot UA 자동 재시도 (`fetchWithTimeout`, `auto-detect.ts`)
+- 폴백 체인 개선: PLATFORM_KAKAO/NAVER/NEWSLETTER → SPA (기존 STATIC)
+- Cheerio 기반 전략 0건 시 SPA fallback 허용, 마지막 전략도 auto-recovery 도달
+- 플랫폼 전략에서 AI 감지 셀렉터 있으면 STATIC 위임
+- 폴백 체인 DB 오버라이드 제거 (항상 코드 기본값 사용)
+- 전략별 fetch를 `fetchWithTimeout`으로 통합 (kakao/static/naver/newsletter)
+- 소스 저장 후 카테고리 유지 (`router.refresh` 제거, 로컬 상태 업데이트)
+
+### v1.6.1 (2026-02-22)
+- recommend-sources URL 검증 강화 (HEAD → GET + 6단계 룰베이스 검증)
+- 소스 저장 최적화 (변경 없는 소스 DB UPDATE 스킵 + 병렬 처리)
 
 ### v1.6.0 (2026-02-21)
 - AI 감지 파이프라인 통합 (타입+셀렉터 단일 Edge Function 호출)
