@@ -179,7 +179,7 @@ export class SPAStrategy implements CrawlStrategy {
       // 추가 대기 시간 (JavaScript 실행 완료 대기)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const crawlConfig = config.crawl_config as any;
-      const additionalWait = crawlConfig?.additionalWait || 2000;
+      const additionalWait = crawlConfig?.additionalWait || 5000;
       await this.delay(additionalWait);
       console.log(`[SPA] Waited ${additionalWait}ms for JS execution`);
 
