@@ -9,6 +9,7 @@ import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
 import { processTitle } from '../title-cleaner';
+import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -54,12 +55,7 @@ export class KakaoStrategy implements CrawlStrategy {
 
   async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<string> {
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        },
-      });
+      const response = await fetchWithTimeout(url, { headers: DEFAULT_HEADERS });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -201,12 +197,7 @@ export class KakaoStrategy implements CrawlStrategy {
     const url = `https://brunch.co.kr/@${authorId}`;
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        },
-      });
+      const response = await fetchWithTimeout(url, { headers: DEFAULT_HEADERS });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -274,12 +265,7 @@ export class KakaoStrategy implements CrawlStrategy {
     const items: RawContentItem[] = [];
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        },
-      });
+      const response = await fetchWithTimeout(url, { headers: DEFAULT_HEADERS });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -350,12 +336,7 @@ export class KakaoStrategy implements CrawlStrategy {
     const items: RawContentItem[] = [];
 
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        },
-      });
+      const response = await fetchWithTimeout(url, { headers: DEFAULT_HEADERS });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

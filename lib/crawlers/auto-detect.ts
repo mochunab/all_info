@@ -3,7 +3,8 @@
 
 import * as cheerio from 'cheerio';
 
-// 기본 헤더 (static.ts와 동일)
+import { BOT_USER_AGENT } from '../crawlers/base';
+
 const DEFAULT_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -45,6 +46,25 @@ export async function fetchPage(url: string): Promise<string | null> {
 
     return await response.text();
   } catch (error) {
+    // redirect loop → retry with bot UA
+    if (error instanceof TypeError && (error.cause as Error)?.message?.includes('redirect count exceeded')) {
+      console.log(`[AUTO-DETECT] Redirect loop, retrying with bot UA: ${url}`);
+      clearTimeout(timeoutId);
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), 15000);
+      try {
+        const response = await fetch(url, {
+          headers: { ...DEFAULT_HEADERS, 'User-Agent': BOT_USER_AGENT },
+          signal: controller2.signal,
+        });
+        if (!response.ok) return null;
+        return await response.text();
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timeoutId2);
+      }
+    }
     console.error(`[AUTO-DETECT] Fetch error for ${url}:`, error);
     return null;
   } finally {
