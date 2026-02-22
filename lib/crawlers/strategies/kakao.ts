@@ -10,6 +10,7 @@ import { extractContent, generatePreview, htmlToText } from '../content-extracto
 import { isWithinDays } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
+import { staticStrategy } from './static';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -37,7 +38,12 @@ export class KakaoStrategy implements CrawlStrategy {
   async crawlList(source: CrawlSource): Promise<RawContentItem[]> {
     const config = parseConfig(source);
 
-    // 작가 ID 또는 매거진 ID 추출
+    // config에 AI 감지된 셀렉터가 있으면 STATIC 전략에 위임 (더 정확한 파싱)
+    if (config.selectors?.item) {
+      console.log(`[KAKAO] AI 감지 셀렉터 발견 — STATIC 전략 위임`);
+      return staticStrategy.crawlList(source);
+    }
+
     const authorId = this.extractAuthorId(source.base_url);
     const magazineId = this.extractMagazineId(source.base_url);
 
@@ -48,7 +54,7 @@ export class KakaoStrategy implements CrawlStrategy {
       console.log(`[KAKAO] Brunch magazine: ${magazineId}`);
       return this.crawlMagazine(magazineId, config);
     } else {
-      console.error('[KAKAO] Cannot identify Brunch URL type:', source.base_url);
+      console.log(`[KAKAO] Generic brunch page: ${source.base_url}`);
       return this.crawlGeneric(source.base_url, config);
     }
   }

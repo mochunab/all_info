@@ -331,7 +331,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
   }
 
   // 2. Fallback 체인 구성
-  const fallbacks = config._detection?.fallbackStrategies || getDefaultFallbacks(primaryType);
+  const fallbacks = getDefaultFallbacks(primaryType);
   const strategyChain = [primaryType, ...fallbacks].filter(
     (type, index, arr) => arr.indexOf(type) === index
   ); // 중복 제거
@@ -358,7 +358,21 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000)
       );
 
-      const crawlPromise = strategy.crawlList(source);
+      // SPA fallback: AJAX 완료를 위해 대기시간 증가 (STATIC 실패 → JS 렌더링 필요 가능성 높음)
+      let crawlSource = source;
+      if (isFallback && strategyType === 'SPA') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const currentWait = (config.crawl_config as any)?.additionalWait || 2000;
+        if (currentWait < 5000) {
+          crawlSource = {
+            ...source,
+            config: { ...source.config, crawl_config: { ...config.crawl_config, additionalWait: 5000 } },
+          };
+          console.log(`   ⏱️  SPA 폴백: 대기시간 ${currentWait}ms → 5000ms`);
+        }
+      }
+
+      const crawlPromise = strategy.crawlList(crawlSource);
 
       console.log(`   🔍 콘텐츠 목록 크롤링 중... (최대 30초)`);
       // 목록 크롤링 (타임아웃 적용)
@@ -559,9 +573,10 @@ function getCrawler(source: CrawlSource): (source: CrawlSource) => Promise<Crawl
 export async function saveArticles(
   articles: CrawledArticle[],
   supabase: SupabaseClient<Database>
-): Promise<{ saved: number; skipped: number }> {
+): Promise<{ saved: number; skipped: number; updated: number }> {
   let saved = 0;
   let skipped = 0;
+  let updated = 0;
 
   for (let idx = 0; idx < articles.length; idx++) {
     const article = articles[idx];
@@ -570,13 +585,24 @@ export async function saveArticles(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: existing } = await (supabase as any)
         .from('articles')
-        .select('id')
+        .select('id, category')
         .eq('source_id', article.source_id)
         .single();
 
       if (existing) {
+        const safeCategory = article.category?.substring(0, 50);
+        if (safeCategory && existing.category !== safeCategory) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase as any)
+            .from('articles')
+            .update({ category: safeCategory })
+            .eq('id', existing.id);
+          updated++;
+          console.log(`   🔄 [${idx + 1}/${articles.length}] 카테고리 업데이트: "${article.title.substring(0, 40)}..." → ${safeCategory}`);
+        } else {
+          console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (중복): "${article.title.substring(0, 40)}..."`);
+        }
         skipped++;
-        console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (중복): "${article.title.substring(0, 40)}..."`);
         continue;
       }
 
@@ -674,7 +700,7 @@ export async function runCrawler(
     // DB 저장 (dry-run이 아닌 경우)
     if (!options?.dryRun) {
       console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
-      const { saved, skipped } = await saveArticles(articles, supabase);
+      const { saved, skipped, updated } = await saveArticles(articles, supabase);
       result.new = saved;
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -684,7 +710,8 @@ export async function runCrawler(
       console.log(`⏱️  소요시간: ${duration}초`);
       console.log(`📊 발견: ${result.found}개`);
       console.log(`💾 저장: ${result.new}개`);
-      console.log(`⏭️  건너뜀: ${skipped}개 (중복)`);
+      if (updated > 0) console.log(`🔄 카테고리 업데이트: ${updated}개`);
+      console.log(`⏭️  건너뜀: ${skipped - updated}개 (중복)`);
       console.log(`${'='.repeat(80)}\n`);
     } else {
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
