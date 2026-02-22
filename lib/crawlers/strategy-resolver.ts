@@ -971,7 +971,7 @@ function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
     case 'SPA':
       return ['STATIC'];
     case 'STATIC':
-      return []; // STATIC은 폴백 없음 (마지막 수단)
+      return ['SPA']; // STATIC 실패 시 SPA(JS 렌더링)로 재시도
     case 'PLATFORM_NAVER':
     case 'PLATFORM_KAKAO':
     case 'NEWSLETTER':

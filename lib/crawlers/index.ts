@@ -358,21 +358,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000)
       );
 
-      // SPA fallback: AJAX 완료를 위해 대기시간 증가 (STATIC 실패 → JS 렌더링 필요 가능성 높음)
-      let crawlSource = source;
-      if (isFallback && strategyType === 'SPA') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const currentWait = (config.crawl_config as any)?.additionalWait || 2000;
-        if (currentWait < 5000) {
-          crawlSource = {
-            ...source,
-            config: { ...source.config, crawl_config: { ...config.crawl_config, additionalWait: 5000 } },
-          };
-          console.log(`   ⏱️  SPA 폴백: 대기시간 ${currentWait}ms → 5000ms`);
-        }
-      }
-
-      const crawlPromise = strategy.crawlList(crawlSource);
+      const crawlPromise = strategy.crawlList(source);
 
       console.log(`   🔍 콘텐츠 목록 크롤링 중... (최대 30초)`);
       // 목록 크롤링 (타임아웃 적용)
