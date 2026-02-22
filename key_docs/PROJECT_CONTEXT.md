@@ -81,9 +81,10 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   │
    │   ├─ [폴백 체인] 품질 검증 실패 시 → 대체 전략 시도
    │   │   ├─ 기본: PLATFORM_KAKAO/NAVER/NEWSLETTER → SPA, STATIC → SPA
-   │   │   ├─ Cheerio 0건 → SPA fallback 허용 (JS 렌더링 필요 가능)
+   │   │   ├─ Cheerio 0건 또는 유효 아이템 부족 → SPA fallback 허용
    │   │   └─ 전부 실패 → auto-recovery (resolveStrategy 9단계 재실행)
    │   │       → AI 셀렉터 감지 → DB config 저장 → 재크롤링
+   │   │       → Cheerio 재감지도 실패 시 → SPA 기본 셀렉터 최종 폴백
    │   │
    │   ├─ [redirect 방어] fetchWithTimeout: redirect loop 감지 시 bot UA 재시도
    │   │
@@ -281,6 +282,10 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.6.3 (2026-02-22)
+- 자동 복구 조건 확장: `Insufficient valid items`도 auto-recovery 발동
+- SPA 폴백 복구 추가: Cheerio 재감지 실패 시 SPA 기본 셀렉터로 최종 시도 (JS 렌더링 페이지 대응)
 
 ### v1.6.2 (2026-02-22)
 - fetch redirect loop 방어: bot UA 자동 재시도 (`fetchWithTimeout`, `auto-detect.ts`)

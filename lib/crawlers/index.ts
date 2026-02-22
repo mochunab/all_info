@@ -393,7 +393,8 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         // 마지막 전략이면 자동 복구 시도 (하이브리드 전략)
         if (i === strategyChain.length - 1 && (
           (validation.stats && validation.stats.garbageRatio > 0.5) ||
-          validation.reason === 'No items found'
+          validation.reason === 'No items found' ||
+          validation.reason?.startsWith('Insufficient valid items')
         )) {
           console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 8단계 파이프라인 재분석 시도...`);
 
@@ -463,6 +464,49 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
               }
             } else {
               console.warn(`   ⚠️  자동 복구 실패: 낮은 신뢰도 (${(newStrategy.confidence * 100).toFixed(0)}%)`);
+            }
+
+            // Cheerio 기반 재감지가 실패 → JS 렌더링 페이지일 수 있음 → SPA 기본 셀렉터로 최종 시도
+            const cheerioTypes = ['STATIC', 'PLATFORM_KAKAO', 'PLATFORM_NAVER', 'NEWSLETTER', 'SITEMAP'];
+            if (cheerioTypes.includes(newStrategy.primaryStrategy)) {
+              console.log(`\n🔄 [SPA 폴백] Cheerio 전략 복구 실패 → SPA 기본 셀렉터로 최종 시도...`);
+              const spaRecovery = getStrategy('SPA');
+              const spaSource: CrawlSource = {
+                ...source,
+                crawler_type: 'SPA' as CrawlerType,
+                config: { category: source.config?.category },
+              };
+
+              const spaItems = await spaRecovery.crawlList(spaSource);
+              if (spaItems.length > 0) {
+                console.log(`   ✅ SPA 폴백 성공! (${spaItems.length}개 발견)`);
+
+                await updateSourceConfig(source.id, {
+                  crawlerType: 'SPA',
+                  confidence: 0.5,
+                  detectionMethod: 'spa-fallback-recovery',
+                });
+
+                const articles: CrawledArticle[] = [];
+                for (let idx = 0; idx < Math.min(spaItems.length, 5); idx++) {
+                  const item = spaItems[idx];
+                  if (!item.content && spaRecovery.crawlContent) {
+                    try {
+                      item.content = await spaRecovery.crawlContent(item.link, config.content_selectors);
+                    } catch (error) {
+                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
+                  }
+                  articles.push(convertToArticle(item, source, config.category));
+                }
+
+                const filtered = filterGarbageArticles(articles, source.name);
+                console.log(`   ✅ SPA 폴백 최종 결과: ${filtered.length}개 아티클`);
+                return filtered;
+              } else {
+                console.warn(`   ⚠️  SPA 폴백도 실패: 0건`);
+              }
             }
           } catch (error) {
             console.error(`   ❌ 자동 복구 오류:`, error instanceof Error ? error.message : error);
