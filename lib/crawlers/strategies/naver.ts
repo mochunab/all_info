@@ -9,6 +9,7 @@ import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
 import { processTitle } from '../title-cleaner';
+import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -56,10 +57,10 @@ export class NaverStrategy implements CrawlStrategy {
       // 모바일 URL로 변환 (더 깔끔한 콘텐츠)
       const mobileUrl = this.toMobileUrl(url);
 
-      const response = await fetch(mobileUrl, {
+      const response = await fetchWithTimeout(mobileUrl, {
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+          ...DEFAULT_HEADERS,
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
         },
       });
 
@@ -158,13 +159,7 @@ export class NaverStrategy implements CrawlStrategy {
       const listUrl = this.getListUrl(baseUrl);
       console.log(`[NAVER] Fetching HTML: ${listUrl}`);
 
-      const response = await fetch(listUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          Accept: 'text/html,application/xhtml+xml',
-        },
-      });
+      const response = await fetchWithTimeout(listUrl, { headers: DEFAULT_HEADERS });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);

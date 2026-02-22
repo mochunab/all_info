@@ -8,6 +8,7 @@ import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
 import { isWithinDays } from '../date-parser';
 import { processTitle } from '../title-cleaner';
+import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
 
 // 뉴스레터 플랫폼 감지
 type NewsletterPlatform = 'stibee' | 'substack' | 'mailchimp' | 'generic';
@@ -228,29 +229,11 @@ export class NewsletterStrategy implements CrawlStrategy {
   }
 
   private async fetchPage(url: string): Promise<string> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        },
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.text();
-    } finally {
-      clearTimeout(timeoutId);
+    const response = await fetchWithTimeout(url, { headers: DEFAULT_HEADERS });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    return await response.text();
   }
 
   private normalizeUrl(url: string): string {
