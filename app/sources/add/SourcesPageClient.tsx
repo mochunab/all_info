@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from '@/components';
 import type { Language } from '@/types';
@@ -199,7 +198,6 @@ export default function SourcesPageClient({
   initialSourcesByCategory,
   initialActiveCategory,
 }: SourcesPageClientProps) {
-  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [activeCategory, setActiveCategory] = useState(initialActiveCategory);
   const [sourcesByCategory, setSourcesByCategory] = useState<Record<string, SourceLink[]>>(initialSourcesByCategory);
@@ -733,32 +731,37 @@ export default function SourcesPageClient({
             });
           }
         }
-        // 분석 결과로 크롤러 타입 UI 업데이트
-        if (data.analysis && data.analysis.length > 0) {
-          setSourcesByCategory((prev) => {
-            const updated = { ...prev };
-            for (const [cat, sources] of Object.entries(updated)) {
-              updated[cat] = (sources as SourceLink[]).map((s) => {
-                const match = data.analysis.find(
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (a: any) => a.url === s.url && a.crawlerType
-                );
-                if (match) {
-                  return { ...s, crawlerType: match.crawlerType, isExisting: true };
-                }
-                return s;
-              });
-            }
-            return updated;
-          });
-        }
+        // 저장 결과로 로컬 상태 업데이트 (DB ID + 크롤러 타입)
+        setSourcesByCategory((prev) => {
+          const updated = { ...prev };
+          for (const [cat, sources] of Object.entries(updated)) {
+            updated[cat] = (sources as SourceLink[]).map((s) => {
+              // DB 저장 결과에서 매칭 (ID + 크롤러 타입 업데이트)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const saved = data.sources?.find((dbSource: any) => dbSource.base_url === s.url.trim());
+              if (saved) {
+                return {
+                  ...s,
+                  id: saved.id.toString(),
+                  crawlerType: saved.crawler_type || s.crawlerType,
+                  isExisting: true,
+                };
+              }
+              // analysis 결과만 있는 경우 (크롤러 타입만 업데이트)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const analysisMatch = data.analysis?.find((a: any) => a.url === s.url.trim() && a.crawlerType);
+              if (analysisMatch) {
+                return { ...s, crawlerType: analysisMatch.crawlerType, isExisting: true };
+              }
+              return s;
+            });
+          }
+          return updated;
+        });
 
         setPendingDeleteIds([]);
         setToastMessage(message);
         setShowToast(true);
-
-        // RSC 캐시 무효화 (페이지에 머무르며 데이터 갱신)
-        router.refresh();
       } else {
         stopAnalysisProgress(false);
         const detail = data.error || `HTTP ${response.status}`;

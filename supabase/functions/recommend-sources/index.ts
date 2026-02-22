@@ -213,54 +213,219 @@ function cleanJsonText(text: string): string {
   return text.trim();
 }
 
-// URL 접근 가능 여부 검증 (HEAD → GET fallback, 5초 타임아웃)
-async function isUrlAccessible(url: string): Promise<boolean> {
+type ValidationResult = {
+  valid: boolean;
+  reason?: string;
+};
+
+const CLOSURE_KEYWORDS = [
+  '서비스가 종료', '서비스 종료', '폐쇄된', '운영이 중단',
+  '접근 권한이 없습니다', '등록된 게시물이 없습니다', '페이지를 찾을 수 없',
+  'This page is no longer available', 'has been discontinued', 'no longer maintained',
+];
+
+const WAF_KEYWORDS = [
+  'Web firewall', 'security policies have been blocked', 'Access Denied',
+  'Request blocked', 'bot detected', 'captcha', 'Please verify you are a human',
+];
+
+// HTML에서 body 텍스트만 추출 (태그 제거)
+function extractBodyText(html: string): string {
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
+  return bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// HTML에서 title 추출
+function extractTitle(html: string): string {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? match[1].trim() : '';
+}
+
+// HTML에서 날짜 패턴 추출 → 가장 최근 날짜 반환
+function extractLatestDate(html: string): Date | null {
+  const patterns = [
+    /(\d{4})[-./](\d{1,2})[-./](\d{1,2})/g,
+    /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/g,
+    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})/gi,
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi,
+  ];
+
+  const monthMap: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+
+  let latest: Date | null = null;
+  const now = new Date();
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      let date: Date | null = null;
+
+      if (/^\d{4}$/.test(match[1]) && /^\d{1,2}$/.test(match[2]) && /^\d{1,2}$/.test(match[3])) {
+        // YYYY-MM-DD / YYYY.MM.DD / YYYY년 MM월 DD일
+        date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+      } else if (/^[A-Za-z]/.test(match[1])) {
+        // Dec 20, 2025
+        const month = monthMap[match[1].slice(0, 3).toLowerCase()];
+        if (month !== undefined) {
+          date = new Date(parseInt(match[3]), month, parseInt(match[2]));
+        }
+      } else if (/^[A-Za-z]/.test(match[2])) {
+        // 20 Dec 2025
+        const month = monthMap[match[2].slice(0, 3).toLowerCase()];
+        if (month !== undefined) {
+          date = new Date(parseInt(match[3]), month, parseInt(match[1]));
+        }
+      }
+
+      if (date && !isNaN(date.getTime()) && date <= now && date.getFullYear() >= 2000) {
+        if (!latest || date > latest) {
+          latest = date;
+        }
+      }
+    }
+  }
+
+  return latest;
+}
+
+// URL 품질 검증 (6단계 룰베이스)
+async function validateUrl(url: string): Promise<ValidationResult> {
+  const startTime = Date.now();
+  console.log(`[validateUrl] 검증 시작: ${url}`);
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    // HEAD 먼저 시도 (빠름)
-    let response = await fetch(url, {
-      method: 'HEAD',
+    // Rule 1: HTTP 접근성
+    const response = await fetch(url, {
+      method: 'GET',
       signal: controller.signal,
       redirect: 'follow',
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; InsightHub/1.0)' },
     });
 
-    // HEAD가 405면 GET으로 재시도
-    if (response.status === 405) {
-      response = await fetch(url, {
-        method: 'GET',
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; InsightHub/1.0)' },
-      });
+    clearTimeout(timeout);
+    console.log(`[validateUrl] Rule 1 (HTTP): ${url} → ${response.status} (${Date.now() - startTime}ms)`);
+
+    if (!response.ok) {
+      return { valid: false, reason: 'HTTP 접근 불가' };
     }
 
-    clearTimeout(timeout);
-    return response.ok;
-  } catch {
-    return false;
+    // HTML 앞부분 50KB만 읽기
+    const reader = response.body?.getReader();
+    let html = '';
+    if (reader) {
+      const decoder = new TextDecoder();
+      let totalBytes = 0;
+      const MAX_BYTES = 50 * 1024;
+      while (totalBytes < MAX_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        html += decoder.decode(value, { stream: true });
+        totalBytes += value.length;
+      }
+      reader.cancel().catch(() => {});
+    } else {
+      const text = await response.text();
+      html = text.slice(0, 50 * 1024);
+    }
+
+    // Rule 2: 리다이렉트 감지
+    const requestedPath = new URL(url).pathname;
+    const finalPath = new URL(response.url).pathname;
+    if (requestedPath !== finalPath) {
+      console.log(`[validateUrl] Rule 2 (리다이렉트): ${url} → pathname "${requestedPath}" → "${finalPath}"`);
+      if (finalPath === '/' || finalPath.startsWith('/index')) {
+        return { valid: false, reason: '메인 페이지로 리다이렉트' };
+      }
+    }
+
+    const htmlLower = html.toLowerCase();
+
+    // Rule 3: 폐쇄/에러 키워드 감지
+    for (const keyword of CLOSURE_KEYWORDS) {
+      if (html.includes(keyword)) {
+        console.log(`[validateUrl] Rule 3 (폐쇄 키워드): ${url} → "${keyword}" 발견`);
+        return { valid: false, reason: '폐쇄/종료 페이지' };
+      }
+    }
+    if (htmlLower.includes('<script>alert(') && htmlLower.includes('history.back()')) {
+      console.log(`[validateUrl] Rule 3 (alert+history.back): ${url}`);
+      return { valid: false, reason: '폐쇄/종료 페이지' };
+    }
+
+    // Rule 4: 빈 페이지 감지
+    const bodyText = extractBodyText(html);
+    const title = extractTitle(html);
+    console.log(`[validateUrl] Rule 4 (빈 페이지): ${url} → body ${bodyText.length}자, title: "${title}"`);
+    if (bodyText.length < 200) {
+      return { valid: false, reason: '빈 페이지 또는 에러 페이지' };
+    }
+    if (/\b(404|not found|error)\b/i.test(title.toLowerCase())) {
+      return { valid: false, reason: '빈 페이지 또는 에러 페이지' };
+    }
+
+    // Rule 5: 콘텐츠 최신성 (날짜 감지)
+    const latestDate = extractLatestDate(html);
+    if (latestDate) {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      console.log(`[validateUrl] Rule 5 (최신성): ${url} → 최근 날짜: ${latestDate.toISOString().slice(0, 10)}, 기준: ${sixMonthsAgo.toISOString().slice(0, 10)}`);
+      if (latestDate < sixMonthsAgo) {
+        return { valid: false, reason: '최신 콘텐츠 없음 (6개월 이상 미갱신)' };
+      }
+    } else {
+      console.log(`[validateUrl] Rule 5 (최신성): ${url} → 날짜 미발견 (통과)`);
+    }
+
+    // Rule 6: WAF/봇 차단 감지
+    for (const keyword of WAF_KEYWORDS) {
+      if (html.toLowerCase().includes(keyword.toLowerCase())) {
+        console.log(`[validateUrl] Rule 6 (WAF): ${url} → "${keyword}" 발견`);
+        return { valid: false, reason: 'WAF/봇 차단' };
+      }
+    }
+
+    console.log(`[validateUrl] ✅ 통과: ${url} (${Date.now() - startTime}ms)`);
+    return { valid: true };
+  } catch (e) {
+    console.log(`[validateUrl] ❌ 예외: ${url} → ${e instanceof Error ? e.message : 'Unknown'}`);
+    return { valid: false, reason: 'HTTP 접근 불가' };
   }
 }
 
-// 추천 목록에서 접속 불가 URL 제거
-async function filterAccessibleUrls(recommendations: Recommendation[]): Promise<Recommendation[]> {
+// 추천 목록에서 유효하지 않은 URL 제거
+async function filterValidUrls(recommendations: Recommendation[]): Promise<Recommendation[]> {
+  console.log(`[filterValidUrls] ${recommendations.length}개 URL 검증 시작...`);
+  const startTime = Date.now();
+
   const results = await Promise.allSettled(
     recommendations.map(async (rec) => {
-      const accessible = await isUrlAccessible(rec.url);
-      return { rec, accessible };
+      const result = await validateUrl(rec.url);
+      return { rec, result };
     })
   );
 
   const filtered: Recommendation[] = [];
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value.accessible) {
-      filtered.push(result.value.rec);
-    } else if (result.status === 'fulfilled') {
-      console.log(`[recommend-sources] Filtered out inaccessible URL: ${result.value.rec.url}`);
+  for (const entry of results) {
+    if (entry.status === 'fulfilled' && entry.value.result.valid) {
+      filtered.push(entry.value.rec);
+    } else if (entry.status === 'fulfilled') {
+      console.log(`[filterValidUrls] ❌ 제외: ${entry.value.rec.name} (${entry.value.rec.url}) → ${entry.value.result.reason}`);
+    } else {
+      console.log(`[filterValidUrls] ❌ 예외: ${entry.reason}`);
     }
   }
+
+  console.log(`[filterValidUrls] 완료: ${recommendations.length}개 중 ${filtered.length}개 통과 (${Date.now() - startTime}ms)`);
   return filtered;
 }
 
@@ -292,9 +457,9 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
           description: r.description || '',
         }));
 
-      // URL 접근 가능 여부 검증
-      const validRecommendations = await filterAccessibleUrls(candidates);
-      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} accessible`);
+      // URL 품질 검증 (6단계 룰베이스)
+      const validRecommendations = await filterValidUrls(candidates);
+      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid`);
 
       return {
         success: true,
@@ -316,7 +481,7 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
                 .filter((r: Recommendation) => r.url && r.name)
                 .slice(0, 5)
                 .map((r: Recommendation) => ({ url: r.url, name: r.name, description: r.description || '' }));
-              const validRecs = await filterAccessibleUrls(fallbackCandidates);
+              const validRecs = await filterValidUrls(fallbackCandidates);
               return { success: true, recommendations: validRecs };
             }
           } catch {

@@ -1,5 +1,8 @@
 # Insight Hub - Development Guide
 
+- Use fewer comments. Only add comments where the logic isn't self-evident.
+- Be concise in your response.
+
 > AI 기반 비즈니스 콘텐츠 크롤링 & 큐레이션 플랫폼
 > GitHub: https://github.com/mochunab/all_info.git
 > Stack: Next.js 14 (App Router) + TypeScript + Supabase (PostgreSQL + Edge Functions) + Vercel + OpenAI
@@ -250,7 +253,7 @@ supabase/functions/
   summarize-article/    AI 요약 (GPT-5-nano)
   detect-crawler-type/  크롤러 타입 감지 (GPT-5-nano)
   detect-api-endpoint/  API 엔드포인트 감지 (GPT-5-nano)
-  recommend-sources/    AI 콘텐츠 소스 추천 (GPT-5-nano + web_search)
+  recommend-sources/    AI 콘텐츠 소스 추천 (GPT-5-nano + web_search + 6단계 URL 검증)
 
 lib/auth.ts             verifyCronAuth, verifySameOrigin
 lib/i18n.ts             4개 언어 번역 (ko, en, ja, zh)

@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
 
     const existingUrls = (existingSources || []).map((s: { base_url: string }) => s.base_url);
 
+    console.log(`[POST /api/sources/recommend] Category: "${category}", Scope: "${scope}", Existing URLs: ${existingUrls.length}개`);
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -98,6 +100,16 @@ export async function POST(request: NextRequest) {
         { error: data.error || `Edge Function error: ${response.status}` },
         { status: response.status }
       );
+    }
+
+    // 상세 로그 출력
+    if (data.success && data.recommendations) {
+      console.log(`[POST /api/sources/recommend] ✅ ${data.recommendations.length}개 추천 결과:`);
+      for (const rec of data.recommendations) {
+        console.log(`  - ${rec.name}: ${rec.url}`);
+      }
+    } else {
+      console.log(`[POST /api/sources/recommend] ❌ 추천 실패: ${data.error || '결과 없음'}`);
     }
 
     return NextResponse.json(data);
