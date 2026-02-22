@@ -10,6 +10,7 @@ import { extractContent, generatePreview, htmlToText } from '../content-extracto
 import { isWithinDays } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
+import { staticStrategy } from './static';
 
 // RSS 파서 인스턴스
 const parser = new Parser({
@@ -31,6 +32,11 @@ export class NaverStrategy implements CrawlStrategy {
 
   async crawlList(source: CrawlSource): Promise<RawContentItem[]> {
     const config = parseConfig(source);
+
+    if (config.selectors?.item) {
+      console.log(`[NAVER] AI 감지 셀렉터 발견 — STATIC 전략 위임`);
+      return staticStrategy.crawlList(source);
+    }
 
     // 블로그 ID 추출
     const blogId = this.extractBlogId(source.base_url);
