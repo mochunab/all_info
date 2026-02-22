@@ -139,12 +139,12 @@ body {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--border);
+    background: var(--text-tertiary);
     border-radius: 3px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: var(--text-tertiary);
+    background: var(--text-secondary);
   }
 }
 

@@ -230,9 +230,7 @@ export default function ArticleCard({ article, language, onDelete }: ArticleCard
               />
             </svg>
             <span>
-              {article.published_at
-                ? formatDistanceToNow(article.published_at)
-                : formatDistanceToNow(article.crawled_at)}
+              {formatDistanceToNow(article.crawled_at)}
             </span>
           </div>
         </div>

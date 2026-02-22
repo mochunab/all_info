@@ -41,6 +41,8 @@
 7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
 9. 사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차
+10. 자동 복구 — 품질 검증 실패 (0건/유효 부족) → resolveStrategy 재실행
+    → Cheerio 재감지도 실패 시 → SPA 기본 셀렉터 최종 폴백
 ```
 
 ### 데이터 파이프라인

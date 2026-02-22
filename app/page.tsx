@@ -12,6 +12,8 @@ const STORAGE_KEY = {
   LANGUAGE: 'ih:language',
 } as const;
 
+const CLIENT_CACHE_TTL = 5 * 60 * 1000;
+
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +35,8 @@ export default function Home() {
   const categoryRef = useRef(category);
   const crawlSeenRunning = useRef(false);
   const crawlAbortRef = useRef<AbortController | null>(null);
+  const articlesCacheRef = useRef<Map<string, { articles: Article[]; totalCount: number; hasMore: boolean; timestamp: number }>>(new Map());
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   // 언어 설정 초기화 (URL 파라미터 우선, localStorage 차선)
   useEffect(() => {
@@ -64,10 +68,9 @@ export default function Home() {
   }, []);
 
   const fetchArticles = useCallback(
-    async (pageNum: number, append: boolean = false) => {
-      // 초기 로드 시 sessionStorage stale 데이터가 이미 렌더됐으면 로딩 스피너 억제
+    async (pageNum: number, append: boolean = false, options?: { signal?: AbortSignal; silent?: boolean }) => {
       const showLoader = !(pageNum === 1 && !append && articles.length > 0 && !initialLoadDone.current);
-      if (showLoader) setIsLoading(true);
+      if (!options?.silent && showLoader) setIsLoading(true);
 
       try {
         const params = new URLSearchParams();
@@ -77,7 +80,9 @@ export default function Home() {
         if (search) params.set('search', search);
         if (category) params.set('category', category);
 
-        const response = await fetch(`/api/articles?${params.toString()}`);
+        const response = await fetch(`/api/articles?${params.toString()}`, {
+          signal: options?.signal,
+        });
 
         if (!response.ok) {
           throw new Error('Failed to fetch articles');
@@ -89,7 +94,6 @@ export default function Home() {
           setArticles((prev) => [...prev, ...data.articles]);
         } else {
           setArticles(data.articles);
-          // 초기 로드 (page 1, 필터 없음) 시 sessionStorage에 캐시
           if (pageNum === 1 && !search && category === categories[0]) {
             try {
               sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify(data));
@@ -100,14 +104,23 @@ export default function Home() {
         setHasMore(data.hasMore);
         setTotalCount(data.total);
 
-        // Get last updated time from the most recent article
+        if (pageNum === 1 && !append && !search && category) {
+          articlesCacheRef.current.set(category, {
+            articles: data.articles,
+            totalCount: data.total,
+            hasMore: data.hasMore,
+            timestamp: Date.now(),
+          });
+        }
+
         if (data.articles.length > 0 && !lastUpdated) {
           setLastUpdated(data.articles[0].crawled_at);
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
         console.error('Error fetching articles:', error);
       } finally {
-        setIsLoading(false);
+        if (!options?.silent) setIsLoading(false);
         initialLoadDone.current = true;
       }
     },
@@ -169,11 +182,28 @@ export default function Home() {
     revalidateCategories();
   }, []);
 
-  // Fetch articles when filters change (카테고리가 설정된 후에만)
   useEffect(() => {
     if (!category) return;
     setPage(1);
-    fetchArticles(1, false);
+
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
+    const cached = !search ? articlesCacheRef.current.get(category) : null;
+
+    if (cached) {
+      setArticles(cached.articles);
+      setTotalCount(cached.totalCount);
+      setHasMore(cached.hasMore);
+      setIsLoading(false);
+
+      if (Date.now() - cached.timestamp < CLIENT_CACHE_TTL) return;
+      fetchArticles(1, false, { signal: controller.signal, silent: true });
+    } else {
+      fetchArticles(1, false, { signal: controller.signal });
+    }
+
+    return () => controller.abort();
   }, [search, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load more handler
@@ -220,7 +250,7 @@ export default function Home() {
     setIsCrawling(true);
     setCrawlProgress('크롤링 시작...');
 
-    // 캐시 무효화
+    articlesCacheRef.current.clear();
     try {
       sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
     } catch { /* 무시 */ }
@@ -364,19 +394,17 @@ export default function Home() {
 
   // Handle article deletion
   const handleArticleDelete = useCallback((articleId: string) => {
-    // 삭제된 아티클을 목록에서 제거
     setArticles((prev) => prev.filter((article) => article.id !== articleId));
     setTotalCount((prev) => Math.max(0, prev - 1));
 
-    // 성공 토스트 표시
     setToastMessage(t(language, 'toast.articleDeleted'));
     setShowToast(true);
 
-    // sessionStorage 캐시 무효화
+    if (category) articlesCacheRef.current.delete(category);
     try {
       sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
     } catch { /* 무시 */ }
-  }, [language]);
+  }, [language, category]);
 
   // Handle add category
   return (
