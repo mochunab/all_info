@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Supabase Edge Function: AI 콘텐츠 소스 추천 (GPT-5-nano + web_search_preview)
+// Supabase Edge Function: AI 콘텐츠 소스 추천 (Gemini 2.5 Flash Lite + google_search)
 // Deno runtime — excluded from Next.js type checking
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -86,125 +86,80 @@ ${scopeInstruction}
 ${existingUrls.map(u => `- ${u}`).join('\n')}` : ''}`;
 }
 
-// Responses API 응답에서 텍스트 추출
-function extractTextFromResponse(data: Record<string, unknown>): string {
-  // 1) output_text 편의 필드 (최신 API)
-  if (data.output_text && typeof data.output_text === 'string') {
-    return data.output_text;
-  }
+// Gemini + google_search (웹 검색)
+async function callGeminiWithSearch(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('google_API_KEY');
+  if (!apiKey) throw new Error('google_API_KEY not configured');
 
-  // 2) output 배열에서 message content 추출
-  if (Array.isArray(data.output)) {
-    for (const item of data.output) {
-      if (item?.type === 'message' && Array.isArray(item.content)) {
-        for (const block of item.content) {
-          if (block?.type === 'output_text' && typeof block.text === 'string' && block.text) {
-            return block.text;
-          }
-        }
-      }
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: {
+          temperature: 0.5,
+          maxOutputTokens: 1000,
+        },
+      }),
     }
-  }
-
-  // 3) chat.completions 형식 (혹시 모를 호환)
-  const choiceContent = (data as any)?.choices?.[0]?.message?.content;
-  if (typeof choiceContent === 'string' && choiceContent) {
-    return choiceContent;
-  }
-
-  return '';
-}
-
-// GPT-5-nano Responses API + web_search_preview
-async function callGPT5NanoWithSearch(prompt: string): Promise<{ output_text: string } | null> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-nano',
-      input: prompt,
-      tools: [{ type: 'web_search_preview' }],
-      reasoning: { effort: 'low' },
-    }),
-  });
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('OpenAI API error:', response.status, errorText);
-
-    if (response.status === 404) {
-      console.log('Falling back to chat.completions API...');
-      return await fallbackToChatCompletions(prompt, apiKey);
-    }
-
-    throw new Error(`OpenAI API error: ${response.status}`);
+    console.error('Gemini API error:', response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const data = await response.json();
-  const text = extractTextFromResponse(data);
-
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
-    console.warn('[recommend-sources] GPT-5-nano returned empty text, response keys:', Object.keys(data));
-    console.log('Falling back to chat.completions API due to empty response...');
-    return await fallbackToChatCompletions(prompt, apiKey);
+    console.warn('[recommend-sources] Gemini returned empty text');
+    throw new Error('Empty response from Gemini');
   }
 
-  return { output_text: text };
+  return text;
 }
 
-// Fallback: chat.completions API (gpt-4.1-mini, 웹검색 없이 학습 데이터 기반)
-async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 콘텐츠 소스 추천 전문가입니다. 반드시 JSON 형식으로만 응답하세요.',
+// Fallback: Gemini (웹 검색 없이, JSON 강제)
+async function callGeminiFallback(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('google_API_KEY');
+  if (!apiKey) throw new Error('google_API_KEY not configured');
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.7,
+          maxOutputTokens: 1000,
         },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 1000,
-      response_format: { type: 'json_object' },
-    }),
-  });
+      }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Chat completions API error: ${response.status} - ${errorText}`);
+    throw new Error(`Gemini fallback API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  return { output_text: data.choices?.[0]?.message?.content || '' };
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // JSON 텍스트에서 코드블록 제거 + JSON 객체 추출
 function cleanJsonText(text: string): string {
-  // 1) ```json ... ``` 블록 추출
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     return codeBlockMatch[1].trim();
   }
 
-  // 2) 첫 번째 { ... } 객체 추출 (앞뒤 텍스트 제거)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     return jsonMatch[0].trim();
@@ -229,7 +184,6 @@ const WAF_KEYWORDS = [
   'Request blocked', 'bot detected', 'captcha', 'Please verify you are a human',
 ];
 
-// HTML에서 body 텍스트만 추출 (태그 제거)
 function extractBodyText(html: string): string {
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const bodyHtml = bodyMatch ? bodyMatch[1] : html;
@@ -240,13 +194,11 @@ function extractBodyText(html: string): string {
     .trim();
 }
 
-// HTML에서 title 추출
 function extractTitle(html: string): string {
   const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   return match ? match[1].trim() : '';
 }
 
-// HTML에서 날짜 패턴 추출 → 가장 최근 날짜 반환
 function extractLatestDate(html: string): Date | null {
   const patterns = [
     /(\d{4})[-./](\d{1,2})[-./](\d{1,2})/g,
@@ -269,16 +221,13 @@ function extractLatestDate(html: string): Date | null {
       let date: Date | null = null;
 
       if (/^\d{4}$/.test(match[1]) && /^\d{1,2}$/.test(match[2]) && /^\d{1,2}$/.test(match[3])) {
-        // YYYY-MM-DD / YYYY.MM.DD / YYYY년 MM월 DD일
         date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
       } else if (/^[A-Za-z]/.test(match[1])) {
-        // Dec 20, 2025
         const month = monthMap[match[1].slice(0, 3).toLowerCase()];
         if (month !== undefined) {
           date = new Date(parseInt(match[3]), month, parseInt(match[2]));
         }
       } else if (/^[A-Za-z]/.test(match[2])) {
-        // 20 Dec 2025
         const month = monthMap[match[2].slice(0, 3).toLowerCase()];
         if (month !== undefined) {
           date = new Date(parseInt(match[3]), month, parseInt(match[1]));
@@ -296,7 +245,6 @@ function extractLatestDate(html: string): Date | null {
   return latest;
 }
 
-// URL 품질 검증 (6단계 룰베이스)
 async function validateUrl(url: string): Promise<ValidationResult> {
   const startTime = Date.now();
   console.log(`[validateUrl] 검증 시작: ${url}`);
@@ -304,7 +252,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    // Rule 1: HTTP 접근성
     const response = await fetch(url, {
       method: 'GET',
       signal: controller.signal,
@@ -319,7 +266,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       return { valid: false, reason: 'HTTP 접근 불가' };
     }
 
-    // HTML 앞부분 50KB만 읽기
     const reader = response.body?.getReader();
     let html = '';
     if (reader) {
@@ -338,7 +284,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       html = text.slice(0, 50 * 1024);
     }
 
-    // Rule 2: 리다이렉트 감지
     const requestedPath = new URL(url).pathname;
     const finalPath = new URL(response.url).pathname;
     if (requestedPath !== finalPath) {
@@ -350,7 +295,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
 
     const htmlLower = html.toLowerCase();
 
-    // Rule 3: 폐쇄/에러 키워드 감지
     for (const keyword of CLOSURE_KEYWORDS) {
       if (html.includes(keyword)) {
         console.log(`[validateUrl] Rule 3 (폐쇄 키워드): ${url} → "${keyword}" 발견`);
@@ -362,7 +306,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       return { valid: false, reason: '폐쇄/종료 페이지' };
     }
 
-    // Rule 4: 빈 페이지 감지
     const bodyText = extractBodyText(html);
     const title = extractTitle(html);
     console.log(`[validateUrl] Rule 4 (빈 페이지): ${url} → body ${bodyText.length}자, title: "${title}"`);
@@ -373,7 +316,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       return { valid: false, reason: '빈 페이지 또는 에러 페이지' };
     }
 
-    // Rule 5: 콘텐츠 최신성 (날짜 감지)
     const latestDate = extractLatestDate(html);
     if (latestDate) {
       const sixMonthsAgo = new Date();
@@ -386,7 +328,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       console.log(`[validateUrl] Rule 5 (최신성): ${url} → 날짜 미발견 (통과)`);
     }
 
-    // Rule 6: WAF/봇 차단 감지
     for (const keyword of WAF_KEYWORDS) {
       if (html.toLowerCase().includes(keyword.toLowerCase())) {
         console.log(`[validateUrl] Rule 6 (WAF): ${url} → "${keyword}" 발견`);
@@ -402,7 +343,6 @@ async function validateUrl(url: string): Promise<ValidationResult> {
   }
 }
 
-// 추천 목록에서 유효하지 않은 URL 제거
 async function filterValidUrls(recommendations: Recommendation[]): Promise<Recommendation[]> {
   console.log(`[filterValidUrls] ${recommendations.length}개 URL 검증 시작...`);
   const startTime = Date.now();
@@ -429,25 +369,19 @@ async function filterValidUrls(recommendations: Recommendation[]): Promise<Recom
   return filtered;
 }
 
-// 추천 소스 함수
 async function recommendSources(category: string, scope: 'domestic' | 'international' | 'both', existingUrls: string[] = []): Promise<RecommendResponse> {
   try {
     const prompt = buildPrompt(category, scope, existingUrls);
-    const result = await callGPT5NanoWithSearch(prompt);
-
-    if (!result || !result.output_text) {
-      return { success: false, error: 'Empty response from OpenAI' };
-    }
+    const text = await callGeminiWithSearch(prompt);
 
     try {
-      const cleanedText = cleanJsonText(result.output_text);
+      const cleanedText = cleanJsonText(text);
       const parsed = JSON.parse(cleanedText);
 
       if (!parsed.recommendations || !Array.isArray(parsed.recommendations)) {
         return { success: false, error: 'Invalid response format: missing recommendations array' };
       }
 
-      // 유효한 추천만 필터링 (최대 5개)
       const candidates = parsed.recommendations
         .filter((r: Recommendation) => r.url && r.name)
         .slice(0, 5)
@@ -457,7 +391,6 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
           description: r.description || '',
         }));
 
-      // URL 품질 검증 (6단계 룰베이스)
       const validRecommendations = await filterValidUrls(candidates);
       console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid`);
 
@@ -466,28 +399,24 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
         recommendations: validRecommendations,
       };
     } catch {
-      console.error('Failed to parse JSON. Raw output (first 500 chars):', result.output_text.substring(0, 500));
-      // 마지막 시도: fallback으로 직접 chat.completions 호출
-      const apiKey = Deno.env.get('OPENAI_API_KEY');
-      if (apiKey) {
-        console.log('[recommend-sources] Retrying with chat.completions fallback...');
-        const fallbackResult = await fallbackToChatCompletions(prompt, apiKey);
-        if (fallbackResult?.output_text) {
-          try {
-            const fallbackCleaned = cleanJsonText(fallbackResult.output_text);
-            const fallbackParsed = JSON.parse(fallbackCleaned);
-            if (fallbackParsed.recommendations && Array.isArray(fallbackParsed.recommendations)) {
-              const fallbackCandidates = fallbackParsed.recommendations
-                .filter((r: Recommendation) => r.url && r.name)
-                .slice(0, 5)
-                .map((r: Recommendation) => ({ url: r.url, name: r.name, description: r.description || '' }));
-              const validRecs = await filterValidUrls(fallbackCandidates);
-              return { success: true, recommendations: validRecs };
-            }
-          } catch {
-            console.error('Fallback also failed to parse JSON:', fallbackResult.output_text.substring(0, 300));
+      console.error('Failed to parse JSON. Raw output (first 500 chars):', text.substring(0, 500));
+      console.log('[recommend-sources] Retrying with Gemini fallback (no search, JSON enforced)...');
+      try {
+        const fallbackText = await callGeminiFallback(prompt);
+        if (fallbackText) {
+          const fallbackCleaned = cleanJsonText(fallbackText);
+          const fallbackParsed = JSON.parse(fallbackCleaned);
+          if (fallbackParsed.recommendations && Array.isArray(fallbackParsed.recommendations)) {
+            const fallbackCandidates = fallbackParsed.recommendations
+              .filter((r: Recommendation) => r.url && r.name)
+              .slice(0, 5)
+              .map((r: Recommendation) => ({ url: r.url, name: r.name, description: r.description || '' }));
+            const validRecs = await filterValidUrls(fallbackCandidates);
+            return { success: true, recommendations: validRecs };
           }
         }
+      } catch {
+        console.error('Fallback also failed to parse JSON');
       }
       return { success: false, error: 'JSON parsing failed' };
     }
@@ -500,9 +429,7 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
   }
 }
 
-// Edge Function 핸들러
 Deno.serve(async (req: Request) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

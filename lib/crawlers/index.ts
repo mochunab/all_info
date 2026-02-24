@@ -688,7 +688,11 @@ export async function runCrawler(
   const effectiveUrl = source.crawl_url || source.base_url;
   const effectiveSource: CrawlSource = {
     ...source,
-    base_url: effectiveUrl, // 크롤링 시 최적화된 URL 사용
+    base_url: effectiveUrl,
+    config: {
+      ...source.config,
+      _original_base_url: source.base_url,
+    },
   };
 
   try {

@@ -7,7 +7,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
-import { isWithinDays } from '../date-parser';
+import { isWithinDays, MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 
 // 기본 셀렉터
@@ -470,7 +470,7 @@ export class SPAStrategy implements CrawlStrategy {
       }
 
       // 7일 이내 체크
-      if (!isWithinDays(item.dateStr, 14, cleanedTitle)) {
+      if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, cleanedTitle)) {
         console.log(`[SPA] SKIP (too old): ${cleanedTitle.substring(0, 40)}...`);
         continue;
       }

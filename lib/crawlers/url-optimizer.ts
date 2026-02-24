@@ -104,6 +104,46 @@ async function optimizeByDomain(url: string): Promise<UrlOptimizationResult | nu
   const urlObj = new URL(url);
   const hostname = urlObj.hostname.toLowerCase();
 
+  // Google 검색 → Google News RSS 변환
+  if (
+    (hostname === 'www.google.com' || hostname === 'google.com') &&
+    urlObj.pathname === '/search'
+  ) {
+    const query = urlObj.searchParams.get('q');
+    if (query) {
+      const hl = urlObj.searchParams.get('hl') || 'ko';
+      const gl = hl === 'ko' ? 'KR' : hl === 'ja' ? 'JP' : hl === 'zh' ? 'CN' : 'US';
+      const ceid = `${gl}:${hl}`;
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+
+      return {
+        originalUrl: url,
+        optimizedUrl: rssUrl,
+        reason: `Google 검색 → Google News RSS 변환 (키워드: ${decodeURIComponent(query)})`,
+        confidence: 0.95,
+        method: 'rule-domain',
+      };
+    }
+  }
+
+  // 네이버 검색 → Naver News API 변환
+  if (hostname === 'search.naver.com' && urlObj.pathname === '/search.naver') {
+    const query = urlObj.searchParams.get('query');
+    if (query) {
+      // sort=0(관련도순) → sim, sort=1(최신순) → date, 기본값: sim
+      const originalSort = urlObj.searchParams.get('sort');
+      const apiSort = originalSort === '1' ? 'date' : 'sim';
+      const apiUrl = `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(query)}&display=15&sort=${apiSort}`;
+      return {
+        originalUrl: url,
+        optimizedUrl: apiUrl,
+        reason: `네이버 검색 → Naver News API 변환 (키워드: ${decodeURIComponent(query)}, 정렬: ${apiSort === 'sim' ? '관련도순' : '최신순'})`,
+        confidence: 0.95,
+        method: 'rule-domain',
+      };
+    }
+  }
+
   // 도메인별 매핑 규칙
   const domainMappings: Record<string, { subdomain: string; reason: string }> = {
     // 'www.surfit.io': {

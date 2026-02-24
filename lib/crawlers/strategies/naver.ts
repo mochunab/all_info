@@ -7,7 +7,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, htmlToText } from '../content-extractor';
-import { isWithinDays } from '../date-parser';
+import { isWithinDays, MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 import { fetchWithTimeout, DEFAULT_HEADERS } from '../base';
 import { staticStrategy } from './static';
@@ -120,7 +120,7 @@ export class NaverStrategy implements CrawlStrategy {
           const dateStr = feedItem.pubDate || feedItem.isoDate || null;
 
           // 7일 이내 필터링
-          if (!isWithinDays(dateStr, 14, title)) {
+          if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
             console.log(`[NAVER] SKIP (too old): ${title.substring(0, 40)}...`);
             continue;
           }
@@ -245,7 +245,7 @@ export class NaverStrategy implements CrawlStrategy {
               null;
 
             // 7일 이내 필터링
-            if (!isWithinDays(dateStr, 14, title)) {
+            if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
               return;
             }
 

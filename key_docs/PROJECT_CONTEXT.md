@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 데이터 플로우 & 런타임 동작 가이드
 
 > 이 문서의 핵심: **데이터가 시스템을 어떻게 흐르는가**
-> 최종 업데이트: 2026-02-22 (v1.6.2)
+> 최종 업데이트: 2026-02-25 (v1.6.6)
 >
 > **다른 문서 참조**:
 > - 개발 규칙, API Routes, 파일 구조, 환경변수, 디버깅 → [CLAUDE.md](../CLAUDE.md)
@@ -21,12 +21,12 @@
 │                      │           │    maxDuration: 300s      │
 │  - page.tsx (메인)   │           └────────────┬──────────────┘
 │  - AddSourcePage     │                        │
-│  - Components (8개)  │       ┌────────────────┼──────────────┐
+│  - Components (10개) │       ┌────────────────┼──────────────┐
 └──────────────────────┘       │                │              │
                                ▼                ▼              ▼
                        ┌────────────┐  ┌──────────────┐  ┌──────────────┐
-                       │  Supabase  │  │  Crawlers    │  │  Edge Fn (4) │
-                       │  PostgreSQL│  │  (9 전략)    │  │  GPT-5-nano  │
+                       │  Supabase  │  │  Crawlers    │  │  Edge Fn (5) │
+                       │  PostgreSQL│  │  (9 전략)    │  │ Gemini Flash │
                        └────────────┘  └──────────────┘  └──────────────┘
 ```
 
@@ -110,7 +110,7 @@ processPendingSummaries()
   ├─ 5개씩 병렬 (Promise.allSettled), 실패 시 최대 3회 재시도 (1s→2s→3s)
   │
   ├─ USE_EDGE_FUNCTION=true (기본):
-  │   └─ Edge Function (GPT-5-nano) → 실패 시 로컬 OpenAI (GPT-4.1-mini) fallback
+  │   └─ Edge Function (Gemini 2.5 Flash Lite) → 실패 시 로컬 OpenAI (GPT-4.1-mini) fallback
   │
   └─ USE_EDGE_FUNCTION=false:
       └─ 로컬 OpenAI (GPT-4.1-mini) 직접 호출
@@ -134,7 +134,17 @@ page.tsx (메인 페이지)
   │    └─ 10분 AbortController 타임아웃
   │
   ├─ handleLoadMore() → fetchArticles(nextPage, true)
-  └─ handleSearchChange() / onCategoryChange() → fetchArticles(1, false)
+  ├─ handleSearchChange() / onCategoryChange() → fetchArticles(1, false)
+  │
+  ├─ InsightChat (AI 채팅 패널)
+  │    ├─ POST /api/chat → chat-insight Edge Function (Gemini 2.5 Flash Lite)
+  │    └─ pinnedArticle 참조 시:
+  │         ├─ 카드 클릭 → onChatReference(article) → pinnedArticle state
+  │         ├─ GET /api/articles/{id}/content → content_preview 조회
+  │         └─ 질문 전송 시 pinnedArticle(title, summary, tags, content_preview) 포함
+  │              → Edge Function 시스템 프롬프트에 참조 아티클 본문 추가
+  │
+  └─ 채팅 닫힌 상태: 카드 클릭 → 외부 링크 (기존 동작)
 ```
 
 ---
@@ -164,7 +174,7 @@ page.tsx (메인 페이지)
 ```
 POST /api/sources/recommend (Same-Origin)
   → Edge Function: recommend-sources
-    ├─ GPT-5-nano + web_search_preview → 최대 5개 URL 추천
+    ├─ Gemini 2.5 Flash Lite + google_search → 최대 5개 URL 추천
     └─ validateUrl() 6단계 룰베이스 검증 (병렬, 8초 타임아웃, HTML 50KB)
        1. HTTP 접근성 (GET, response.ok)
        2. 리다이렉트 감지 (pathname → / 또는 /index)
@@ -184,6 +194,8 @@ POST /api/sources/recommend (Same-Origin)
 ```
 resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
 
+  0.  URL 최적화 — 검색 URL→API/RSS 변환 (네이버 검색→News API, Google 검색→RSS)
+  0.5 Early Exit — Google News RSS search / Naver API URL 즉시 반환
   1.  HTML 다운로드 (15s timeout, 실패 시 URL 패턴 폴백)
   2.  RSS 발견 (0.95) — 6개 경로 Promise.all 병렬
   2.5 Sitemap 발견 (0.90) — 2개 후보 Promise.all 병렬
@@ -193,10 +205,10 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
   [Stage 6 제거 — v1.5.1]
   7+8 통합 AI 감지 (타입+셀렉터) — 단일 Edge Function 호출
       ├─ Cheerio 전처리: aside/nav/sidebar 제거 후 50000자 truncate
-      ├─ detect-crawler-type Edge Fn (GPT-5-nano)
+      ├─ detect-crawler-type Edge Fn (Gemini 2.5 Flash Lite)
       └─ 후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
   7.5 API 감지 — SPA 확정 후 detect-api-endpoint 호출
-      └─ Puppeteer 네트워크 캡처 → GPT-5-nano → crawl_config 생성
+      └─ Puppeteer 네트워크 캡처 → Gemini 2.5 Flash Lite → crawl_config 생성
   8.5 SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재시도
   9.  사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면:
       └─ AI 1차 → Rule-based 2차 → DB 자동 저장
@@ -211,7 +223,7 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
 | 2 | CMS 감지 | 0.75 | WordPress/Tistory/Ghost |
 | 3 | URL 패턴 | 0.85~0.95 | `.go.kr`, `naver.com` 등 |
 | 4 | SPA 스코어링 | 0.5~1.0 | body 텍스트, 마운트 포인트 |
-| 5 | 통합 AI 감지 (타입+셀렉터) | 0.6~1.0 | GPT-5-nano 단일 호출 (Cheerio 전처리) |
+| 5 | 통합 AI 감지 (타입+셀렉터) | 0.6~1.0 | Gemini 2.5 Flash Lite 단일 호출 (Cheerio 전처리) |
 | 6 | API 감지 | 자동 | SPA 확정 후에만 실행 |
 | 7 | SPA 셀렉터 재감지 | 재시도 | confidence < 0.5 조건 |
 | 8 | 기본값 | 0.3~0.5 | 모든 분석 실패 시 |
@@ -275,13 +287,34 @@ const SOURCE_COLORS: Record<string, string> = {
 | 서비스 | 용도 | 장애 시 영향 |
 |--------|------|-------------|
 | Supabase | DB, Edge Functions | 전체 서비스 불가 |
-| OpenAI API | AI 요약/감지 | 요약 불가 (크롤링은 정상) |
+| Google Gemini API | Edge Function AI 요약/감지 | 요약 불가 (크롤링은 정상) |
+| OpenAI API | 로컬 fallback 요약 (gpt-4.1-mini) | Edge Fn 실패 시 로컬 요약 불가 |
 | Vercel | 호스팅, Cron | 서비스 접속 불가 |
+| Naver Open API | 뉴스 검색 API (search→API 변환) | 네이버 검색 소스만 실패 |
 | 크롤링 대상 사이트 | 콘텐츠 소스 | 해당 소스만 실패 |
 
 ---
 
 ## 버전 히스토리
+
+### v1.6.6 (2026-02-25)
+- 네이버 뉴스 검색 API 연동: `search.naver.com` URL → Naver Open API 자동 변환
+- Google News RSS 검색 early exit: 검색 전용 RSS URL이 generic RSS로 덮어써지는 버그 수정
+- 기사 연령 필터 상수화: `MAX_ARTICLE_AGE_DAYS = 30` (14일→30일, 8개 전략 파일 통합)
+- 제목 HTML 태그/엔티티 정제: `cleanTitle()`에 `<b>`, `&quot;` 등 제거 추가
+- API 전략 본문 추출: `crawlContent()` → STATIC 위임 (HTML 페이지 Readability 파싱)
+- 환경변수 추가: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+
+### v1.6.5 (2026-02-25)
+- 아티클 참조 채팅: 채팅 열린 상태에서 카드 클릭 → 핀 뱃지 + content_preview 기반 상세 질문
+- chat-insight Edge Function 추가 (Gemini 2.5 Flash Lite)
+- `/api/articles/{id}/content`, `/api/chat` API 추가
+
+### v1.6.4 (2026-02-25)
+- Edge Function AI 모델 마이그레이션: OpenAI GPT-5-nano → Gemini 2.5 Flash Lite (4개 함수)
+- recommend-sources: `web_search_preview` → `google_search` 도구
+- Edge Function Secret: `OPENAI_API_KEY` → `google_API_KEY`
+- 로컬 fallback (`lib/ai/summarizer.ts`)은 OpenAI gpt-4.1-mini 유지
 
 ### v1.6.3 (2026-02-22)
 - 자동 복구 조건 확장: `Insufficient valid items`도 auto-recovery 발동
@@ -336,4 +369,4 @@ const SOURCE_COLORS: Record<string, string> = {
 ### v1.4.0 (2026-02-19)
 - getCrawler() 우선순위 수정 (레거시 최우선)
 - API 엔드포인트 자동 감지 (Step 7.5)
-- 크롤링 윈도우 14일 확장
+- 크롤링 윈도우 14일 확장 (→ v1.6.6에서 30일로 재확장)

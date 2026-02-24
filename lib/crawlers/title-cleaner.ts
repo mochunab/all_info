@@ -12,6 +12,16 @@ export function cleanTitle(rawTitle: string): string {
 
   let cleaned = rawTitle;
 
+  // 0. HTML 태그 제거 + 엔티티 디코딩 (API 응답에 <b>, &quot; 등 포함)
+  cleaned = cleaned.replace(/<[^>]+>/g, '');
+  cleaned = cleaned
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
   // 1. 과도한 공백/줄바꿈/탭 정리 (먼저 정규화)
   cleaned = cleaned.replace(/[\s\t\n\r]+/g, ' ').trim();
 

@@ -12,6 +12,8 @@ interface ArticleGridProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   onDelete?: (articleId: string) => void;
+  onChatReference?: (article: Article) => void;
+  onCloseChat?: () => void;
 }
 
 export default function ArticleGrid({
@@ -21,6 +23,8 @@ export default function ArticleGrid({
   hasMore = false,
   onLoadMore,
   onDelete,
+  onChatReference,
+  onCloseChat,
 }: ArticleGridProps) {
   // Empty state
   if (!isLoading && articles.length === 0) {
@@ -61,6 +65,8 @@ export default function ArticleGrid({
             article={article}
             language={language}
             onDelete={onDelete}
+            onChatReference={onChatReference}
+            onCloseChat={onCloseChat}
           />
         ))}
 

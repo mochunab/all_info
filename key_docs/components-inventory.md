@@ -9,9 +9,9 @@
 | 분류 | 수량 | 위치 |
 |------|------|------|
 | 페이지 컴포넌트 | 2개 | `app/` |
-| 공통 UI 컴포넌트 | 8개 | `components/` |
+| 공통 UI 컴포넌트 | 10개 | `components/` |
 | Barrel Export | 1개 | `components/index.ts` |
-| **합계** | **10개** | |
+| **합계** | **12개** | |
 
 ---
 
@@ -24,9 +24,9 @@
 | **파일** | `app/page.tsx` |
 | **타입** | Client Component (`'use client'`) |
 | **역할** | 메인 페이지 - 아티클 목록, 검색, 필터, 무한 스크롤 |
-| **상태** | articles, isLoading, search, category, categories, page, hasMore, totalCount, lastUpdated, showToast, toastMessage |
+| **상태** | articles, isLoading, search, category, categories, page, hasMore, totalCount, lastUpdated, showToast, toastMessage, isChatOpen, pinnedArticle |
 | **API 호출** | GET /api/articles, GET /api/categories, POST /api/crawl/run |
-| **자식 컴포넌트** | Header, FilterBar, ArticleGrid, Toast |
+| **자식 컴포넌트** | Header, FilterBar, ArticleGrid, InsightChat, Toast |
 
 ### AddSourcePage (소스 추가)
 
@@ -81,7 +81,7 @@
 | **파일** | `components/ArticleGrid.tsx` |
 | **타입** | Client Component |
 | **역할** | 아티클 카드 그리드 레이아웃 + 더 보기 버튼 + Empty State |
-| **Props** | `articles: Article[]`, `isLoading?`, `hasMore?`, `onLoadMore?` |
+| **Props** | `articles: Article[]`, `language`, `isLoading?`, `hasMore?`, `onLoadMore?`, `onDelete?`, `onChatReference?`, `onCloseChat?` |
 | **특징** | 반응형 그리드 (1/2/3열), 로딩 시 Skeleton 6개 표시 |
 
 ### ArticleCard
@@ -90,9 +90,9 @@
 |------|-----|
 | **파일** | `components/ArticleCard.tsx` |
 | **타입** | Client Component |
-| **역할** | 개별 아티클 카드 - 썸네일, 제목, AI 요약, 태그, 소스 뱃지 |
-| **Props** | `article: Article` |
-| **특징** | 이미지 프록시 (getProxiedImageUrl), 호버 시 외부 링크 아이콘, 소스별 브랜드 컬러 뱃지, lazy loading, 한국어 선택 시 `title_ko` 우선 표시 |
+| **역할** | 개별 아티클 카드 - 제목, AI 요약, 태그, 소스 뱃지, 삭제 |
+| **Props** | `article: Article`, `language`, `onDelete?`, `onChatReference?`, `onCloseChat?` |
+| **특징** | 소스별 브랜드 컬러 뱃지, 호버 시 외부 링크/삭제 아이콘, `onChatReference` 있으면 카드 클릭 시 채팅 핀 (외부 링크 아이콘은 별도 동작), 삭제 시 채팅 자동 닫기 |
 
 ### Toast
 
@@ -134,6 +134,27 @@
 | **Props** | `currentLang: Language`, `onLanguageChange: (lang: Language) => void` |
 | **특징** | localStorage에 `ih:language` 저장, 국기 이모지 표시, 외부 클릭 닫기 |
 
+### InsightChat
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `components/InsightChat.tsx` |
+| **타입** | Client Component |
+| **역할** | AI 채팅 패널 - 카테고리 기반 인사이트 질문 + 아티클 핀 참조 |
+| **Props** | `isOpen`, `onClose`, `articles: Article[]`, `category`, `language`, `pinnedArticle: Article \| null`, `onClearPinned` |
+| **API 호출** | POST /api/chat, GET /api/articles/{id}/content (핀 시) |
+| **특징** | 슬라이드 패널, 핀 뱃지 UI, content_preview 기반 상세 질문, 스트리밍 응답 |
+
+### ConfirmDialog
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `components/ConfirmDialog.tsx` |
+| **타입** | Client Component |
+| **역할** | 확인/취소 다이얼로그 (삭제 등) |
+| **Props** | `isOpen`, `title`, `message`, `confirmText`, `cancelText`, `onConfirm`, `onCancel`, `language`, `variant?` |
+| **특징** | danger/default variant, 모달 오버레이 |
+
 ---
 
 ## 3. Barrel Export
@@ -165,7 +186,9 @@ page.tsx (Home)
   ├── FilterBar
   ├── ArticleGrid
   │     ├── ArticleCard (N개)
+  │     │     └── ConfirmDialog (삭제 시)
   │     └── Skeleton (로딩 시)
+  ├── InsightChat
   └── Toast
 
 sources/add/page.tsx (AddSourcePage)

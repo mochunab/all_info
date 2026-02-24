@@ -6,3 +6,4 @@ export { default as Skeleton, SkeletonGrid } from './Skeleton';
 export { default as Toast } from './Toast';
 export { default as LanguageSwitcher } from './LanguageSwitcher';
 export { default as ConfirmDialog } from './ConfirmDialog';
+export { default as InsightChat } from './InsightChat';

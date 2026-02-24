@@ -9,6 +9,7 @@ import type { CrawlStrategy, RawContentItem } from '../types';
 import { scrapeAndExtract } from '../firecrawl-client';
 import { extractContent } from '../content-extractor';
 import { isWithinDays } from '../base';
+import { MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 
 const ARTICLE_LIST_SCHEMA = {
   type: 'object',
@@ -111,7 +112,7 @@ export const firecrawlStrategy: CrawlStrategy = {
       // 날짜 필터링 (최근 7일)
       const filtered = items.filter((item) => {
         if (!item.dateStr) return true; // 날짜 없으면 포함
-        return isWithinDays(item.dateStr, 14);
+        return isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS);
       });
 
       console.log(`[FIRECRAWL] After date filter: ${filtered.length}/${items.length} articles`);

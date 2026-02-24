@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
+import { Header, FilterBar, ArticleGrid, Toast, InsightChat } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
 
 import { t } from '@/lib/i18n';
@@ -28,6 +28,8 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
   const [crawlProgress, setCrawlProgress] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const [language, setLanguage] = useState<Language>('ko');
   const initialLoadDone = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -392,7 +394,10 @@ export default function Home() {
       });
   };
 
-  // Handle article deletion
+  const handleChatReference = useCallback((article: Article) => {
+    setPinnedArticle(article);
+  }, []);
+
   const handleArticleDelete = useCallback((articleId: string) => {
     setArticles((prev) => prev.filter((article) => article.id !== articleId));
     setTotalCount((prev) => Math.max(0, prev - 1));
@@ -441,10 +446,38 @@ export default function Home() {
           hasMore={hasMore}
           onLoadMore={handleLoadMore}
           onDelete={handleArticleDelete}
+          onChatReference={isChatOpen ? handleChatReference : undefined}
+          onCloseChat={isChatOpen ? () => setIsChatOpen(false) : undefined}
         />
       </main>
 
-{/* Toast */}
+      {/* Floating Chat Button */}
+      {!isChatOpen && (
+        <div className="fixed bottom-6 left-0 right-0 z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-none">
+          <button
+            className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 pointer-events-auto"
+            onClick={() => setIsChatOpen(true)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span className="text-sm font-medium">{t(language, 'chat.buttonLabel')}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Insight Chat Panel */}
+      <InsightChat
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        articles={articles}
+        category={category}
+        language={language}
+        pinnedArticle={pinnedArticle}
+        onClearPinned={() => setPinnedArticle(null)}
+      />
+
+      {/* Toast */}
       <Toast
         message={toastMessage}
         isVisible={showToast}

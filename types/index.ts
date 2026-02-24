@@ -139,3 +139,28 @@ export interface TranslationCache {
     };
   };
 }
+
+// Chat Insight
+export type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type ChatRequest = {
+  messages: ChatMessage[];
+  articles: { title: string; summary: string | null; summary_tags: string[] }[];
+  category: string;
+  language: Language;
+  pinnedArticle?: {
+    title: string;
+    summary: string | null;
+    summary_tags: string[];
+    content_preview: string | null;
+  };
+};
+
+export type ChatResponse = {
+  success: boolean;
+  reply?: string;
+  error?: string;
+};
