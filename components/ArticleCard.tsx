@@ -12,9 +12,11 @@ type ArticleCardProps = {
   article: Article;
   language: Language;
   onDelete?: (articleId: string) => void;
+  onChatReference?: (article: Article) => void;
+  onCloseChat?: () => void;
 };
 
-export default function ArticleCard({ article, language, onDelete }: ArticleCardProps) {
+export default function ArticleCard({ article, language, onDelete, onChatReference, onCloseChat }: ArticleCardProps) {
   const sourceColor = SOURCE_COLORS[article.source_name] || DEFAULT_SOURCE_COLOR;
   const [translatedTitle, setTranslatedTitle] = useState(article.title);
   const [translatedSummary, setTranslatedSummary] = useState(article.summary || '');
@@ -67,11 +69,21 @@ export default function ArticleCard({ article, language, onDelete }: ArticleCard
   }, [article, language]);
 
   const handleClick = () => {
+    if (onChatReference) {
+      onChatReference(article);
+      return;
+    }
+    window.open(article.source_url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleExternalLink = (e: React.MouseEvent) => {
+    e.stopPropagation();
     window.open(article.source_url, '_blank', 'noopener,noreferrer');
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // 카드 클릭 이벤트 전파 방지
+    e.stopPropagation();
+    if (onCloseChat) onCloseChat();
     setShowDeleteDialog(true);
   };
 
@@ -148,7 +160,10 @@ export default function ArticleCard({ article, language, onDelete }: ArticleCard
                 </svg>
               </button>
               {/* External Link Button */}
-              <div className="w-7 h-7 bg-[var(--bg-tertiary)] rounded-full flex items-center justify-center">
+              <button
+                onClick={handleExternalLink}
+                className="w-7 h-7 bg-[var(--bg-tertiary)] hover:bg-[var(--border)] rounded-full flex items-center justify-center transition-colors"
+              >
                 <svg
                   className="w-3.5 h-3.5 text-[var(--text-secondary)]"
                   fill="none"
@@ -162,7 +177,7 @@ export default function ArticleCard({ article, language, onDelete }: ArticleCard
                     d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                   />
                 </svg>
-              </div>
+              </button>
             </div>
           </div>
 

@@ -98,6 +98,16 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
   const urlLower = url.toLowerCase();
   console.log(`\n[inferCrawlerTypeEnhanced] 🔍 URL 패턴 분석: ${url}`);
 
+  // 0. Google News RSS (URL 최적화 결과)
+  if (urlLower.includes('news.google.com/rss')) {
+    return { type: 'RSS', confidence: 0.95 };
+  }
+
+  // 0b. Naver News API (URL 최적화 결과)
+  if (urlLower.includes('openapi.naver.com')) {
+    return { type: 'API', confidence: 0.95 };
+  }
+
   // 1. Sitemap (RSS 체크보다 앞에: sitemap.xml은 RSS가 아님)
   if (
     urlLower.includes('sitemap') &&

@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Supabase Edge Function: AI 크롤러 타입 + 셀렉터 통합 감지 (GPT-5-nano)
+// Supabase Edge Function: AI 크롤러 타입 + 셀렉터 통합 감지 (Gemini 2.5 Flash Lite)
 // Deno runtime — excluded from Next.js type checking
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -181,36 +181,6 @@ type DetectionResponse = {
   error?: string;
 }
 
-// Responses API 응답에서 텍스트 추출
-function extractTextFromResponse(data: Record<string, unknown>): string {
-  // 1) output_text 편의 필드 (최신 API)
-  if (data.output_text && typeof data.output_text === 'string') {
-    return data.output_text;
-  }
-
-  // 2) output 배열에서 message content 추출
-  if (Array.isArray(data.output)) {
-    for (const item of data.output) {
-      if (item?.type === 'message' && Array.isArray(item.content)) {
-        for (const block of item.content) {
-          if (block?.type === 'output_text' && typeof block.text === 'string' && block.text) {
-            return block.text;
-          }
-        }
-      }
-    }
-  }
-
-  // 3) chat.completions 형식 (혹시 모를 호환)
-  const choiceContent = (data as any)?.choices?.[0]?.message?.content;
-  if (typeof choiceContent === 'string' && choiceContent) {
-    return choiceContent;
-  }
-
-  return '';
-}
-
-// HTML 전처리: <head>, 대형 <script>/<style> 제거 후 truncate
 function preprocessHtml(html: string, maxLength: number = 50000): string {
   return html
     .replace(/<head[\s\S]*?<\/head>/i, '')
@@ -221,113 +191,57 @@ function preprocessHtml(html: string, maxLength: number = 50000): string {
     .substring(0, maxLength);
 }
 
-// GPT-5-nano responses.create() API 호출
-async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | null> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('google_API_KEY');
+  if (!apiKey) throw new Error('google_API_KEY not configured');
 
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  // OpenAI responses.create() API (gpt-5-nano)
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-nano',
-      input: prompt,
-      reasoning: { effort: 'medium' },
-      text: { format: { type: 'json_object' } },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OpenAI API error:', response.status, errorText);
-
-    // Fallback to chat.completions if responses API not available
-    if (response.status === 404) {
-      console.log('Falling back to chat.completions API...');
-      return await fallbackToChatCompletions(prompt, apiKey);
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.3,
+          maxOutputTokens: 800,
+        },
+      }),
     }
-
-    throw new Error(`OpenAI API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = extractTextFromResponse(data);
-
-  // 텍스트 추출 실패 시 chat.completions fallback
-  if (!text) {
-    console.warn('[detect-crawler-type] GPT-5-nano returned empty text, response keys:', Object.keys(data));
-    console.log('Falling back to chat.completions API due to empty response...');
-    return await fallbackToChatCompletions(prompt, apiKey);
-  }
-
-  return { output_text: text };
-}
-
-// Fallback: chat.completions API (gpt-4.1-mini)
-async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 웹 페이지 HTML 구조를 분석하여 최적의 크롤링 전략을 결정하고 CSS 셀렉터를 추출하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 800,
-      response_format: { type: 'json_object' },
-    }),
-  });
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Chat completions API error: ${response.status} - ${errorText}`);
+    console.error('Gemini API error:', response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const data = await response.json();
-  return { output_text: data.choices?.[0]?.message?.content || '' };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    console.warn('[detect-crawler-type] Gemini returned empty text');
+    throw new Error('Empty response from Gemini');
+  }
+
+  return text;
 }
 
-// 통합 크롤러 타입 + 셀렉터 감지 함수
 async function detectCrawlerType(url: string, html: string): Promise<DetectionResponse> {
   try {
-    // HTML 전처리: <head>, 대형 script/style 제거 후 50000자
     const truncatedHtml = preprocessHtml(html, 50000);
 
     const prompt = UNIFIED_DETECTION_PROMPT
       .replace('{url}', url)
       .replace('{html}', truncatedHtml);
 
-    const result = await callGPT5Nano(prompt);
+    const text = await callGemini(prompt);
 
-    if (!result || !result.output_text) {
-      return { success: false, error: 'Empty response from OpenAI' };
-    }
-
-    // JSON 파싱
     try {
       // JSON repair: \: → \\: (AI가 CSS 이스케이프를 JSON에 그대로 쓰는 경우 수정)
-      const repairedJson = result.output_text.replace(/(?<!\\)\\:/g, '\\\\:');
+      const repairedJson = text.replace(/(?<!\\)\\:/g, '\\\\:');
       const parsed = JSON.parse(repairedJson);
 
-      // 유효성 검증
       const validTypes = ['STATIC', 'SPA', 'RSS', 'PLATFORM_NAVER', 'PLATFORM_KAKAO', 'NEWSLETTER', 'API'];
       if (!validTypes.includes(parsed.crawlerType)) {
         return { success: false, error: `Invalid crawler type: ${parsed.crawlerType}` };
@@ -340,7 +254,6 @@ async function detectCrawlerType(url: string, html: string): Promise<DetectionRe
         reasoning: parsed.reasoning || '',
       };
 
-      // 셀렉터가 있으면 추가
       if (parsed.selectors && parsed.selectors.item) {
         response.selectors = {
           item: parsed.selectors.item,
@@ -361,7 +274,7 @@ async function detectCrawlerType(url: string, html: string): Promise<DetectionRe
 
       return response;
     } catch {
-      console.error('Failed to parse JSON:', result.output_text);
+      console.error('Failed to parse JSON:', text);
       return { success: false, error: 'JSON 파싱 실패' };
     }
   } catch (error) {
@@ -373,9 +286,7 @@ async function detectCrawlerType(url: string, html: string): Promise<DetectionRe
   }
 }
 
-// Edge Function 핸들러
 Deno.serve(async (req: Request) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
