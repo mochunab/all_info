@@ -665,7 +665,7 @@ export async function saveArticles(
     }
   }
 
-  return { saved, skipped };
+  return { saved, skipped, updated };
 }
 
 /**

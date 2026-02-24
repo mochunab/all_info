@@ -1,5 +1,4 @@
 
-import { MAX_ARTICLE_AGE_DAYS } from './date-parser';
 
 // User agents
 export const USER_AGENT =
