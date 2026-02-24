@@ -78,6 +78,22 @@ export const translations = {
     'sources.maxLinksReached': '링크는 카테고리당 최대 {max}개까지 추가할 수 있습니다.',
     'sources.maxCategoriesReached': '카테고리는 최대 {max}개까지 추가할 수 있습니다.',
     'sources.recommendLimitPartial': '남은 슬롯 {count}개만큼 추가되었습니다.',
+
+    // Chat Insight
+    'chat.buttonLabel': '인사이트 얻기',
+    'chat.title': 'AI 인사이트',
+    'chat.contextBadge': '{category}의 {count}개 기사 기반',
+    'chat.welcome': '수집된 아티클을 기반으로 인사이트를 제공합니다. 궁금한 것을 질문해보세요!',
+    'chat.placeholder': '질문을 입력하세요...',
+    'chat.send': '전송',
+    'chat.error': '응답 생성에 실패했습니다.',
+    'chat.networkError': '네트워크 오류가 발생했습니다.',
+    'chat.quickTrend': '최근 주요 트렌드는 무엇인가요?',
+    'chat.quickSummary': '전체 기사를 한 줄로 요약해주세요',
+    'chat.quickInsight': '비즈니스에 적용할 수 있는 인사이트는?',
+    'chat.newChat': '새 대화',
+    'chat.pinnedArticle': '참조 중: {title}',
+    'chat.pinHint': '채팅이 열린 상태에서 아티클을 클릭하면 해당 아티클을 참조할 수 있습니다.',
   },
   en: {
     // Header
@@ -156,6 +172,22 @@ export const translations = {
     'sources.maxLinksReached': 'You can add up to {max} links per category.',
     'sources.maxCategoriesReached': 'You can add up to {max} categories.',
     'sources.recommendLimitPartial': 'Only {count} remaining slots were filled.',
+
+    // Chat Insight
+    'chat.buttonLabel': 'Get Insights',
+    'chat.title': 'AI Insights',
+    'chat.contextBadge': 'Based on {count} articles in {category}',
+    'chat.welcome': 'I can provide insights based on collected articles. Ask me anything!',
+    'chat.placeholder': 'Type your question...',
+    'chat.send': 'Send',
+    'chat.error': 'Failed to generate response.',
+    'chat.networkError': 'A network error occurred.',
+    'chat.quickTrend': 'What are the key recent trends?',
+    'chat.quickSummary': 'Summarize all articles in one line',
+    'chat.quickInsight': 'What insights can be applied to business?',
+    'chat.newChat': 'New Chat',
+    'chat.pinnedArticle': 'Referencing: {title}',
+    'chat.pinHint': 'Click an article while chat is open to reference it.',
   },
   ja: {
     // Header
@@ -234,6 +266,22 @@ export const translations = {
     'sources.maxLinksReached': 'カテゴリごとに最大{max}個のリンクを追加できます。',
     'sources.maxCategoriesReached': 'カテゴリは最大{max}個まで追加できます。',
     'sources.recommendLimitPartial': '残り{count}スロット分のみ追加されました。',
+
+    // Chat Insight
+    'chat.buttonLabel': 'インサイトを得る',
+    'chat.title': 'AIインサイト',
+    'chat.contextBadge': '{category}の{count}件の記事に基づく',
+    'chat.welcome': '収集した記事に基づいてインサイトを提供します。何でも質問してください！',
+    'chat.placeholder': '質問を入力してください...',
+    'chat.send': '送信',
+    'chat.error': '応答の生成に失敗しました。',
+    'chat.networkError': 'ネットワークエラーが発生しました。',
+    'chat.quickTrend': '最近の主要トレンドは何ですか？',
+    'chat.quickSummary': 'すべての記事を一行で要約してください',
+    'chat.quickInsight': 'ビジネスに活用できるインサイトは？',
+    'chat.newChat': '新しい会話',
+    'chat.pinnedArticle': '参照中: {title}',
+    'chat.pinHint': 'チャットが開いている状態で記事をクリックすると参照できます。',
   },
   zh: {
     // Header
@@ -312,6 +360,22 @@ export const translations = {
     'sources.maxLinksReached': '每个类别最多可添加{max}个链接。',
     'sources.maxCategoriesReached': '最多可添加{max}个类别。',
     'sources.recommendLimitPartial': '仅添加了剩余的{count}个名额。',
+
+    // Chat Insight
+    'chat.buttonLabel': '获取洞察',
+    'chat.title': 'AI洞察',
+    'chat.contextBadge': '基于{category}的{count}篇文章',
+    'chat.welcome': '我可以根据收集的文章提供洞察。请随时提问！',
+    'chat.placeholder': '输入您的问题...',
+    'chat.send': '发送',
+    'chat.error': '生成回复失败。',
+    'chat.networkError': '发生网络错误。',
+    'chat.quickTrend': '最近的主要趋势是什么？',
+    'chat.quickSummary': '用一句话总结所有文章',
+    'chat.quickInsight': '有哪些可以应用于商业的洞察？',
+    'chat.newChat': '新对话',
+    'chat.pinnedArticle': '参考中: {title}',
+    'chat.pinHint': '聊天打开时点击文章即可引用。',
   },
 } as const;
 

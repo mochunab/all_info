@@ -5,7 +5,7 @@
 
 > AI 기반 비즈니스 콘텐츠 크롤링 & 큐레이션 플랫폼
 > GitHub: https://github.com/mochunab/all_info.git
-> Stack: Next.js 14 (App Router) + TypeScript + Supabase (PostgreSQL + Edge Functions) + Vercel + OpenAI
+> Stack: Next.js 14 (App Router) + TypeScript + Supabase (PostgreSQL + Edge Functions) + Vercel + Gemini / OpenAI
 
 ---
 
@@ -28,7 +28,8 @@
 ### 자동 감지 파이프라인 (`lib/crawlers/strategy-resolver.ts`)
 
 ```
-0. URL 최적화 (url-optimizer.ts) — 4단계 필터 + 섹션 교차 리다이렉트 방지
+0. URL 최적화 (url-optimizer.ts) — 4단계 필터 + 검색 URL→API/RSS 변환
+0.5. Early Exit — Google News RSS search, Naver API URL 즉시 반환
 1. HTML 다운로드 (15s timeout)
 2. RSS 발견 (confidence 0.95) — 6개 경로 Promise.all
 2.5. Sitemap 발견 (0.90) — 2개 후보 Promise.all
@@ -49,7 +50,7 @@
 
 ```
 크롤링 → HTML 파싱 → Readability → content_preview (500자)
-         → Edge Function (GPT-5-nano) → title_ko + summary + summary_tags
+         → Edge Function (Gemini 2.5 Flash Lite) → title_ko + summary + summary_tags
            └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
 
@@ -66,6 +67,8 @@
 | Endpoint | Method | Auth | maxDuration |
 |----------|--------|------|-------------|
 | `/api/articles` | GET | 없음 | 기본 |
+| `/api/articles/{id}/content` | GET | 없음 | 기본 |
+| `/api/chat` | POST | Same-Origin | 30초 |
 | `/api/sources` | GET/POST | Same-Origin | **300초** |
 | `/api/crawl/run` | POST | Bearer | **300초** |
 | `/api/crawl/trigger` | POST | Rate Limit 30s | **300초** |
@@ -130,7 +133,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 
 ### 크롤러 개발
 - `fetchWithTimeout(url, {}, 15000)` — 15초 타임아웃 필수, redirect loop 시 bot UA 자동 재시도
-- `isWithinDays(date, 14)` — 최근 14일 필터
+- `isWithinDays(date, MAX_ARTICLE_AGE_DAYS)` — 최근 30일 필터 (`date-parser.ts` 상수)
 - `maxPages` 제한 필수 (무한 루프 방지)
 - Puppeteer 사용 시 `browser.close()` 필수
 - 새 전략 추가: `strategies/{name}.ts` 생성 → `strategies/index.ts` 등록 → `types.ts` 타입 추가
@@ -170,9 +173,11 @@ OPENAI_API_KEY=                  # 로컬 fallback용
 CRON_SECRET=                     # Cron/Bearer 인증
 USE_EDGE_FUNCTION=true           # false 시 로컬 OpenAI 직접 호출
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NAVER_CLIENT_ID=                 # 네이버 Open API (News Search)
+NAVER_CLIENT_SECRET=             # https://developers.naver.com
 
 # Supabase Edge Function Secrets (Dashboard에서 설정)
-OPENAI_API_KEY=                  # 세 함수 공유
+google_API_KEY=                  # 4개 Edge Function 공유 (Gemini)
 ```
 
 ---
@@ -193,6 +198,7 @@ supabase functions deploy summarize-article --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-crawler-type --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-api-endpoint --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy recommend-sources --project-ref tcpvxihjswauwrmcxhhh
+supabase functions deploy chat-insight --project-ref tcpvxihjswauwrmcxhhh
 # Docker 없어도 deploy 가능 (WARNING은 무시)
 
 # Vercel 배포
@@ -211,7 +217,7 @@ npm run crawl:dry -- --source=<id> --verbose
 
 # AI 요약 실패
 # 1. Supabase Dashboard → Edge Functions → Logs 확인
-# 2. Dashboard → Secrets → OPENAI_API_KEY 존재 확인
+# 2. Dashboard → Secrets → google_API_KEY 존재 확인
 # 3. USE_EDGE_FUNCTION=false 로 로컬 fallback 테스트
 
 # 429 Too Many Requests
@@ -237,6 +243,8 @@ npm run crawl:dry -- --source=<id> --verbose
 ```
 app/api/
   articles/route.ts         GET 아티클 목록
+  articles/[id]/content/route.ts  GET content_preview 개별 조회
+  chat/route.ts             POST AI 채팅 프록시 → chat-insight Edge Function
   sources/route.ts          GET/POST 소스 CRUD + auto-detect
   sources/recommend/route.ts POST AI 콘텐츠 소스 추천 (Same-Origin)
   crawl/run/route.ts        POST 전체 크롤링 (Bearer, 300s)
@@ -255,10 +263,11 @@ lib/ai/
   summarizer.ts         로컬 OpenAI (gpt-4.1-mini)
 
 supabase/functions/
-  summarize-article/    AI 요약 (GPT-5-nano)
-  detect-crawler-type/  크롤러 타입 감지 (GPT-5-nano)
-  detect-api-endpoint/  API 엔드포인트 감지 (GPT-5-nano)
-  recommend-sources/    AI 콘텐츠 소스 추천 (GPT-5-nano + web_search + 6단계 URL 검증)
+  summarize-article/    AI 요약 (Gemini 2.5 Flash Lite)
+  detect-crawler-type/  크롤러 타입 감지 (Gemini 2.5 Flash Lite)
+  detect-api-endpoint/  API 엔드포인트 감지 (Gemini 2.5 Flash Lite)
+  recommend-sources/    AI 소스 추천 (Gemini 2.5 Flash Lite + google_search + 6단계 URL 검증)
+  chat-insight/         AI 채팅 인사이트 (Gemini 2.5 Flash Lite, pinnedArticle 지원)
 
 lib/auth.ts             verifyCronAuth, verifySameOrigin
 lib/i18n.ts             4개 언어 번역 (ko, en, ja, zh)

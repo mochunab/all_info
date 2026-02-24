@@ -8,12 +8,13 @@
 
 | # | 함수명 | 역할 | 모델 | 상태 | 추가일 |
 |---|--------|------|------|------|--------|
-| 1 | `summarize-article` | AI 요약 생성 (title_ko + 1줄 요약 + 태그 3개) | GPT-5-nano / GPT-4.1-mini (fallback) | 운영 중 | 2025-01 |
-| 2 | `detect-crawler-type` | HTML 구조 분석 → 크롤러 타입 자동 결정 | GPT-5-nano / GPT-4o-mini (fallback) | 운영 중 | 2026-02-14 |
-| 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | GPT-5-nano | 운영 중 | 2026-02-19 |
-| 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 + URL 검증) | GPT-5-nano + web_search / GPT-4.1-mini (fallback) | 운영 중 | 2026-02-21 |
+| 1 | `summarize-article` | AI 요약 생성 (title_ko + 1줄 요약 + 태그 3개) | Gemini 2.5 Flash Lite | 운영 중 | 2025-01 |
+| 2 | `detect-crawler-type` | HTML 구조 분석 → 크롤러 타입 자동 결정 | Gemini 2.5 Flash Lite | 운영 중 | 2026-02-14 |
+| 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | Gemini 2.5 Flash Lite | 운영 중 | 2026-02-19 |
+| 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 + URL 검증) | Gemini 2.5 Flash Lite + google_search | 운영 중 | 2026-02-21 |
+| 5 | `chat-insight` | AI 채팅 인사이트 (카테고리/아티클 기반 질의) | Gemini 2.5 Flash Lite | 운영 중 | 2026-02-25 |
 
-> 현재 4개의 Edge Function이 배포되어 있습니다.
+> 현재 5개의 Edge Function이 배포되어 있습니다. (v1.6.4에서 전체 Gemini 2.5 Flash Lite로 마이그레이션)
 
 ---
 
@@ -25,8 +26,8 @@
 |------|-----|
 | **파일** | `supabase/functions/summarize-article/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano (기본) → GPT-4.1-mini (fallback) |
-| **환경변수** | `OPENAI_API_KEY` |
+| **모델** | Gemini 2.5 Flash Lite |
+| **환경변수** | `google_API_KEY` |
 | **CORS** | 모든 Origin 허용 |
 
 ### 요청 (Request)
@@ -96,13 +97,9 @@ Authorization: Bearer {SUPABASE_ANON_KEY or SERVICE_ROLE_KEY}
 ### API 호출 흐름
 
 ```
-1. GPT-5-nano (responses.create API) 시도
-   ├── 성공 → JSON 파싱 후 반환 (title_ko + summary + tags)
-   └── 404 → Fallback 실행
-
-2. Fallback: GPT-4.1-mini (chat.completions API, max_tokens: 700)
-   ├── 성공 → JSON 파싱 후 반환
-   └── 실패 → 에러 반환
+Gemini 2.5 Flash Lite (generateContent API) 시도
+  ├── 성공 → JSON 파싱 후 반환 (title_ko + summary + tags)
+  └── 실패 → 에러 반환
 ```
 
 ### 배포 방법
@@ -114,8 +111,8 @@ npm install -g supabase
 # 2. 프로젝트 연결
 supabase link --project-ref YOUR_PROJECT_REF
 
-# 3. OpenAI API Key 설정
-supabase secrets set OPENAI_API_KEY=sk-...
+# 3. Google API Key 설정
+supabase secrets set google_API_KEY=...
 
 # 4. 함수 배포
 supabase functions deploy summarize-article
@@ -152,8 +149,8 @@ const { data, error } = await supabase.functions.invoke('summarize-article', {
 |------|-----|
 | **파일** | `supabase/functions/detect-crawler-type/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano (기본) → GPT-4o-mini (fallback) |
-| **환경변수** | `OPENAI_API_KEY` |
+| **모델** | Gemini 2.5 Flash Lite |
+| **환경변수** | `google_API_KEY` |
 | **호출 시점** | 소스 저장 시 strategy-resolver.ts Step 7 (AI 타입 감지) |
 
 ### 역할
@@ -226,8 +223,8 @@ supabase functions deploy detect-crawler-type
 |------|-----|
 | **파일** | `supabase/functions/detect-api-endpoint/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano |
-| **환경변수** | `OPENAI_API_KEY` |
+| **모델** | Gemini 2.5 Flash Lite |
+| **환경변수** | `google_API_KEY` |
 | **호출 시점** | 소스 저장 시 strategy-resolver.ts Step 7.5 (SPA 확정 후) |
 
 ### 역할
@@ -239,7 +236,7 @@ SPA 타입으로 확정된 소스에 대해, 실제로 사이트가 REST API를 
 ```
 1. Puppeteer로 페이지 방문
 2. 모든 XHR/Fetch 네트워크 요청 캡처
-3. GPT-5-nano에 요청 목록 전달
+3. Gemini 2.5 Flash Lite에 요청 목록 전달
 4. AI가 콘텐츠 목록 API 식별
 5. 요청 body 구조 + 응답 스키마 추론
 6. crawl_config JSON 생성
@@ -304,7 +301,7 @@ Authorization: Bearer {SERVICE_ROLE_KEY}
 
 ```bash
 supabase functions deploy detect-api-endpoint
-# OPENAI_API_KEY는 summarize-article과 공유 (이미 설정됨)
+# google_API_KEY는 다른 함수와 공유 (이미 설정됨)
 ```
 
 ### 실제 적용 사례
@@ -325,8 +322,8 @@ crawler_type: SPA → API (전환)
 |------|-----|
 | **파일** | `supabase/functions/recommend-sources/index.ts` |
 | **런타임** | Deno |
-| **모델** | GPT-5-nano + `web_search_preview` (기본) → GPT-4.1-mini (fallback, 웹검색 없이 학습 데이터 기반) |
-| **환경변수** | `OPENAI_API_KEY` |
+| **모델** | Gemini 2.5 Flash Lite + `google_search` |
+| **환경변수** | `google_API_KEY` |
 | **호출 시점** | 소스 관리 페이지 "콘텐츠 링크 추천받기" 클릭 시 |
 
 ### 역할
@@ -382,28 +379,84 @@ Authorization: Bearer {SUPABASE_ANON_KEY}
 ### API 호출 흐름
 
 ```
-1. GPT-5-nano (responses API + web_search_preview 도구) 시도
-   ├── 성공 → JSON 파싱 시도
-   │   ├── 파싱 성공 → URL 접근 검증 후 반환
-   │   └── 파싱 실패 → Fallback 실행
-   └── 404 → Fallback 실행
-
-2. Fallback: GPT-4.1-mini (chat.completions API, response_format: json_object)
-   ├── 성공 → JSON 파싱 → URL 접근 검증 후 반환
+1. Gemini 2.5 Flash Lite (generateContent + google_search 도구)
+   ├── 성공 → JSON 파싱 → URL 6단계 룰베이스 검증 후 반환
    └── 실패 → 에러 반환
 
-3. URL 접근 검증 (filterAccessibleUrls)
-   └── HEAD 요청 (5초 타임아웃) → 405면 GET 재시도
-   └── 접속 불가 URL 제거 후 반환
+2. URL 검증 (validateUrl, 병렬, 8초 타임아웃)
+   └── GET + 6단계 검증 (접근성, 리다이렉트, 폐쇄, 빈 페이지, 최신성, WAF)
+   └── 통과한 URL만 반환
 ```
-
-> **주의**: GPT-5-nano + `web_search_preview`는 `text.format: json_object` 미지원. 응답에서 `{...}` 패턴을 직접 추출하여 파싱.
 
 ### 배포 방법
 
 ```bash
 supabase functions deploy recommend-sources
-# OPENAI_API_KEY는 다른 함수와 공유 (이미 설정됨)
+# google_API_KEY는 다른 함수와 공유 (이미 설정됨)
+```
+
+---
+
+## 5. chat-insight
+
+### 개요
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `supabase/functions/chat-insight/index.ts` |
+| **런타임** | Deno |
+| **모델** | Gemini 2.5 Flash Lite |
+| **환경변수** | `google_API_KEY` |
+| **호출 경로** | 프론트엔드 → `/api/chat` (프록시) → Edge Function |
+
+### 역할
+
+카테고리별 아티클 목록 컨텍스트를 기반으로 AI 채팅 인사이트를 제공합니다. `pinnedArticle`이 포함되면 해당 아티클의 content_preview를 시스템 프롬프트에 추가하여 상세 분석 답변을 생성합니다.
+
+### 요청 (Request)
+
+```
+POST /functions/v1/chat-insight
+Content-Type: application/json
+Authorization: Bearer {SUPABASE_ANON_KEY}
+```
+
+```json
+{
+  "messages": [{ "role": "user", "content": "이 아티클 요약해줘" }],
+  "articles": [{ "title": "...", "summary": "...", "summary_tags": ["..."] }],
+  "category": "AI",
+  "language": "ko",
+  "pinnedArticle": {
+    "title": "아티클 제목",
+    "summary": "요약",
+    "summary_tags": ["태그1", "태그2"],
+    "content_preview": "본문 미리보기 500자..."
+  }
+}
+```
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `messages` | ChatMessage[] | O | 대화 히스토리 |
+| `articles` | array | O | 현재 카테고리 아티클 목록 |
+| `category` | string | O | 현재 카테고리명 |
+| `language` | string | O | UI 언어 (ko/en/ja/zh) |
+| `pinnedArticle` | object | X | 핀된 아티클 (title, summary, summary_tags, content_preview) |
+
+### 응답 (Response)
+
+**성공 (200)**: 스트리밍 텍스트 응답
+
+**실패 (400/500)**:
+```json
+{ "error": "에러 메시지" }
+```
+
+### 배포 방법
+
+```bash
+supabase functions deploy chat-insight --project-ref tcpvxihjswauwrmcxhhh
 ```
 
 ---
@@ -434,7 +487,7 @@ supabase functions deploy function-name
 
 // ✅ GOOD
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-const apiKey = Deno.env.get('OPENAI_API_KEY');
+const apiKey = Deno.env.get('google_API_KEY');
 Deno.serve(async (req: Request) => { ... });
 
 // ❌ BAD
@@ -479,12 +532,12 @@ return new Response(JSON.stringify(data), {
 
 | Secret | 용도 | 사용 함수 |
 |--------|------|-----------|
-| `OPENAI_API_KEY` | OpenAI API 키 | `summarize-article`, `detect-crawler-type`, `detect-api-endpoint`, `recommend-sources` (공유) |
+| `google_API_KEY` | Google Gemini API 키 | 5개 함수 공유 (`summarize-article`, `detect-crawler-type`, `detect-api-endpoint`, `recommend-sources`, `chat-insight`) |
 
 ```bash
 # Secret 확인
 supabase secrets list
 
 # Secret 등록 (최초 1회)
-supabase secrets set OPENAI_API_KEY=sk-...
+supabase secrets set google_API_KEY=...
 ```

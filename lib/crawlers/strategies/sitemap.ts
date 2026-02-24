@@ -7,6 +7,7 @@ import type { CrawlStrategy, RawContentItem, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, extractMetadata } from '../content-extractor';
 import { isWithinDays } from '../base';
+import { MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { DEFAULT_HEADERS, fetchWithTimeout } from '../base';
 
 type SitemapEntry = {
@@ -21,7 +22,7 @@ export class SitemapStrategy implements CrawlStrategy {
     const config = parseConfig(source);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const crawlConfig = (config as any).crawl_config as Record<string, unknown> | undefined;
-    const withinDays = (crawlConfig?.withinDays as number | undefined) || 14;
+    const withinDays = (crawlConfig?.withinDays as number | undefined) || MAX_ARTICLE_AGE_DAYS;
     const urlFilters = (config as unknown as { url_filters?: { include?: string[]; exclude?: string[] } }).url_filters;
 
     // 1. Sitemap URL 결정
@@ -37,16 +38,25 @@ export class SitemapStrategy implements CrawlStrategy {
       return [];
     }
 
+    // 2.5. base_url 경로 기반 필터링
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalBaseUrl = (config as any)._original_base_url as string | undefined;
+    const pathFiltered = this.filterByPathPrefix(allEntries, originalBaseUrl || source.base_url);
+    console.log(`[SITEMAP] Path-filtered: ${pathFiltered.length}/${allEntries.length}`);
+
     // 3. 날짜 필터링 + 내림차순 정렬 (최신 우선)
-    const dated = allEntries.filter(e => {
+    const dated = pathFiltered.filter(e => {
       if (!e.lastmod) return true; // lastmod 없으면 포함 (날짜는 페이지에서 추출)
       return isWithinDays(e.lastmod, withinDays, e.loc);
     });
 
     dated.sort((a, b) => {
-      if (!a.lastmod) return 1;
-      if (!b.lastmod) return -1;
-      return new Date(b.lastmod).getTime() - new Date(a.lastmod).getTime();
+      if (a.lastmod && b.lastmod) {
+        return new Date(b.lastmod).getTime() - new Date(a.lastmod).getTime();
+      }
+      if (a.lastmod && !b.lastmod) return -1;
+      if (!a.lastmod && b.lastmod) return 1;
+      return this.scoreArticleLikelihood(b.loc) - this.scoreArticleLikelihood(a.loc);
     });
 
     // 4. URL include/exclude 필터 적용
@@ -243,6 +253,45 @@ export class SitemapStrategy implements CrawlStrategy {
     for (const p of positivePatterns) if (filename.includes(p)) score += 2;
     for (const p of negativePatterns) if (filename.includes(p)) score -= 2;
     return score;
+  }
+
+  private scoreArticleLikelihood(url: string): number {
+    try {
+      const u = new URL(url);
+      const segments = u.pathname.split('/').filter(Boolean);
+      const last = segments[segments.length - 1] || '';
+      let score = 0;
+
+      if (/^\d+$/.test(last)) score += 10;
+      if (/\d{4}[/-]\d{2}/.test(u.pathname)) score += 5;
+      if (last.includes('-') && last.length > 10) score += 3;
+      if (last.length > 20) score += 2;
+      score += Math.min(segments.length, 5);
+
+      return score;
+    } catch { return 0; }
+  }
+
+  private filterByPathPrefix(entries: SitemapEntry[], baseUrl: string): SitemapEntry[] {
+    try {
+      const base = new URL(baseUrl);
+      const basePath = base.pathname.replace(/\/+$/, '');
+      if (!basePath || basePath === '') return entries;
+
+      const filtered = entries.filter(({ loc }) => {
+        try {
+          const u = new URL(loc);
+          if (u.origin !== base.origin) return true;
+          return u.pathname.startsWith(basePath);
+        } catch { return true; }
+      });
+
+      if (filtered.length === 0 && entries.length > 0) {
+        console.warn(`[SITEMAP] Path filter removed all — fallback to unfiltered`);
+        return entries;
+      }
+      return filtered;
+    } catch { return entries; }
   }
 
   // URL include/exclude 필터 적용

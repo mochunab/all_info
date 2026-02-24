@@ -4,7 +4,7 @@
 import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig } from '../types';
 import { parseConfig } from '../types';
-import { isWithinDays } from '../date-parser';
+import { isWithinDays, MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { generatePreview } from '../content-extractor';
 import { processTitle } from '../title-cleaner';
 
@@ -79,31 +79,10 @@ export class APIStrategy implements CrawlStrategy {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<string> {
-    // API 전략에서는 일반적으로 목록에서 이미 content를 가져옴
-    // 필요한 경우 상세 API 호출
+    // 기사 URL은 대부분 HTML 페이지 → STATIC 전략으로 본문 추출
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'InsightHub/1.0',
-          Accept: 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // content 필드 추출 시도
-      const content =
-        data.content ||
-        data.body ||
-        data.text ||
-        data.description ||
-        JSON.stringify(data);
-
-      return generatePreview(content);
+      const { staticStrategy } = await import('./static');
+      return await staticStrategy.crawlContent(url, config);
     } catch (error) {
       console.error(`[API] Content fetch error:`, error);
       return '';
@@ -201,6 +180,11 @@ export class APIStrategy implements CrawlStrategy {
       'Content-Type': 'application/json',
       ...apiConfig.headers,
     };
+
+    if (url.includes('openapi.naver.com')) {
+      if (process.env.NAVER_CLIENT_ID) headers['X-Naver-Client-Id'] = process.env.NAVER_CLIENT_ID;
+      if (process.env.NAVER_CLIENT_SECRET) headers['X-Naver-Client-Secret'] = process.env.NAVER_CLIENT_SECRET;
+    }
 
     const options: RequestInit = {
       method,
@@ -323,7 +307,7 @@ export class APIStrategy implements CrawlStrategy {
         }
 
         // 7일 이내 필터링
-        if (!isWithinDays(dateStr, 14, title)) {
+        if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
           console.log(`[API] SKIP (too old): ${title.substring(0, 40)}...`);
           continue;
         }

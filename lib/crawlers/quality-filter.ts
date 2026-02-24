@@ -81,6 +81,41 @@ const GARBAGE_URL_PATTERNS = [
   /\/admin/i,
   /\/settings/i,
   /\/config/i,
+
+  // 정적 페이지
+  /\/about\/?$/i,
+  /\/about-us\/?$/i,
+  /\/contact\/?$/i,
+  /\/contact-us\/?$/i,
+  /\/careers?\/?$/i,
+  /\/faq\/?$/i,
+
+  // 서비스/상품
+  /\/services?\/?$/i,
+  /\/products?\/?$/i,
+  /\/pricing\/?$/i,
+  /\/portfolio\/?$/i,
+  /\/solutions?\/?$/i,
+
+  // 법적 페이지
+  /\/legal/i,
+  /\/cookie/i,
+  /\/disclaimer/i,
+
+  // 사이트 유틸리티
+  /\/sitemap/i,
+  /\/feed\/?$/i,
+  /\/rss\/?$/i,
+  /\/search\/?$/i,
+  /\/404\/?$/i,
+
+  // 사용자 계정
+  /\/account/i,
+  /\/dashboard/i,
+
+  // 결제
+  /\/cart\/?$/i,
+  /\/checkout/i,
 ];
 
 /**

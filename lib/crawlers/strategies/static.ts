@@ -6,7 +6,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
-import { isWithinDays, extractDateFromText } from '../date-parser';
+import { isWithinDays, extractDateFromText, MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 import { fetchWithTimeout, DEFAULT_HEADERS as BASE_HEADERS } from '../base';
 
@@ -125,7 +125,7 @@ export class StaticStrategy implements CrawlStrategy {
 
           if (item && item.title && item.link) {
             // 7일 이내 필터링
-            if (!isWithinDays(item.dateStr, 14, item.title)) {
+            if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
               console.log(`[STATIC] SKIP (too old): ${item.title.substring(0, 40)}...`);
               return;
             }

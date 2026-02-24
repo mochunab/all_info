@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Supabase Edge Function: AI 요약 생성 (GPT-5-nano)
+// Supabase Edge Function: AI 요약 생성 (Gemini 2.5 Flash Lite)
 // Deno runtime — excluded from Next.js type checking
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -57,13 +57,13 @@ const UNIFIED_SUMMARY_PROMPT = `### **역할**
 
 {content}`;
 
-interface SummaryRequest {
+type SummaryRequest = {
   title: string;
   content: string;
   articleId?: string;
 }
 
-interface SummaryResponse {
+type SummaryResponse = {
   success: boolean;
   title_ko?: string;
   summary_tags?: string[];
@@ -71,123 +71,44 @@ interface SummaryResponse {
   error?: string;
 }
 
-// Responses API 응답에서 텍스트 추출
-function extractTextFromResponse(data: Record<string, unknown>): string {
-  // 1) output_text 편의 필드 (최신 API)
-  if (data.output_text && typeof data.output_text === 'string') {
-    return data.output_text;
-  }
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('google_API_KEY');
+  if (!apiKey) throw new Error('google_API_KEY not configured');
 
-  // 2) output 배열에서 message content 추출
-  if (Array.isArray(data.output)) {
-    for (const item of data.output) {
-      if (item?.type === 'message' && Array.isArray(item.content)) {
-        for (const block of item.content) {
-          if (block?.type === 'output_text' && typeof block.text === 'string' && block.text) {
-            return block.text;
-          }
-        }
-      }
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.5,
+          maxOutputTokens: 700,
+        },
+      }),
     }
-  }
-
-  // 3) chat.completions 형식 (혹시 모를 호환)
-  const choiceContent = (data as any)?.choices?.[0]?.message?.content;
-  if (typeof choiceContent === 'string' && choiceContent) {
-    return choiceContent;
-  }
-
-  return '';
-}
-
-// GPT-5-nano responses.create() API 호출
-async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | null> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  // OpenAI responses.create() API (gpt-5-nano)
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-nano',
-      input: prompt,
-      reasoning: { effort: 'low' },
-      text: { format: { type: 'json_object' } },
-    }),
-  });
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('OpenAI API error:', response.status, errorText);
-
-    // Fallback to chat.completions if responses API not available
-    if (response.status === 404) {
-      console.log('Falling back to chat.completions API...');
-      return await fallbackToChatCompletions(prompt, apiKey);
-    }
-
-    throw new Error(`OpenAI API error: ${response.status}`);
+    console.error('Gemini API error:', response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const data = await response.json();
-  const text = extractTextFromResponse(data);
-
-  // 텍스트 추출 실패 시 chat.completions fallback
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
-    console.warn('[summarize-article] GPT-5-nano returned empty text, response keys:', Object.keys(data));
-    console.log('Falling back to chat.completions API due to empty response...');
-    return await fallbackToChatCompletions(prompt, apiKey);
+    console.warn('[summarize-article] Gemini returned empty text');
+    throw new Error('Empty response from Gemini');
   }
 
-  return { output_text: text };
+  return text;
 }
 
-// Fallback: chat.completions API (gpt-4.1-mini)
-async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 콘텐츠 본문글을 읽고 핵심을 정리하는 요약 장인입니다. 반드시 JSON 형식으로만 응답하세요.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 700,
-      response_format: { type: 'json_object' },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Chat completions API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return { output_text: data.choices?.[0]?.message?.content || '' };
-}
-
-// 요약 생성 함수
 async function generateSummary(title: string, content: string): Promise<SummaryResponse> {
   try {
-    // 본문 길이 제한 (토큰 절약)
     const truncatedContent = content.length > 3000
       ? content.substring(0, 3000) + '...'
       : content;
@@ -195,15 +116,10 @@ async function generateSummary(title: string, content: string): Promise<SummaryR
     const fullContent = `제목: ${title}\n\n${truncatedContent}`;
     const prompt = UNIFIED_SUMMARY_PROMPT.replace('{content}', fullContent);
 
-    const result = await callGPT5Nano(prompt);
+    const text = await callGemini(prompt);
 
-    if (!result || !result.output_text) {
-      return { success: false, error: 'Empty response from OpenAI' };
-    }
-
-    // JSON 파싱
     try {
-      const parsed = JSON.parse(result.output_text);
+      const parsed = JSON.parse(text);
       return {
         success: true,
         title_ko: parsed.title_ko || null,
@@ -211,7 +127,7 @@ async function generateSummary(title: string, content: string): Promise<SummaryR
         detailed_summary: parsed.detailed_summary || '',
       };
     } catch {
-      console.error('Failed to parse JSON:', result.output_text);
+      console.error('Failed to parse JSON:', text);
       return { success: false, error: 'JSON 파싱 실패' };
     }
   } catch (error) {
@@ -223,9 +139,7 @@ async function generateSummary(title: string, content: string): Promise<SummaryR
   }
 }
 
-// Edge Function 핸들러
 Deno.serve(async (req: Request) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

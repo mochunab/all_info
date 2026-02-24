@@ -175,6 +175,64 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
       console.log(`   ℹ️  URL 최적화 불필요 (원본 사용)`);
     }
 
+    // 0.5a. Google News RSS search URL → RSS 전략 즉시 반환
+    // URL 최적화로 변환된 RSS URL이 다시 RSS 발견 단계를 거치면
+    // 일반 피드(news.google.com/rss)를 찾아 검색어가 사라지는 버그 방지
+    if (url.includes('news.google.com/rss/search')) {
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`✨ [전략 결정] RSS - Google News RSS (URL 최적화 자동 변환)`);
+      console.log(`   📊 신뢰도: 95%`);
+      console.log(`   🔗 RSS URL: ${url}`);
+      console.log(`${'='.repeat(80)}\n`);
+
+      return {
+        primaryStrategy: 'RSS',
+        fallbackStrategies: ['STATIC', 'SPA'],
+        rssUrl: url,
+        selectors: null,
+        excludeSelectors: undefined,
+        pagination: null,
+        confidence: 0.95,
+        detectionMethod: 'rss-discovery',
+        spaDetected: false,
+        optimizedUrl,
+      };
+    }
+
+    // 0.5b. Naver API URL → API 전략 즉시 반환 (HTML 다운로드 불필요)
+    if (url.includes('openapi.naver.com')) {
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`✨ [전략 결정] API - Naver News API (URL 최적화 자동 변환)`);
+      console.log(`   📊 신뢰도: 95%`);
+      console.log(`   🔌 엔드포인트: ${url}`);
+      console.log(`${'='.repeat(80)}\n`);
+
+      return {
+        primaryStrategy: 'API',
+        fallbackStrategies: ['STATIC'],
+        rssUrl: null,
+        selectors: null,
+        excludeSelectors: undefined,
+        pagination: null,
+        confidence: 0.95,
+        detectionMethod: 'api-detection',
+        spaDetected: false,
+        optimizedUrl,
+        apiConfig: {
+          endpoint: url,
+          method: 'GET',
+          responseMapping: {
+            items: 'items',
+            title: 'title',
+            link: 'originallink',
+            date: 'pubDate',
+          },
+          confidence: 0.95,
+          reasoning: '네이버 검색 URL → Naver News API 자동 변환',
+        },
+      };
+    }
+
     // 1. HTML 페이지 가져오기 (15초 타임아웃)
     console.log(`\n📥 [1단계/9단계] HTML 페이지 다운로드 시작...`);
     console.log(`   ⏱️  최대 대기시간: 15초`);

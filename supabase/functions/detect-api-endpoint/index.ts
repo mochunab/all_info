@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Supabase Edge Function: AI 기반 숨겨진 API 엔드포인트 감지 (GPT-5-nano)
+// Supabase Edge Function: AI 기반 숨겨진 API 엔드포인트 감지 (Gemini 2.5 Flash Lite)
 // Deno runtime — excluded from Next.js type checking
 //
 // 입력: { pageUrl: string, requests: CapturedRequest[] }
@@ -100,7 +100,6 @@ const API_DETECT_PROMPT = `### 역할
 
 이제 위 기준으로 분석하시오.`;
 
-// 가로챈 요청 타입
 type CapturedRequest = {
   url: string;
   method: string;
@@ -109,7 +108,6 @@ type CapturedRequest = {
   responseStatus: number;
 };
 
-// 감지된 API 설정
 type DetectedApiConfig = {
   endpoint: string;
   method: 'GET' | 'POST';
@@ -132,113 +130,47 @@ type DetectedApiConfig = {
   reasoning: string;
 };
 
-// Responses API 응답에서 텍스트 추출 (detect-crawler-type과 동일한 패턴)
-function extractTextFromResponse(data: Record<string, unknown>): string {
-  if (data.output_text && typeof data.output_text === 'string') {
-    return data.output_text;
-  }
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('google_API_KEY');
+  if (!apiKey) throw new Error('google_API_KEY not configured');
 
-  if (Array.isArray(data.output)) {
-    for (const item of data.output) {
-      if (item?.type === 'message' && Array.isArray(item.content)) {
-        for (const block of item.content) {
-          if (block?.type === 'output_text' && typeof block.text === 'string' && block.text) {
-            return block.text;
-          }
-        }
-      }
-    }
-  }
-
-  const choiceContent = (data as any)?.choices?.[0]?.message?.content;
-  if (typeof choiceContent === 'string' && choiceContent) {
-    return choiceContent;
-  }
-
-  return '';
-}
-
-// GPT-5-nano responses.create() API 호출
-async function callGPT5Nano(prompt: string): Promise<{ output_text: string } | null> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
-
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5-nano',
-      input: prompt,
-      reasoning: { effort: 'medium' },
-      text: { format: { type: 'json_object' } },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OpenAI API error:', response.status, errorText);
-
-    if (response.status === 404) {
-      console.log('Falling back to chat.completions API...');
-      return await fallbackToChatCompletions(prompt, apiKey);
-    }
-
-    throw new Error(`OpenAI API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = extractTextFromResponse(data);
-
-  if (!text) {
-    console.warn('[detect-api-endpoint] GPT-5-nano returned empty text, falling back...');
-    return await fallbackToChatCompletions(prompt, apiKey);
-  }
-
-  return { output_text: text };
-}
-
-// Fallback: chat.completions (gpt-4.1-mini)
-async function fallbackToChatCompletions(prompt: string, apiKey: string): Promise<{ output_text: string } | null> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 웹 API 분석 전문가입니다. 반드시 JSON 형식으로만 응답하세요.',
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 800,
         },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 800,
-      response_format: { type: 'json_object' },
-    }),
-  });
+      }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Chat completions API error: ${response.status} - ${errorText}`);
+    console.error('Gemini API error:', response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const data = await response.json();
-  return { output_text: data.choices?.[0]?.message?.content || '' };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    console.warn('[detect-api-endpoint] Gemini returned empty text');
+    throw new Error('Empty response from Gemini');
+  }
+
+  return text;
 }
 
-// API 엔드포인트 분석
 async function detectApiEndpoint(
   pageUrl: string,
   requests: CapturedRequest[]
 ): Promise<{ success: boolean; config?: DetectedApiConfig; error?: string }> {
   try {
-    // 요청 목록을 간결하게 포맷
     const requestSummary = requests.map((req, i) => {
       const urlPath = (() => {
         try { return new URL(req.url).pathname + new URL(req.url).search; } catch { return req.url; }
@@ -254,19 +186,13 @@ async function detectApiEndpoint(
       .replace('{pageUrl}', pageUrl)
       .replace('{requests}', requestSummary || '(감지된 API 요청 없음)');
 
-    const result = await callGPT5Nano(prompt);
-
-    if (!result || !result.output_text) {
-      return { success: false, error: 'Empty response from OpenAI' };
-    }
-
-    const parsed = JSON.parse(result.output_text);
+    const text = await callGemini(prompt);
+    const parsed = JSON.parse(text);
 
     if (!parsed.found) {
       return { success: false, error: parsed.reasoning || '아티클 API 없음' };
     }
 
-    // 필수 필드 검증
     if (!parsed.endpoint || !parsed.method || !parsed.responseMapping?.items || !parsed.responseMapping?.title || !parsed.responseMapping?.link) {
       return { success: false, error: '필수 필드 누락 (endpoint, method, responseMapping.items/title/link)' };
     }
@@ -305,7 +231,6 @@ async function detectApiEndpoint(
   }
 }
 
-// Edge Function 핸들러
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -333,7 +258,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify(result),
       {
-        status: result.success ? 200 : 200, // 분석 자체는 항상 200 (성공/실패는 result.success로 구분)
+        status: result.success ? 200 : 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
