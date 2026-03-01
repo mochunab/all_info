@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { processPendingSummaries } from '@/lib/ai/batch-summarizer';
+
 import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
@@ -214,22 +214,9 @@ async function handleCrawlRun(request: NextRequest) {
     console.log(`💾 새로 저장된 콘텐츠: ${totalNew}개`);
     console.log(`${'='.repeat(80)}\n`);
 
-    // After crawling, process pending summaries (skip if per-source mode with skipSummary)
-    let summaryResult = { processed: 0, success: 0, failed: 0 };
-    if (!skipSummary) {
-      console.log(`\n${'─'.repeat(80)}`);
-      console.log(`🤖 AI 요약 생성 시작...`);
-      console.log(`${'─'.repeat(80)}`);
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
-      console.log(`\n✅ AI 요약 완료: ${summaryResult.success}/${summaryResult.processed}개 성공`);
-      if (summaryResult.failed > 0) {
-        console.log(`⚠️  실패: ${summaryResult.failed}개`);
-      }
-    } else {
-      console.log(`\n⏭️  AI 요약 건너뛰기 (별도 실행 예정)`);
-    }
+    // AI 요약은 별도 Cron (/api/summarize/batch, 매일 00:05 UTC)에서 실행
+    const summaryResult = { processed: 0, success: 0, failed: 0 };
+    console.log(`\nℹ️  AI 요약은 별도 Cron (00:05 UTC)에서 실행됩니다.`);
 
     // 크롤링 완료 후 articles 캐시 무효화
     console.log(`\n🗑️  캐시 무효화 중...`);
