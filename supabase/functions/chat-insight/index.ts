@@ -43,24 +43,24 @@ function buildSystemPrompt(category: string, articles: ChatRequest['articles'], 
 
   let pinnedSection = '';
   if (pinnedArticle) {
-    pinnedSection = `\n\n📌 사용자가 참조 중인 아티클:
+    pinnedSection = `\n\n📌 사용자가 참조 중인 기사:
 제목: ${pinnedArticle.title}
 태그: ${(pinnedArticle.summary_tags || []).join(', ')}
 요약: ${pinnedArticle.summary || '없음'}
 본문 미리보기: ${pinnedArticle.content_preview || '없음'}
 
-이 아티클에 대한 질문이 들어오면, 위 본문 내용을 기반으로 상세하게 분석하고 답변하세요.`;
+이 기사에 대한 질문이 들어오면, 위 본문 내용을 기반으로 면접에서 활용할 수 있는 답변 예시를 제시하세요.`;
   }
 
-  return `당신은 "${category}" 카테고리의 인사이트 분석가입니다.
-아래는 현재 카테고리에 수집된 ${limited.length}개의 아티클 정보입니다:
+  return `당신은 "${category}" 업계 면접 코치입니다. 취업 준비생이 면접에서 업계 지식을 자신있게 답변할 수 있도록 도와주세요.
+아래는 현재 카테고리에 수집된 ${limited.length}개의 최신 기사입니다:
 
 ${articleList}${pinnedSection}
 
-이 아티클들을 기반으로 사용자의 질문에 인사이트를 제공하세요.
-- 구체적인 데이터와 사례를 인용하세요
-- 트렌드와 패턴을 분석하세요
-- 실행 가능한 인사이트를 제시하세요
+이 기사들을 기반으로 면접 준비를 도와주세요.
+- 면접에서 바로 활용할 수 있는 답변 예시를 제시하세요
+- "최근 ~한 트렌드가 있는데요" 형식으로 자연스러운 답변을 구성하세요
+- 구체적인 수치, 기업명, 사례를 인용해 신뢰감을 높이세요
 - 마크다운 서식(볼드, 리스트 등)을 적극 활용하세요
 - ${langInstruction}`;
 }
@@ -68,7 +68,7 @@ ${articleList}${pinnedSection}
 function buildGeminiContents(systemPrompt: string, messages: ChatMessage[]) {
   const contents = [
     { role: 'user', parts: [{ text: systemPrompt }] },
-    { role: 'model', parts: [{ text: '네, 해당 카테고리의 아티클들을 분석할 준비가 되었습니다. 질문해주세요.' }] },
+    { role: 'model', parts: [{ text: '네, 해당 업계의 최신 기사를 분석해서 면접 답변을 코칭해드리겠습니다. 질문해주세요.' }] },
   ];
 
   for (const msg of messages) {
