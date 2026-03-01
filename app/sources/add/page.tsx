@@ -1,4 +1,5 @@
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getMasterUserId } from '@/lib/user';
 import SourcesPageClient from './SourcesPageClient';
 
 type SourceLink = {
@@ -19,15 +20,35 @@ type Category = {
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-export default async function AddSourcePage() {
+export default async function AddSourcePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ user_id?: string }>;
+}) {
+  const params = await searchParams;
+  const masterId = await getMasterUserId();
+  const isHomeFeedContext = !params.user_id;
+  const effectiveUserId = params.user_id || masterId;
+
+  // 홈피드 컨텍스트에서 로그인 여부 확인
+  let readOnly = false;
+  if (isHomeFeedContext) {
+    const authClient = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: { user } } = await (authClient as any).auth.getUser();
+    if (!user || user.id !== masterId) {
+      readOnly = true;
+    }
+  }
+
   const supabase = createServiceClient();
 
-  // 서버에서 직접 Supabase 병렬 조회 (API 라우트 경유 X)
+  // 서버에서 직접 Supabase 병렬 조회 (user_id로 스코핑)
   const [sourcesResult, categoriesResult] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).from('crawl_sources').select('*').order('priority', { ascending: false }),
+    (supabase as any).from('crawl_sources').select('*').eq('user_id', effectiveUserId).order('priority', { ascending: false }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).from('categories').select('*')
+    (supabase as any).from('categories').select('*').eq('user_id', effectiveUserId)
       .order('display_order', { ascending: true, nullsFirst: false }).order('name'),
   ]);
 
@@ -73,6 +94,7 @@ export default async function AddSourcePage() {
       initialCategories={cats}
       initialSourcesByCategory={grouped}
       initialActiveCategory={cats[0]?.name || ''}
+      readOnly={readOnly}
     />
   );
 }

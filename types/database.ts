@@ -2,9 +2,36 @@
 export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: {
+          id: string;
+          email: string;
+          nickname: string | null;
+          role: 'user' | 'master';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email: string;
+          nickname?: string | null;
+          role?: 'user' | 'master';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          nickname?: string | null;
+          role?: 'user' | 'master';
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       articles: {
         Row: {
           id: string;
+          user_id: string;
           source_id: string;
           source_name: string;
           source_url: string;
@@ -23,6 +50,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          user_id: string;
           source_id: string;
           source_name: string;
           source_url: string;
@@ -41,6 +69,7 @@ export interface Database {
         };
         Update: {
           id?: string;
+          user_id?: string;
           source_id?: string;
           source_name?: string;
           source_url?: string;
@@ -58,9 +87,39 @@ export interface Database {
           updated_at?: string;
         };
       };
+      categories: {
+        Row: {
+          id: number;
+          user_id: string;
+          name: string;
+          is_default: boolean;
+          display_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          user_id: string;
+          name: string;
+          is_default?: boolean;
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          user_id?: string;
+          name?: string;
+          is_default?: boolean;
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       crawl_sources: {
         Row: {
           id: number;
+          user_id: string;
           name: string;
           base_url: string;
           priority: number;
@@ -72,6 +131,7 @@ export interface Database {
         };
         Insert: {
           id?: number;
+          user_id: string;
           name: string;
           base_url: string;
           priority?: number;
@@ -83,6 +143,7 @@ export interface Database {
         };
         Update: {
           id?: number;
+          user_id?: string;
           name?: string;
           base_url?: string;
           priority?: number;

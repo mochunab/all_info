@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 
-// Allowed origins for CORS
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'https://localhost:3000',
-  // Add production domain(s) here:
-  // 'https://insight-hub.vercel.app',
 ];
 
-// Simple in-memory rate limit for /api/crawl/trigger (30s cooldown)
 let lastTriggerTime = 0;
 const TRIGGER_COOLDOWN_MS = 30_000;
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const origin = request.headers.get('origin') || '';
   const isAllowedOrigin = ALLOWED_ORIGINS.includes(origin);
 
-  // --- Rate limit: /api/crawl/trigger ---
   if (pathname === '/api/crawl/trigger' && request.method === 'POST') {
     const now = Date.now();
     if (now - lastTriggerTime < TRIGGER_COOLDOWN_MS) {
@@ -29,8 +25,6 @@ export function middleware(request: NextRequest) {
     lastTriggerTime = now;
   }
 
-  // --- CORS handling ---
-  // Handle preflight OPTIONS requests
   if (request.method === 'OPTIONS') {
     const preflightHeaders: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -48,15 +42,39 @@ export function middleware(request: NextRequest) {
     });
   }
 
-  // --- Apply response headers ---
-  const response = NextResponse.next();
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
 
-  // CORS headers for allowed origins only
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request: { headers: request.headers },
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  await supabase.auth.getUser();
+
   if (isAllowedOrigin) {
     response.headers.set('Access-Control-Allow-Origin', origin);
   }
 
-  // Security headers (defense-in-depth with next.config.mjs)
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -70,7 +88,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all API routes and pages, excluding static files and Next.js internals
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

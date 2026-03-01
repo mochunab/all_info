@@ -37,6 +37,14 @@ export class RSSStrategy implements CrawlStrategy {
     // RSS URL 결정 (config에서 지정하거나 base_url 사용)
     const rssUrl = config.crawl_config?.rssUrl || source.base_url;
 
+    // rssUrl이 base_url과 다르면 스코프 호환성 체크
+    // 불일치 시 에러 throw → 폴백 체인이 STATIC으로 전환
+    if (rssUrl !== source.base_url && !this.checkScopeCompatibility(source.base_url, rssUrl)) {
+      console.log(`[RSS] 스코프 불일치 — base: ${source.base_url}`);
+      console.log(`[RSS]                  rss:  ${rssUrl}`);
+      throw new Error(`RSS scope mismatch: feed covers broader scope than base_url`);
+    }
+
     console.log(`[RSS] Fetching feed: ${rssUrl}`);
 
     // 피드 fetch/parse 실패 시 에러 전파 → crawlWithStrategy에서 fallback 처리
@@ -183,6 +191,28 @@ export class RSSStrategy implements CrawlStrategy {
       dateStr,
       content,
     };
+  }
+
+  private checkScopeCompatibility(baseUrl: string, rssUrl: string): boolean {
+    try {
+      const base = new URL(baseUrl);
+      const rss = new URL(rssUrl);
+      const basePath = base.pathname.replace(/\/+$/, '') || '';
+      const rssPath = rss.pathname.replace(/\/+$/, '') || '';
+
+      if (!basePath || basePath === '/') return true;
+      if (rssPath === basePath || rssPath.startsWith(basePath + '/')) return true;
+
+      // 루트 레벨 RSS → 얕은 경로(1~2세그먼트)만 허용
+      const RSS_ROOT = /^\/(feed|rss|atom|feed\.xml|rss\.xml|atom\.xml|index\.xml)\/?$/i;
+      if (RSS_ROOT.test(rss.pathname)) {
+        return basePath.split('/').filter(Boolean).length <= 2;
+      }
+
+      return false;
+    } catch {
+      return true;
+    }
   }
 
   private normalizeUrl(url: string, removeParams?: string[]): string {

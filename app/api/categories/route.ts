@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 import { getCache, setCache, invalidateCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getMasterUserId } from '@/lib/user';
 
 type CategoryResponse = {
   categories: { id: number; name: string; is_default: boolean }[];
@@ -12,10 +13,16 @@ const defaultCategoryResponse: CategoryResponse = {
 };
 
 // GET /api/categories - Get all categories (In-Memory cached)
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const userIdParam = searchParams.get('user_id') || '';
+    const effectiveUserId = userIdParam || await getMasterUserId();
+
+    const cacheKey = `${CACHE_KEYS.CATEGORIES}:${effectiveUserId}`;
+
     // Layer 1: In-Memory cache
-    const cached = getCache<CategoryResponse>(CACHE_KEYS.CATEGORIES);
+    const cached = getCache<CategoryResponse>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         headers: {
@@ -27,11 +34,11 @@ export async function GET() {
 
     const supabase = await createClient();
 
-    // Try to fetch from categories table
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
       .from('categories')
       .select('*')
+      .eq('user_id', effectiveUserId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name');
 
@@ -45,7 +52,7 @@ export async function GET() {
     }
 
     const body: CategoryResponse = { categories: data };
-    setCache(CACHE_KEYS.CATEGORIES, body, CACHE_TTL.CATEGORIES);
+    setCache(cacheKey, body, CACHE_TTL.CATEGORIES);
 
     return NextResponse.json(body, {
       headers: {
@@ -69,6 +76,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const authClient = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: { user } } = await (authClient as any).auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Login required' }, { status: 401 });
+    }
+
     const supabase = createServiceClient();
     const body = await request.json();
     const { name } = body;
@@ -82,12 +96,13 @@ export async function DELETE(request: NextRequest) {
 
     const trimmedName = name.trim();
 
-    // 1. Delete all articles with this category
+    // 1. Delete all articles with this category (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: deletedArticles, error: artDeleteError } = await (supabase as any)
       .from('articles')
       .delete()
       .eq('category', trimmedName)
+      .eq('user_id', user.id)
       .select('id');
 
     const deletedArticleCount = deletedArticles?.length || 0;
@@ -95,12 +110,13 @@ export async function DELETE(request: NextRequest) {
       console.error('Error deleting articles for category:', artDeleteError);
     }
 
-    // 2. Delete all crawl_sources with this category in config
+    // 2. Delete all crawl_sources with this category in config (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sourcesToDelete } = await (supabase as any)
       .from('crawl_sources')
       .select('id')
-      .eq('config->>category', trimmedName);
+      .eq('config->>category', trimmedName)
+      .eq('user_id', user.id);
 
     let deletedSourceCount = 0;
     if (sourcesToDelete && sourcesToDelete.length > 0) {
@@ -118,12 +134,13 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 3. Delete the category itself
+    // 3. Delete the category itself (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: catDeleteError } = await (supabase as any)
       .from('categories')
       .delete()
-      .eq('name', trimmedName);
+      .eq('name', trimmedName)
+      .eq('user_id', user.id);
 
     if (catDeleteError) {
       console.error('Error deleting category:', catDeleteError);
@@ -133,8 +150,8 @@ export async function DELETE(request: NextRequest) {
     console.log(`[CATEGORIES] Deleted category "${trimmedName}" with ${deletedSourceCount} sources, ${deletedArticleCount} articles`);
 
     // 캐시 무효화
-    invalidateCache(CACHE_KEYS.CATEGORIES);
-    invalidateCache(CACHE_KEYS.SOURCES);
+    invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    invalidateCacheByPrefix(CACHE_KEYS.SOURCES);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     return NextResponse.json({
@@ -162,6 +179,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 로그인된 유저 확인
+    const authClient = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: { user } } = await (authClient as any).auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Login required' }, { status: 401 });
+    }
+
     const supabase = createServiceClient();
     const body = await request.json();
     const { name } = body;
@@ -181,12 +206,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if category already exists
+    // Check if category already exists for this user
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: existing } = await (supabase as any)
       .from('categories')
       .select('id')
       .eq('name', trimmedName)
+      .eq('user_id', user.id)
       .single();
 
     if (existing) {
@@ -215,6 +241,7 @@ export async function POST(request: NextRequest) {
         name: trimmedName,
         is_default: false,
         display_order: nextOrder,
+        user_id: user.id,
       })
       .select()
       .single();
@@ -225,7 +252,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 캐시 무효화
-    invalidateCache(CACHE_KEYS.CATEGORIES);
+    invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
 
     return NextResponse.json({ category: data });
   } catch (error) {
@@ -245,6 +272,13 @@ export async function PATCH(request: NextRequest) {
         { error: 'Unauthorized' },
         { status: 401 }
       );
+    }
+
+    const authClient = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: { user } } = await (authClient as any).auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Login required' }, { status: 401 });
     }
 
     const supabase = createServiceClient();
@@ -272,12 +306,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // 중복 확인
+    // 중복 확인 (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: existing } = await (supabase as any)
       .from('categories')
       .select('id')
       .eq('name', trimmedNew)
+      .eq('user_id', user.id)
       .single();
 
     if (existing) {
@@ -287,31 +322,34 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // 1. categories 테이블 이름 변경
+    // 1. categories 테이블 이름 변경 (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: catError } = await (supabase as any)
       .from('categories')
       .update({ name: trimmedNew })
-      .eq('name', trimmedOld);
+      .eq('name', trimmedOld)
+      .eq('user_id', user.id);
 
     if (catError) {
       console.error('Error renaming category:', catError);
       return NextResponse.json({ error: catError.message }, { status: 500 });
     }
 
-    // 2. articles.category 일괄 변경
+    // 2. articles.category 일괄 변경 (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any)
       .from('articles')
       .update({ category: trimmedNew })
-      .eq('category', trimmedOld);
+      .eq('category', trimmedOld)
+      .eq('user_id', user.id);
 
-    // 3. crawl_sources.config 내 category 변경
+    // 3. crawl_sources.config 내 category 변경 (scoped to user)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sources } = await (supabase as any)
       .from('crawl_sources')
       .select('id, config')
-      .eq('config->>category', trimmedOld);
+      .eq('config->>category', trimmedOld)
+      .eq('user_id', user.id);
 
     if (sources && sources.length > 0) {
       await Promise.all(
@@ -328,8 +366,8 @@ export async function PATCH(request: NextRequest) {
     console.log(`[CATEGORIES] Renamed "${trimmedOld}" → "${trimmedNew}" (${sources?.length || 0} sources updated)`);
 
     // 캐시 무효화
-    invalidateCache(CACHE_KEYS.CATEGORIES);
-    invalidateCache(CACHE_KEYS.SOURCES);
+    invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    invalidateCacheByPrefix(CACHE_KEYS.SOURCES);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
 
     return NextResponse.json({ success: true, oldName: trimmedOld, newName: trimmedNew });
@@ -377,7 +415,7 @@ export async function PUT(request: NextRequest) {
     console.log(`[CATEGORIES] Reordered ${categories.length} categories`);
 
     // 캐시 무효화
-    invalidateCache(CACHE_KEYS.CATEGORIES);
+    invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
 
     return NextResponse.json({ success: true });
   } catch (error) {

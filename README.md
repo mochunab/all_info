@@ -12,6 +12,7 @@ Insight Hub는 다양한 비즈니스 콘텐츠 소스(블로그, 뉴스레터, 
 - **AI 요약**: OpenAI (GPT-4.1-mini / GPT-5-nano) 기반 1줄 요약 + 태그 3개 + 한국어 제목 번역 자동 생성
 - **다국어 지원**: 한국어, English, 日本語, 中文 4개 언어 UI
 - **실시간 검색/필터**: 키워드 검색, 카테고리 필터링, 소스별 필터링
+- **멀티유저 피드**: 홈피드 (공개 큐레이션) + 마이피드 (개인 소스 관리)
 - **자동 크롤링**: Vercel Cron으로 매일 아침 9시 자동 수집
 - **반응형 UI**: Desktop, Tablet, Mobile 지원
 
@@ -75,6 +76,7 @@ Supabase Dashboard에서 다음 테이블을 생성하세요:
 - `crawl_sources` - 크롤링 소스 관리
 - `crawl_logs` - 크롤링 실행 로그
 - `categories` - 카테고리 관리
+- `users` - 유저 프로필 (auth.users 가입 시 자동 생성)
 
 > 상세 스키마: [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
 

@@ -15,9 +15,9 @@
 
 | Role | 설명 | 용도 |
 |------|------|------|
-| `anon` | 비인증 사용자 | 공개 데이터 읽기 (아티클 목록) |
-| `authenticated` | 인증된 사용자 | 현재 미사용 (인증 기능 없음) |
-| `service_role` | 서비스 역할 | 크롤링, AI 요약 등 서버 작업 (RLS 우회) |
+| `anon` | 비인증 사용자 | 공개 데이터 읽기 (홈피드 아티클 목록) |
+| `authenticated` | 인증된 사용자 | 마이피드 데이터 읽기/쓰기, 본인 프로필 조회 |
+| `service_role` | 서비스 역할 | 크롤링, AI 요약, master user 조회 등 서버 작업 (RLS 우회) |
 
 ---
 
@@ -85,7 +85,24 @@ CREATE POLICY "logs_select_all" ON crawl_logs
 -- INSERT/UPDATE는 service_role만 (크롤링 API에서)
 ```
 
-### 4. categories
+### 4. users
+
+| 정책명 | 역할 | 작업 | USING 조건 | 설명 |
+|--------|------|------|-----------|------|
+| `users_select_own` | `authenticated` | SELECT | `auth.uid() = id` | 본인 프로필만 조회 |
+| `users_update_own` | `authenticated` | UPDATE | `auth.uid() = id` | 본인 프로필만 수정 |
+
+```sql
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_select_own" ON users
+  FOR SELECT TO authenticated USING (auth.uid() = id);
+
+CREATE POLICY "users_update_own" ON users
+  FOR UPDATE TO authenticated USING (auth.uid() = id);
+```
+
+### 5. categories
 
 | 정책명 | 역할 | 작업 | USING 조건 | 설명 |
 |--------|------|------|-----------|------|
@@ -176,6 +193,7 @@ RESET ROLE;
 
 | 일시 | 변경 내용 | 테이블 |
 |------|-----------|--------|
+| 2026-03-01 | users 테이블 RLS 추가 (본인 조회/수정), authenticated 역할 활용 | users |
 | 2025-01-03 | 초기 RLS 정책 설정 | articles, crawl_sources, crawl_logs, categories |
 
 > RLS 정책 변경 시 반드시 이 문서를 업데이트하세요.

@@ -8,7 +8,7 @@ export const BOT_USER_AGENT = 'Mozilla/5.0 (compatible; InsightHub/1.0; +https:/
 
 // Request headers
 export const DEFAULT_HEADERS = {
-  'User-Agent': USER_AGENT,
+  'User-Agent': BOT_USER_AGENT,
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
   'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
 };

@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { createServiceClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveStrategy } from '@/lib/crawlers/strategy-resolver';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 import { getCache, setCache, invalidateCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getMasterUserId } from '@/lib/user';
 
 // GET /api/sources - Get all crawl sources (In-Memory cached)
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const userIdParam = searchParams.get('user_id') || '';
+    const effectiveUserId = userIdParam || await getMasterUserId();
+
+    const cacheKey = `${CACHE_KEYS.SOURCES}:${effectiveUserId}`;
+
     // Layer 1: In-Memory cache
-    const cached = getCache<{ sources: unknown[] }>(CACHE_KEYS.SOURCES);
+    const cached = getCache<{ sources: unknown[] }>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         headers: {
@@ -25,6 +32,7 @@ export async function GET() {
     const { data, error } = await (supabase as any)
       .from('crawl_sources')
       .select('*')
+      .eq('user_id', effectiveUserId)
       .order('priority', { ascending: false });
 
     if (error) {
@@ -33,7 +41,7 @@ export async function GET() {
     }
 
     const body = { sources: data || [] };
-    setCache(CACHE_KEYS.SOURCES, body, CACHE_TTL.SOURCES);
+    setCache(cacheKey, body, CACHE_TTL.SOURCES);
 
     return NextResponse.json(body, {
       headers: {
@@ -63,6 +71,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 로그인된 유저 확인
+    const authClient = await createClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: { user } } = await (authClient as any).auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Login required' }, { status: 401 });
+    }
+
     const supabase = createServiceClient();
     const body = await request.json();
     const { sources, deleteIds } = body;
@@ -74,12 +90,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 삭제 요청된 소스 처리
+    // 삭제 요청된 소스 처리 (scoped to user)
     if (deleteIds && Array.isArray(deleteIds) && deleteIds.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: deleteError } = await (supabase as any)
         .from('crawl_sources')
         .delete()
+        .eq('user_id', user.id)
         .in('id', deleteIds);
 
       if (deleteError) {
@@ -108,6 +125,7 @@ export async function POST(request: NextRequest) {
     const { data: existingSourcesData } = await (supabase as any)
       .from('crawl_sources')
       .select('id, config, crawler_type, base_url, crawl_url')
+      .eq('user_id', user.id)
       .in('base_url', allUrls);
 
     type ExistingSource = {
@@ -413,6 +431,7 @@ export async function POST(request: NextRequest) {
             },
             is_active: true,
             priority: 1,
+            user_id: user.id,
           })
           .select()
           .single();
@@ -444,7 +463,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 변경 후 캐시 무효화
-    invalidateCache(CACHE_KEYS.SOURCES);
+    invalidateCache(`${CACHE_KEYS.SOURCES}:${user.id}`);
 
     // Next.js 캐시 무효화 (Server Component 페이지 재렌더링)
     revalidatePath('/sources/add');

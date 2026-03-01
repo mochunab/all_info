@@ -877,6 +877,33 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 
 ---
 
+## ADR-022: 홈피드/마이피드 분리 (멀티유저 피드)
+
+**일시**: 2026-03-01
+**상태**: 확정
+
+**결정**: 홈피드(`/`)는 master 계정 콘텐츠를 공개 표시하고, 마이피드(`/my-feed`)는 로그인 유저의 개인 피드로 분리한다. 모든 데이터를 `user_id`로 스코핑한다.
+
+**배경**:
+- 기존 단일 피드 구조에서 다수의 유저가 각자의 소스를 등록하고 크롤링하는 기능 필요
+- 홈피드는 공개 큐레이션 피드로, 마이피드는 개인화 피드로 역할 분리
+
+**구현**:
+- DB: `articles`, `categories`, `crawl_sources`에 `user_id` 컬럼 추가 (기존 데이터 = master)
+- `users` 테이블: `auth.users` 가입 시 `handle_new_user()` 트리거로 자동 생성 (role: master/user)
+- API: `user_id` 쿼리 파라미터 (미전달 시 `getMasterUserId()` 기본값)
+- 캐시: 키에 userId 포함하여 유저 간 캐시 오염 방지
+- `categories` UNIQUE: `name` → `(user_id, name)` 변경
+- 홈피드 접근 제어: 마스터 → 전체 기능, 일반 로그인 유저 → 소스 추가 숨김, 비로그인 → readOnly
+
+**대안 검토**:
+- 완전 분리된 테넌트 DB: 오버엔지니어링, 단일 DB에서 user_id 필터가 충분
+- 홈피드 제거 (마이피드만): 비로그인 사용자에게 콘텐츠를 보여줄 수 없음
+
+**관련 파일**: `lib/user.ts`, `app/my-feed/page.tsx`, `components/LoginPromptDialog.tsx`, API routes 전체
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
