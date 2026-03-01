@@ -322,14 +322,21 @@ async function discoverFromHtml(url: string): Promise<UrlOptimizationResult | nu
         if (linkUrlObj.pathname === urlObj.pathname) continue;
 
         // 섹션 교차 리다이렉트 방지:
-        // 원본 URL이 특정 섹션(/bicnic/trend)인데 다른 섹션(/plus)으로 바꾸는 것을 차단
-        // 루트 URL(/)은 제한 없이 어디든 리다이렉트 가능
+        // 공통 깊이까지 모든 세그먼트가 일치해야 함 (상위/하위 경로만 허용)
+        // e.g., /magazine/list/business → /magazine/list/new 차단 (형제 경로)
+        // e.g., /blog/2024/01 → /blog 허용 (상위 경로)
         const originalSegments = urlObj.pathname.split('/').filter(Boolean);
         if (originalSegments.length > 0) {
           const linkSegments = linkUrlObj.pathname.split('/').filter(Boolean);
-          if (linkSegments.length > 0 && linkSegments[0] !== originalSegments[0]) {
-            continue; // 다른 섹션이므로 스킵
+          const minLen = Math.min(originalSegments.length, linkSegments.length);
+          let diverges = false;
+          for (let i = 0; i < minLen; i++) {
+            if (originalSegments[i] !== linkSegments[i]) {
+              diverges = true;
+              break;
+            }
           }
+          if (diverges) continue;
         }
       } catch {
         continue;

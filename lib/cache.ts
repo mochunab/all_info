@@ -32,11 +32,11 @@ export function invalidateCacheByPrefix(prefix: string): void {
   }
 }
 
-// Cache keys
+// Cache keys (user-scoped: append `:${userId}` for per-user caching)
 export const CACHE_KEYS = {
-  SOURCES: 'api:sources',
-  CATEGORIES: 'api:categories',
-  ARTICLES_PREFIX: 'api:articles:', // + query string
+  SOURCES: 'api:sources',       // + `:${userId}`
+  CATEGORIES: 'api:categories', // + `:${userId}`
+  ARTICLES_PREFIX: 'api:articles:', // + `u=${userId}&` query string
 } as const;
 
 // TTLs

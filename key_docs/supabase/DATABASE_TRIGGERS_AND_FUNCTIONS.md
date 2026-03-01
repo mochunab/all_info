@@ -13,7 +13,27 @@
 
 ## 확인된 Database Functions
 
-### 1. updated_at 자동 갱신 (추정)
+### 1. handle_new_user() — 유저 자동 생성
+
+`auth.users`에 새 유저 가입 시 `public.users` 테이블에 프로필 자동 생성.
+
+```sql
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email)
+  VALUES (NEW.id, NEW.email);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+```
+
+### 2. updated_at 자동 갱신
 
 ```sql
 -- articles.updated_at 컬럼이 수정 시 자동 갱신되도록 설정
@@ -187,6 +207,7 @@ ORDER BY routine_name;
 
 | 일시 | 변경 내용 | 테이블 |
 |------|-----------|--------|
+| 2026-03-01 | `handle_new_user()` 트리거 추가 (auth.users → public.users 자동 생성) | users |
 | 2025-01-03 | 프로젝트 초기 설정 | articles, crawl_sources, crawl_logs |
 
 > Trigger/Function 추가/변경 시 이 문서를 업데이트하세요.

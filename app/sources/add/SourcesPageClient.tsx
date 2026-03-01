@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Toast } from '@/components';
+import { Toast, Footer, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
 import {
@@ -191,12 +191,14 @@ type SourcesPageClientProps = {
   initialCategories: Category[];
   initialSourcesByCategory: Record<string, SourceLink[]>;
   initialActiveCategory: string;
+  readOnly?: boolean;
 };
 
 export default function SourcesPageClient({
   initialCategories,
   initialSourcesByCategory,
   initialActiveCategory,
+  readOnly = false,
 }: SourcesPageClientProps) {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [activeCategory, setActiveCategory] = useState(initialActiveCategory);
@@ -224,6 +226,7 @@ export default function SourcesPageClient({
   const [showRecommendDialog, setShowRecommendDialog] = useState(false);
   const [recommendProgress, setRecommendProgress] = useState(0);
   const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const language: Language = 'ko';
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
@@ -908,6 +911,10 @@ export default function SourcesPageClient({
             ) : (
               <button
                 onClick={() => {
+                  if (readOnly) {
+                    setShowLoginDialog(true);
+                    return;
+                  }
                   if (categories.length >= MAX_CATEGORIES) {
                     setToastMessage(t(language, 'sources.maxCategoriesReached', { max: String(MAX_CATEGORIES) }));
                     setShowToast(true);
@@ -1034,11 +1041,19 @@ export default function SourcesPageClient({
         )}
       </main>
 
+      <Footer language={language} />
+
       {/* Bottom Sticky Save Button */}
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-primary)] border-t border-[var(--border)] p-4">
         <div className="max-w-2xl mx-auto">
           <button
-            onClick={handleSave}
+            onClick={() => {
+              if (readOnly) {
+                setShowLoginDialog(true);
+                return;
+              }
+              handleSave();
+            }}
             disabled={!hasValidSources || isSaving}
             className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -1204,6 +1219,12 @@ export default function SourcesPageClient({
         isVisible={showToast}
         onClose={() => setShowToast(false)}
         duration={2200}
+      />
+
+      {/* Login Prompt */}
+      <LoginPromptDialog
+        isOpen={showLoginDialog}
+        onClose={() => setShowLoginDialog(false)}
       />
     </div>
   );

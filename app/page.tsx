@@ -1,15 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Header, FilterBar, ArticleGrid, Toast, InsightChat } from '@/components';
+import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
-
+import { createClient } from '@/lib/supabase/client';
 import { t } from '@/lib/i18n';
 
 const STORAGE_KEY = {
   HOME_ARTICLES: 'ih:home:articles',
   HOME_CATEGORIES: 'ih:home:categories',
   LANGUAGE: 'ih:language',
+  CATEGORY: 'ih:category',
 } as const;
 
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
@@ -31,6 +32,19 @@ export default function Home() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const [language, setLanguage] = useState<Language>('ko');
+  const [isNonMasterUser, setIsNonMasterUser] = useState(false);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).from('users').select('role').eq('id', user.id).single()
+        .then(({ data }: { data: { role: string } | null }) => {
+          if (data && data.role !== 'master') setIsNonMasterUser(true);
+        });
+    });
+  }, []);
+
   const initialLoadDone = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef(search);
@@ -153,7 +167,8 @@ export default function Home() {
         const names: string[] = JSON.parse(cachedCats);
         if (names.length > 0) {
           setCategories(names);
-          setCategory(names[0]);
+          const saved = localStorage.getItem(STORAGE_KEY.CATEGORY);
+          setCategory(saved && names.includes(saved) ? saved : names[0]);
         }
       }
     } catch { /* 무시 */ }
@@ -169,8 +184,8 @@ export default function Home() {
               (c: { name: string }) => c.name
             );
             setCategories(categoryNames);
-            // 항상 첫 번째 카테고리를 기본값으로 설정
-            setCategory(categoryNames[0] || '');
+            const saved = localStorage.getItem(STORAGE_KEY.CATEGORY);
+            setCategory(saved && categoryNames.includes(saved) ? saved : categoryNames[0] || '');
             try {
               sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify(categoryNames));
             } catch { /* 무시 */ }
@@ -222,6 +237,7 @@ export default function Home() {
 
   const handleCategoryChange = useCallback((value: string) => {
     setCategory(value);
+    try { localStorage.setItem(STORAGE_KEY.CATEGORY, value); } catch { /* 무시 */ }
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -415,13 +431,8 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Header
-        lastUpdated={lastUpdated}
-        onRefresh={handleRefresh}
-        isCrawling={isCrawling}
-        crawlProgress={crawlProgress}
         language={language}
         onLanguageChange={handleLanguageChange}
-        selectedCategory={category}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -435,6 +446,10 @@ export default function Home() {
             categories={categories}
             totalCount={totalCount}
             language={language}
+            onRefresh={handleRefresh}
+            isCrawling={isCrawling}
+            crawlProgress={crawlProgress}
+            hideAddSource={isNonMasterUser}
           />
         </div>
 
@@ -450,6 +465,8 @@ export default function Home() {
           onCloseChat={isChatOpen ? () => setIsChatOpen(false) : undefined}
         />
       </main>
+
+      <Footer language={language} />
 
       {/* Floating Chat Button */}
       {!isChatOpen && (

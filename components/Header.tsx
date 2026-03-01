@@ -1,134 +1,125 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import type { Language } from '@/types';
+import type { User } from '@supabase/supabase-js';
 import { t } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 import LanguageSwitcher from './LanguageSwitcher';
 
 type HeaderProps = {
-  lastUpdated?: string;
-  onRefresh?: () => void;
-  isCrawling?: boolean;
-  crawlProgress?: string;
   language?: Language;
   onLanguageChange?: (lang: Language) => void;
-  selectedCategory?: string;
 };
 
 export default function Header({
-  lastUpdated,
-  onRefresh,
-  isCrawling = false,
-  crawlProgress,
   language = 'ko',
   onLanguageChange,
-  selectedCategory,
 }: HeaderProps) {
-  const getUpdateText = () => {
-    if (!lastUpdated) return t(language, 'header.updateWaiting');
+  const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
 
-    const date = new Date(lastUpdated);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
+  useEffect(() => {
+    const supabase = createClient();
 
-    if (isToday) {
-      const hours = date.getHours();
-      const minutes = date.getMinutes().toString().padStart(2, '0');
-      return t(language, 'header.updateToday', { time: `${hours}:${minutes}` });
-    } else {
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
-      const hours = date.getHours();
-      return t(language, 'header.updateDate', {
-        date: `${month}/${day}`,
-        hour: String(hours),
-      });
-    }
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    router.refresh();
   };
 
-  const handleRefresh = () => {
-    if (!onRefresh || isCrawling) return;
-    onRefresh();
-  };
-
-  // '전체' 카테고리인지 확인
-  const allCategory = t(language, 'filter.allCategory');
-  const isAllCategory = !selectedCategory || selectedCategory === allCategory;
-  const shouldShowRefreshButton = !isAllCategory;
+  const NAV_ITEMS = [
+    { label: '홈피드', href: '/' },
+    { label: '마이피드', href: '/my-feed' },
+  ];
 
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--accent)] text-white">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {/* Archive Box Icon */}
-                <path d="M3 6h18v2H3z" fill="currentColor" />
-                <rect x="4" y="8" width="16" height="12" rx="1" />
-                <path d="M9 12h6M9 15h4" strokeWidth="1.5" />
-              </svg>
-            </div>
-            <div>
+          <div className="flex items-center gap-8">
+            <Link href="/" className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--accent)] text-white">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 6h18v2H3z" fill="currentColor" />
+                  <rect x="4" y="8" width="16" height="12" rx="1" />
+                  <path d="M9 12h6M9 15h4" strokeWidth="1.5" />
+                </svg>
+              </div>
               <h1
                 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]"
                 style={{ fontFamily: 'Pretendard, sans-serif' }}
               >
                 아카인포
               </h1>
-            </div>
-          </Link>
+            </Link>
 
-          {/* Right Side: Update Badge + Buttons */}
+            <nav className="flex items-center gap-6">
+              {NAV_ITEMS.map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'text-[var(--text-primary)]'
+                        : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
           <div className="flex items-center gap-3">
-            {/* Update Badge / Crawl Progress */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] rounded-full border border-[var(--border)]">
-              <span className="relative flex h-2 w-2">
-                <span className={`pulse-dot absolute inline-flex h-full w-full rounded-full opacity-75 ${isCrawling ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${isCrawling ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-              </span>
-              <span className="text-xs sm:text-sm text-[var(--text-secondary)] font-medium">
-                {isCrawling ? (crawlProgress || t(language, 'header.crawling')) : getUpdateText()}
-              </span>
-            </div>
-
-            {/* Refresh Button - 특정 카테고리 선택 시에만 표시 */}
-            {shouldShowRefreshButton && (
-              <button
-                onClick={handleRefresh}
-                disabled={isCrawling}
-                className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed h-[38px]"
-              >
-                <svg
-                  className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                <span className="hidden sm:inline">
-                  {isCrawling ? t(language, 'header.refreshing') : t(language, 'header.refresh')}
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-[var(--text-secondary)] hidden sm:inline">
+                  {user.email}
                 </span>
-              </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {t(language, 'header.logout')}
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                {t(language, 'header.login')}
+              </Link>
             )}
 
-            {/* Language Switcher */}
             {onLanguageChange && (
               <LanguageSwitcher
                 currentLang={language}

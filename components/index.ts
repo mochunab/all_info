@@ -7,3 +7,5 @@ export { default as Toast } from './Toast';
 export { default as LanguageSwitcher } from './LanguageSwitcher';
 export { default as ConfirmDialog } from './ConfirmDialog';
 export { default as InsightChat } from './InsightChat';
+export { default as Footer } from './Footer';
+export { default as LoginPromptDialog } from './LoginPromptDialog';
