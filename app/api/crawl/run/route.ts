@@ -45,7 +45,7 @@ async function handleCrawlRun(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const sourceId = searchParams.get('sourceId');
     const category = searchParams.get('category');
-    const skipSummary = searchParams.get('skipSummary') === 'true';
+    const _skipSummary = searchParams.get('skipSummary') === 'true'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
     console.log(`\n${'='.repeat(80)}`);
     console.log(`🚀 크롤링 시작 ${sourceId ? `(소스 ID: ${sourceId})` : category ? `(카테고리: ${category})` : '(전체 소스)'}`);

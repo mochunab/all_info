@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Toast, Footer, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
-import { t } from '@/lib/i18n';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { t, translateCategory } from '@/lib/i18n';
 import {
   DndContext,
   closestCenter,
@@ -163,7 +164,7 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, onRen
             style={{ color: 'inherit' }}
           />
         ) : (
-          <span>{category}</span>
+          <span>{translateCategory(category, language)}</span>
         )}
         {count > 0 && !isEditing && (
           <span className={`text-xs ${
@@ -230,7 +231,22 @@ export default function SourcesPageClient({
   const [recommendProgress, setRecommendProgress] = useState(0);
   const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const language: Language = 'ko';
+  const [language, setLanguage] = useState<Language>('ko');
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlLang = params.get('lang');
+      if (urlLang && ['ko', 'en', 'ja', 'zh'].includes(urlLang)) {
+        setLanguage(urlLang as Language);
+        return;
+      }
+      const saved = localStorage.getItem('ih:language');
+      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
+        setLanguage(saved as Language);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
 

@@ -3,6 +3,9 @@ import type { Language } from '@/types';
 export const translations = {
   ko: {
     // Header
+    'header.logo': '아카인포',
+    'header.home': '홈피드',
+    'header.myFeed': '마이피드',
     'header.login': '로그인',
     'header.logout': '로그아웃',
     'header.refresh': '자료 불러오기',
@@ -100,6 +103,9 @@ export const translations = {
   },
   en: {
     // Header
+    'header.logo': 'ArcaInfo',
+    'header.home': 'Home Feed',
+    'header.myFeed': 'My Feed',
     'header.login': 'Login',
     'header.logout': 'Logout',
     'header.refresh': 'Refresh Data',
@@ -197,6 +203,9 @@ export const translations = {
   },
   ja: {
     // Header
+    'header.logo': 'アカインフォ',
+    'header.home': 'ホームフィード',
+    'header.myFeed': 'マイフィード',
     'header.login': 'ログイン',
     'header.logout': 'ログアウト',
     'header.refresh': 'データ更新',
@@ -294,6 +303,9 @@ export const translations = {
   },
   zh: {
     // Header
+    'header.logo': '信息归档',
+    'header.home': '首页',
+    'header.myFeed': '我的订阅',
     'header.login': '登录',
     'header.logout': '退出登录',
     'header.refresh': '刷新数据',
@@ -401,4 +413,17 @@ export function t(lang: Language, key: string, params?: Record<string, string | 
   }
 
   return text;
+}
+
+const categoryTranslations: Record<string, Record<Language, string>> = {
+  '비즈니스 인사이트': { ko: '비즈니스 인사이트', en: 'Business Insights', ja: 'ビジネスインサイト', zh: '商业洞察' },
+  '마케팅 인사이트': { ko: '마케팅 인사이트', en: 'Marketing Insights', ja: 'マーケティングインサイト', zh: '营销洞察' },
+  'IT 트렌드': { ko: 'IT 트렌드', en: 'IT Trends', ja: 'ITトレンド', zh: 'IT趋势' },
+  'Z세대 트렌드': { ko: 'Z세대 트렌드', en: 'Gen Z Trends', ja: 'Z世代トレンド', zh: 'Z世代趋势' },
+  '취업 팁/커리어': { ko: '취업 팁/커리어', en: 'Career Tips', ja: 'キャリアヒント', zh: '求职/职业' },
+  '리테일/커머스 트렌드': { ko: '리테일/커머스 트렌드', en: 'Retail/Commerce Trends', ja: 'リテール/コマーストレンド', zh: '零售/电商趋势' },
+};
+
+export function translateCategory(name: string, lang: Language): string {
+  return categoryTranslations[name]?.[lang] || name;
 }
