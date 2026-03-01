@@ -26,7 +26,7 @@ export default function LanguageSwitcher({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const currentLangData = LANGUAGES[currentLang];
+  const _currentLangData = LANGUAGES[currentLang]; // eslint-disable-line @typescript-eslint/no-unused-vars
 
   return (
     <div className="relative" ref={dropdownRef}>
