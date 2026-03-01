@@ -48,7 +48,11 @@ ${scopeInstruction}
 2. **최근 활성**: 최근 2개월 내 새 글이 반드시 있어야 함. 웹 검색으로 최신 글의 발행일을 확인할 것. 마지막 글이 2개월 이상 된 사이트는 추천 금지
 3. **정기 발행**: 최소 월 2회 이상 새 콘텐츠가 게시되는 사이트
 4. **공개 접근**: 로그인 없이 콘텐츠 목록을 볼 수 있는 페이지
-5. **콘텐츠 목록 페이지 (필수)**: 여러 글이 나열된 목록/아카이브/블로그 인덱스 페이지의 URL만 허용. **개별 기사 본문 URL은 절대 금지** (예: /news/some-article-title/ 같은 단일 기사 URL 금지). URL 경로가 /news/, /blog/, /insights/, /articles/ 등 목록성 경로인지 반드시 확인할 것
+5. **콘텐츠 목록 페이지 URL (필수, 가장 중요)**:
+   - 여러 글이 나열된 목록/아카이브/블로그 인덱스 페이지의 URL만 허용
+   - **사이트 메인 홈페이지 URL(루트 도메인) 절대 금지** — 포털, 구직, 커뮤니티 등 메인 페이지는 콘텐츠 목록이 아님
+   - URL 경로에 반드시 콘텐츠 섹션이 포함되어야 함 (예: /blog/, /news/, /content/, /insights/, /articles/, /magazine/, /column/)
+   - 개별 기사 본문 URL도 절대 금지
 6. **전문성**: 해당 분야 전문 미디어, 기업 블로그, 리서치 기관 우선. 개인 블로그나 범용 커뮤니티보다 분야 특화 소스를 우선할 것
 
 ### 검증 절차
@@ -76,8 +80,10 @@ ${scopeInstruction}
 ### 주의사항
 - 최대 5개까지만 추천 (확실한 것만, 애매하면 줄여도 됨)
 - URL은 반드시 여러 글이 나열된 목록 페이지여야 함 (개별 기사 본문 URL 절대 금지)
-- 올바른 예: example.com/blog/, example.com/news/, example.com/insights/
-- 잘못된 예: example.com/news/some-article-title-2026/ (이건 개별 기사)
+- ❌ 잘못된 예: jobkorea.co.kr/ (구직 포털 메인), linkareer.com/ (커뮤니티 메인), rocketpunch.com/ (비즈니스 플랫폼 메인)
+- ✅ 올바른 예: jobkorea.co.kr/content/, wanted.co.kr/events/, brunch.co.kr/@wantedlab
+- ❌ 잘못된 예: example.com/news/some-article-title-2026/ (개별 기사)
+- URL이 "/" 또는 짧은 경로만 있는 경우, 반드시 해당 사이트의 콘텐츠/블로그 섹션 URL을 찾아 제공할 것
 - RSS 피드 URL이 아닌 웹페이지 URL을 제공
 - 각 URL은 중복 없이 고유해야 함
 - **절대로** 아래 '이미 등록된 소스'에 포함된 도메인과 동일한 사이트를 추천하지 마세요${existingUrls.length > 0 ? `
@@ -245,6 +251,23 @@ function extractLatestDate(html: string): Date | null {
   return latest;
 }
 
+function isContentListPage(html: string, url: string): boolean {
+  const pathname = new URL(url).pathname;
+  const hasContentPath = /\/(blog|news|content|insights|articles|magazine|column|post|archive|feed|story|stories|journal|digest|report|resource|library|updates|press|media|채널|콘텐츠|뉴스|매거진|블로그|칼럼|아티클)/i.test(pathname);
+
+  if (hasContentPath) return true;
+
+  if (pathname !== '/' && pathname !== '') return true;
+
+  const articleTagCount = (html.match(/<article[\s>]/gi) || []).length;
+  if (articleTagCount >= 3) return true;
+
+  const listClassCount = (html.match(/class="[^"]*\b(post|article|entry|card-item|blog-item|news-item)[^"]*"/gi) || []).length;
+  if (listClassCount >= 3) return true;
+
+  return false;
+}
+
 async function validateUrl(url: string): Promise<ValidationResult> {
   const startTime = Date.now();
   console.log(`[validateUrl] 검증 시작: ${url}`);
@@ -335,6 +358,11 @@ async function validateUrl(url: string): Promise<ValidationResult> {
       }
     }
 
+    if (!isContentListPage(html, url)) {
+      console.log(`[validateUrl] Rule 7 (홈페이지/포털): ${url} → 콘텐츠 목록 페이지 아님`);
+      return { valid: false, reason: '콘텐츠 목록 페이지가 아닌 메인/포털 페이지' };
+    }
+
     console.log(`[validateUrl] ✅ 통과: ${url} (${Date.now() - startTime}ms)`);
     return { valid: true };
   } catch (e) {
@@ -369,6 +397,15 @@ async function filterValidUrls(recommendations: Recommendation[]): Promise<Recom
   return filtered;
 }
 
+function buildGoogleNewsRecommendation(category: string): Recommendation {
+  const url = `https://www.google.com/search?q=${encodeURIComponent(category)}&tbm=nws`;
+  return {
+    url,
+    name: `Google News - ${category}`,
+    description: `"${category}" 키워드로 자동 생성된 Google 뉴스 검색 결과`,
+  };
+}
+
 async function recommendSources(category: string, scope: 'domestic' | 'international' | 'both', existingUrls: string[] = []): Promise<RecommendResponse> {
   try {
     const prompt = buildPrompt(category, scope, existingUrls);
@@ -392,11 +429,12 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
         }));
 
       const validRecommendations = await filterValidUrls(candidates);
-      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid`);
+      const googleNews = buildGoogleNewsRecommendation(category);
+      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid (+Google News)`);
 
       return {
         success: true,
-        recommendations: validRecommendations,
+        recommendations: [googleNews, ...validRecommendations],
       };
     } catch {
       console.error('Failed to parse JSON. Raw output (first 500 chars):', text.substring(0, 500));
@@ -412,7 +450,7 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
               .slice(0, 5)
               .map((r: Recommendation) => ({ url: r.url, name: r.name, description: r.description || '' }));
             const validRecs = await filterValidUrls(fallbackCandidates);
-            return { success: true, recommendations: validRecs };
+            return { success: true, recommendations: [buildGoogleNewsRecommendation(category), ...validRecs] };
           }
         }
       } catch {

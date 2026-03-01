@@ -508,6 +508,7 @@ export default function MyFeed() {
         language={language}
         pinnedArticle={pinnedArticle}
         onClearPinned={() => setPinnedArticle(null)}
+        isLoggedIn={true}
       />
 
       <Toast
