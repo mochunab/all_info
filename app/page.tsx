@@ -33,10 +33,12 @@ export default function Home() {
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const [language, setLanguage] = useState<Language>('ko');
   const [isNonMasterUser, setIsNonMasterUser] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+      setIsLoggedIn(true);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any).from('users').select('role').eq('id', user.id).single()
         .then(({ data }: { data: { role: string } | null }) => {
@@ -460,7 +462,7 @@ export default function Home() {
           isLoading={isLoading}
           hasMore={hasMore}
           onLoadMore={handleLoadMore}
-          onDelete={handleArticleDelete}
+          onDelete={isLoggedIn ? handleArticleDelete : undefined}
           onChatReference={isChatOpen ? handleChatReference : undefined}
           onCloseChat={isChatOpen ? () => setIsChatOpen(false) : undefined}
         />
@@ -492,6 +494,7 @@ export default function Home() {
         language={language}
         pinnedArticle={pinnedArticle}
         onClearPinned={() => setPinnedArticle(null)}
+        isLoggedIn={isLoggedIn}
       />
 
       {/* Toast */}

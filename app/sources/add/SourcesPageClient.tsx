@@ -45,6 +45,7 @@ type SortableCategoryProps = {
   onDelete: () => void;
   onRename: (newName: string) => void;
   language: Language;
+  readOnly?: boolean;
 };
 
 const getCrawlerTypeLabel = (type: string, language: Language): string => {
@@ -78,7 +79,7 @@ const CRAWLER_TYPES = [
 ] as const;
 
 // SortableCategory component for drag & drop + double-click rename
-function SortableCategory({ category, isActive, count, onSelect, onDelete, onRename, language }: SortableCategoryProps) {
+function SortableCategory({ category, isActive, count, onSelect, onDelete, onRename, language, readOnly }: SortableCategoryProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(category);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -172,17 +173,19 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, onRen
           </span>
         )}
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-tertiary)] hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center"
-      >
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {!readOnly && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] text-[var(--text-tertiary)] hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -856,6 +859,7 @@ export default function SourcesPageClient({
                     onDelete={() => setDeletingCategory(cat.name)}
                     onRename={(newName) => handleRenameCategory(cat.name, newName)}
                     language={language}
+                    readOnly={readOnly}
                   />
                 ))}
 

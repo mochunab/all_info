@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 데이터 플로우 & 런타임 동작 가이드
 
 > 이 문서의 핵심: **데이터가 시스템을 어떻게 흐르는가**
-> 최종 업데이트: 2026-02-25 (v1.6.6)
+> 최종 업데이트: 2026-03-02 (v1.8.1)
 >
 > **다른 문서 참조**:
 > - 개발 규칙, API Routes, 파일 구조, 환경변수, 디버깅 → [CLAUDE.md](../CLAUDE.md)
@@ -70,6 +70,9 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   │   └─ DB crawler_type 또는 URL 패턴 추론 (inferCrawlerType)
    │   │
    │   ├─ [셀렉터 위임] config에 AI 감지 셀렉터 있으면 → STATIC 전략 위임
+   │   │
+   │   ├─ [스코프 체크] RSS/Sitemap crawlList() 진입 시 피드 범위 vs base_url 검증
+   │   │   └─ 불일치 시 throw → 폴백 체인 활성화
    │   │
    │   ├─ [목록 크롤링] strategy.crawlList() → RawContentItem[]
    │   │
@@ -156,7 +159,7 @@ processPendingSummaries()
   │   1. 도메인 매핑 (confidence: 0.95)
   │   2. 경로 패턴 탐색 (/feed, /rss, /blog 등, 0.8)
   │   3. HTML 네비게이션 링크 발견 (0.75)
-  │   └─ 섹션 교차 리다이렉트 방지 → crawl_url 생성
+  │   └─ 섹션 교차 리다이렉트 방지 (공통 경로 세그먼트 분기 감지) → crawl_url 생성
   │
   ├─ [자동 감지] resolveStrategy() — 9단계 파이프라인
   │   → 상세: 아래 "크롤러 타입 자동 감지" 섹션
@@ -195,8 +198,8 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
   0.  URL 최적화 — 검색 URL→API/RSS 변환 (네이버 검색→News API, Google 검색→RSS)
   0.5 Early Exit — Google News RSS search / Naver API URL 즉시 반환
   1.  HTML 다운로드 (15s timeout, 실패 시 URL 패턴 폴백)
-  2.  RSS 발견 (0.95) — 6개 경로 Promise.all 병렬
-  2.5 Sitemap 발견 (0.90) — 2개 후보 Promise.all 병렬
+  2.  RSS 발견 (0.95) — 6개 경로 병렬 + 스코프 호환성 체크
+  2.5 Sitemap 발견 (0.90) — 2개 후보 병렬 + 스코프 호환성 체크
   3.  CMS 감지 (0.75) — WordPress, Tistory, Ghost
   4.  URL 패턴 (0.85~0.95) — .go.kr, naver.com, /feed
   5.  SPA 스코어링 — body < 500자, #root/#app
@@ -294,6 +297,13 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.1 (2026-03-02)
+- RSS/Sitemap 스코프 체크: 피드 범위가 base_url보다 넓으면 자동 거부 → STATIC/SPA 폴백
+  - 감지 시점(`strategy-resolver.ts`) + 크롤링 시점(`rss.ts`, `sitemap.ts`) 이중 체크
+  - 얕은 경로(≤2세그먼트) 루트 피드 허용, 깊은 경로(3+) 하위 경로만 허용
+- URL 최적화 섹션 교차 방지 강화: 공통 경로 세그먼트 분기 감지 (`url-optimizer.ts`)
+- Sitemapindex 스코프 검증: sub-sitemap URL이 base 경로와 무관하면 제외
 
 ### v1.8.0 (2026-03-01)
 - 홈피드/마이피드 분리: 홈(`/`)은 master 콘텐츠, 마이피드(`/my-feed`)는 개인 피드

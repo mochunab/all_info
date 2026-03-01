@@ -147,6 +147,10 @@ import { createServiceClient } from '@/lib/supabase/server';
 - Puppeteer 사용 시 `browser.close()` 필수
 - 새 전략 추가: `strategies/{name}.ts` 생성 → `strategies/index.ts` 등록 → `types.ts` 타입 추가
 - 플랫폼 전략(KAKAO/NAVER/NEWSLETTER)은 config에 AI 감지 셀렉터 있으면 STATIC 위임
+- **스코프 체크**: RSS/Sitemap 피드가 base_url 범위보다 넓으면 자동 거부 → STATIC/SPA 폴백
+  - 얕은 경로(1~2세그먼트): 루트 RSS/Sitemap 허용 (e.g., `/blog/` + `/feed/`)
+  - 깊은 경로(3+세그먼트): 피드가 base 하위 경로일 때만 허용 (e.g., `/magazine/list/business/` + `/magazine/feed/` → 거부)
+  - 감지 시점(`strategy-resolver.ts`) + 크롤링 시점(`rss.ts`, `sitemap.ts`) 이중 체크
 
 ### i18n
 - 번역: `t(language, 'key')` — `lib/i18n.ts`
