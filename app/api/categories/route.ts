@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
-import { getCache, setCache, invalidateCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getCache, setCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { getMasterUserId } from '@/lib/user';
 
 type CategoryResponse = {
