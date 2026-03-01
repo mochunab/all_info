@@ -4,6 +4,10 @@
     {
       "path": "/api/crawl/run",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/summarize/batch",
+      "schedule": "5 0 * * *"
     }
   ],
   "functions": {
