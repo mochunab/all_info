@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import type { Article, ChatMessage, ChatResponse, Language } from '@/types';
 import { t } from '@/lib/i18n';
+import LoginPromptDialog from './LoginPromptDialog';
 
 type InsightChatProps = {
   isOpen: boolean;
@@ -14,13 +15,15 @@ type InsightChatProps = {
   language: Language;
   pinnedArticle: Article | null;
   onClearPinned: () => void;
+  isLoggedIn?: boolean;
 };
 
-export default function InsightChat({ isOpen, onClose, articles, category, language, pinnedArticle, onClearPinned }: InsightChatProps) {
+export default function InsightChat({ isOpen, onClose, articles, category, language, pinnedArticle, onClearPinned, isLoggedIn = false }: InsightChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [contentPreview, setContentPreview] = useState<string | null>(null);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastUserMsgRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +138,10 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      setShowLoginDialog(true);
+      return;
+    }
     sendMessage(input);
   };
 
@@ -147,7 +154,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-6 right-4 sm:right-6 lg:right-[calc((100vw-1280px)/2+32px)] z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-h-[70vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-slide-up">
+    <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-[420px] xl:right-[calc((100vw-1280px)/2+32px)] z-50 max-h-[70vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-slide-up">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/80 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -279,6 +286,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
           </svg>
         </button>
       </form>
+      <LoginPromptDialog isOpen={showLoginDialog} onClose={() => setShowLoginDialog(false)} />
     </div>
   );
 }
