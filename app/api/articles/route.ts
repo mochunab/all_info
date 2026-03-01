@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCache, setCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getMasterUserId } from '@/lib/user';
 import type { ArticleListResponse } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -13,12 +14,14 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const category = searchParams.get('category') || '';
     const source = searchParams.get('source') || '';
+    const userIdParam = searchParams.get('user_id') || '';
 
+    const effectiveUserId = userIdParam || await getMasterUserId();
     const offset = (page - 1) * limit;
 
     // In-Memory cache — 검색 쿼리 없는 요청만 캐시 (검색은 변동성 높음)
     const cacheKey = !search
-      ? `${CACHE_KEYS.ARTICLES_PREFIX}p=${page}&l=${limit}&c=${category}&s=${source}`
+      ? `${CACHE_KEYS.ARTICLES_PREFIX}u=${effectiveUserId}&p=${page}&l=${limit}&c=${category}&s=${source}`
       : null;
 
     if (cacheKey) {
@@ -46,6 +49,7 @@ export async function GET(request: NextRequest) {
       .from('articles')
       .select(ARTICLE_LIST_COLUMNS, { count: 'exact' })
       .eq('is_active', true)
+      .eq('user_id', effectiveUserId)
       .order('crawled_at', { ascending: false });
 
     // Apply filters

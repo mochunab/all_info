@@ -45,6 +45,7 @@ export interface CrawlSource {
   config: Record<string, unknown>;
   is_active: boolean;
   last_crawled_at: string | null;
+  user_id: string;
   created_at: string;
 }
 

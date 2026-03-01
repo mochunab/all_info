@@ -8,10 +8,10 @@
 
 | 분류 | 수량 | 위치 |
 |------|------|------|
-| 페이지 컴포넌트 | 2개 | `app/` |
-| 공통 UI 컴포넌트 | 10개 | `components/` |
+| 페이지 컴포넌트 | 3개 | `app/` |
+| 공통 UI 컴포넌트 | 11개 | `components/` |
 | Barrel Export | 1개 | `components/index.ts` |
-| **합계** | **12개** | |
+| **합계** | **14개** | |
 
 ---
 
@@ -24,9 +24,22 @@
 | **파일** | `app/page.tsx` |
 | **타입** | Client Component (`'use client'`) |
 | **역할** | 메인 페이지 - 아티클 목록, 검색, 필터, 무한 스크롤 |
-| **상태** | articles, isLoading, search, category, categories, page, hasMore, totalCount, lastUpdated, showToast, toastMessage, isChatOpen, pinnedArticle |
-| **API 호출** | GET /api/articles, GET /api/categories, POST /api/crawl/run |
+| **상태** | articles, isLoading, search, category, categories, page, hasMore, totalCount, lastUpdated, showToast, toastMessage, isChatOpen, pinnedArticle, isNonMasterUser |
+| **API 호출** | GET /api/articles, GET /api/categories, POST /api/crawl/trigger |
 | **자식 컴포넌트** | Header, FilterBar, ArticleGrid, InsightChat, Toast |
+| **특징** | master 콘텐츠만 표시. 일반 로그인 유저는 소스 추가 버튼 숨김 (hideAddSource) |
+
+### MyFeed (마이피드)
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `app/my-feed/page.tsx` |
+| **타입** | Client Component (`'use client'`) |
+| **역할** | 로그인 유저 개인 피드 - 자신의 소스/카테고리/아티클 관리 |
+| **상태** | Home과 동일 + user (Supabase auth user) |
+| **API 호출** | 모든 호출에 `user_id=${user.id}` 파라미터 포함 |
+| **자식 컴포넌트** | Header, FilterBar, ArticleGrid, InsightChat, Toast, LoginPromptDialog |
+| **특징** | 비로그인 시 LoginPromptDialog 표시, 별도 sessionStorage 키 사용 |
 
 ### AddSourcePage (소스 추가)
 
@@ -45,7 +58,7 @@
 | **파일** | `app/sources/add/SourcesPageClient.tsx` |
 | **타입** | Client Component (`'use client'`) |
 | **역할** | 크롤링 소스 URL 추가/수정/삭제 + 드래그앤드롭 카테고리 관리 |
-| **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language, showScopeDialog, showRecommendDialog, recommendProgress |
+| **상태** | categories, sources (SourceLink[]), activeCategory, isSaving, showToast, language, showScopeDialog, showRecommendDialog, recommendProgress, readOnly, showLoginDialog |
 | **API 호출** | POST /api/sources (저장), POST /api/sources/recommend (AI 추천), POST /api/categories (추가), PATCH /api/categories (이름 변경) |
 | **자식 컴포넌트** | LanguageSwitcher, Toast |
 | **주요 기능** | - **크롤러 타입 선택**: AUTO (자동지정, 기본값), STATIC, SPA, RSS, SITEMAP, PLATFORM_NAVER, PLATFORM_KAKAO, NEWSLETTER, API<br>- **getCrawlerTypeLabel()**: 다국어 레이블 변환 (ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测')<br>- 드래그앤드롭으로 카테고리 정렬<br>- 소스별 AUTO 선택 시 백엔드 9단계 파이프라인 자동 실행<br>- **AI 소스 추천**: "콘텐츠 링크 추천받기" 버튼 → 범위 선택(국내/해외/혼합) → AI가 최대 5개 소스 자동 입력<br>- **카테고리 더블클릭 이름 변경**: SortableCategory 인라인 편집 (Enter 확인, Escape 취소) |
@@ -71,8 +84,8 @@
 | **파일** | `components/FilterBar.tsx` |
 | **타입** | Client Component |
 | **역할** | 검색바 + 카테고리 드롭다운 + 소스 추가 버튼 + 결과 카운트 |
-| **Props** | `search`, `onSearchChange`, `category`, `onCategoryChange`, `categories`, `onAddCategory?`, `totalCount?` |
-| **특징** | 카테고리 드롭다운 (외부 클릭 닫기), 인라인 카테고리 추가 |
+| **Props** | `search`, `onSearchChange`, `category`, `onCategoryChange`, `categories`, `totalCount?`, `language?`, `onRefresh?`, `isCrawling?`, `crawlProgress?`, `userId?`, `hideAddSource?` |
+| **특징** | 카테고리 드롭다운 (외부 클릭 닫기), 소스 추가 버튼 (hideAddSource로 조건부 표시), 새로고침 버튼 |
 
 ### ArticleGrid
 
@@ -145,6 +158,16 @@
 | **API 호출** | POST /api/chat, GET /api/articles/{id}/content (핀 시) |
 | **특징** | 슬라이드 패널, 핀 뱃지 UI, content_preview 기반 상세 질문, 스트리밍 응답 |
 
+### LoginPromptDialog
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `components/LoginPromptDialog.tsx` |
+| **타입** | Client Component |
+| **역할** | 비로그인 유저에게 로그인 안내 다이얼로그 표시 |
+| **Props** | `isOpen: boolean`, `onClose: () => void` |
+| **특징** | ESC 닫기, 로그인 버튼 → `/login` 이동, body scroll lock |
+
 ### ConfirmDialog
 
 | 항목 | 값 |
@@ -166,6 +189,7 @@ export { default as ArticleCard } from './ArticleCard';
 export { default as ArticleGrid } from './ArticleGrid';
 export { default as FilterBar } from './FilterBar';
 export { default as LanguageSwitcher } from './LanguageSwitcher';
+export { default as LoginPromptDialog } from './LoginPromptDialog';
 export { default as Skeleton, SkeletonGrid } from './Skeleton';
 export { default as Toast } from './Toast';
 ```
@@ -180,10 +204,22 @@ import { Header, FilterBar, ArticleGrid, Toast } from '@/components';
 ## 4. 컴포넌트 의존 관계
 
 ```
-page.tsx (Home)
+page.tsx (Home — 홈피드)
   ├── Header
   │     └── LanguageSwitcher
-  ├── FilterBar
+  ├── FilterBar (hideAddSource: 일반 유저 시 소스 추가 숨김)
+  ├── ArticleGrid
+  │     ├── ArticleCard (N개)
+  │     │     └── ConfirmDialog (삭제 시)
+  │     └── Skeleton (로딩 시)
+  ├── InsightChat
+  └── Toast
+
+my-feed/page.tsx (MyFeed — 마이피드)
+  ├── LoginPromptDialog (비로그인 시)
+  ├── Header
+  │     └── LanguageSwitcher
+  ├── FilterBar (userId 전달)
   ├── ArticleGrid
   │     ├── ArticleCard (N개)
   │     │     └── ConfirmDialog (삭제 시)
@@ -193,6 +229,7 @@ page.tsx (Home)
 
 sources/add/page.tsx (AddSourcePage)
   ├── LanguageSwitcher
+  ├── LoginPromptDialog (readOnly 모드 시)
   └── Toast
 ```
 

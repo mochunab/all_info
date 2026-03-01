@@ -3,6 +3,8 @@ import type { Language } from '@/types';
 export const translations = {
   ko: {
     // Header
+    'header.login': '로그인',
+    'header.logout': '로그아웃',
     'header.refresh': '자료 불러오기',
     'header.refreshing': '불러오는 중...',
     'header.crawling': '크롤링 중...',
@@ -26,6 +28,7 @@ export const translations = {
 
     // Footer
     'footer.description': '매일 아침 9시, 비즈니스 인사이트가 업데이트됩니다.',
+    'footer.terms': '이용약관',
 
     // Toast
     'toast.crawlSuccess': '{count}개의 새 인사이트를 불러왔습니다.',
@@ -97,6 +100,8 @@ export const translations = {
   },
   en: {
     // Header
+    'header.login': 'Login',
+    'header.logout': 'Logout',
     'header.refresh': 'Refresh Data',
     'header.refreshing': 'Refreshing...',
     'header.crawling': 'Crawling...',
@@ -120,6 +125,7 @@ export const translations = {
 
     // Footer
     'footer.description': 'Business insights updated daily at 9 AM KST.',
+    'footer.terms': 'Terms of Service',
 
     // Toast
     'toast.crawlSuccess': 'Loaded {count} new insights.',
@@ -191,6 +197,8 @@ export const translations = {
   },
   ja: {
     // Header
+    'header.login': 'ログイン',
+    'header.logout': 'ログアウト',
     'header.refresh': 'データ更新',
     'header.refreshing': '更新中...',
     'header.crawling': 'クロール中...',
@@ -214,6 +222,7 @@ export const translations = {
 
     // Footer
     'footer.description': '毎朝9時、ビジネスインサイトが更新されます。',
+    'footer.terms': '利用規約',
 
     // Toast
     'toast.crawlSuccess': '{count} 件の新しいインサイトを取得しました。',
@@ -285,6 +294,8 @@ export const translations = {
   },
   zh: {
     // Header
+    'header.login': '登录',
+    'header.logout': '退出登录',
     'header.refresh': '刷新数据',
     'header.refreshing': '刷新中...',
     'header.crawling': '抓取中...',
@@ -308,6 +319,7 @@ export const translations = {
 
     // Footer
     'footer.description': '每天早上9点更新商业洞察。',
+    'footer.terms': '服务条款',
 
     // Toast
     'toast.crawlSuccess': '已加载 {count} 条新洞察。',

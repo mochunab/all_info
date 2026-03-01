@@ -54,11 +54,18 @@
            └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
 
+### 멀티유저 피드 (`user_id` 스코핑)
+
+- 홈피드(`/`): master 계정 콘텐츠만 표시 (읽기 전용, 비로그인/일반유저는 소스 추가 제한)
+- 마이피드(`/my-feed`): 로그인 유저 개인 피드 (소스 추가, 크롤링 가능)
+- API: `user_id` 쿼리 파라미터로 스코핑 (기본값 = master), 캐시 키도 user별 분리
+- `getMasterUserId()` (`lib/user.ts`): `users` 테이블에서 `role='master'` 조회 (서버 전용)
+
 ### 인증 (`lib/auth.ts`)
 
 - `verifyCronAuth` — Bearer Token (`CRON_SECRET`): crawl/run, summarize
 - `verifySameOrigin` — CSRF 방어: sources POST
-- 프론트엔드 버튼 → `/api/crawl/trigger` (rate limit 30s) → 서버 내부에서 Bearer로 `/api/crawl/run` 호출
+- 프론트엔드 버튼 → `/api/crawl/trigger` (rate limit 30s, 로그인 필수) → 서버 내부에서 Bearer로 `/api/crawl/run` 호출
 
 ---
 
@@ -132,6 +139,8 @@ import { createServiceClient } from '@/lib/supabase/server';
 - Hook 순서: `useState` → `useCallback` → `useEffect` → `return`
 
 ### 크롤러 개발
+- robots.txt 준수: `runCrawler()` 진입 시 `checkRobotsTxt()` 자동 체크 (`robots-checker.ts`, 1시간 캐시, fail-open)
+- `DEFAULT_HEADERS`의 UA는 `BOT_USER_AGENT` (`InsightHub/1.0`) — 봇 신원 정직 표시
 - `fetchWithTimeout(url, {}, 15000)` — 15초 타임아웃 필수, redirect loop 시 bot UA 자동 재시도
 - `isWithinDays(date, MAX_ARTICLE_AGE_DAYS)` — 최근 30일 필터 (`date-parser.ts` 상수)
 - `maxPages` 제한 필수 (무한 루프 방지)
@@ -177,7 +186,7 @@ NAVER_CLIENT_ID=                 # 네이버 Open API (News Search)
 NAVER_CLIENT_SECRET=             # https://developers.naver.com
 
 # Supabase Edge Function Secrets (Dashboard에서 설정)
-google_API_KEY=                  # 4개 Edge Function 공유 (Gemini)
+google_API_KEY=                  # 5개 Edge Function 공유 (Gemini)
 ```
 
 ---
@@ -253,7 +262,8 @@ app/api/
   image-proxy/route.ts      GET 이미지 프록시
 
 lib/crawlers/
-  index.ts              오케스트레이터 (runCrawler)
+  index.ts              오케스트레이터 (runCrawler, robots.txt 체크 포함)
+  robots-checker.ts     robots.txt 파싱/캐싱 (1시간 TTL, fail-open)
   strategy-resolver.ts  AUTO 9단계 감지 파이프라인
   infer-type.ts         URL 패턴 기반 크롤러 타입 추론
   strategies/           STATIC / SPA / RSS / SITEMAP / NAVER / KAKAO / NEWSLETTER / API
@@ -269,6 +279,12 @@ supabase/functions/
   recommend-sources/    AI 소스 추천 (Gemini 2.5 Flash Lite + google_search + 6단계 URL 검증)
   chat-insight/         AI 채팅 인사이트 (Gemini 2.5 Flash Lite, pinnedArticle 지원)
 
+app/my-feed/page.tsx    마이피드 (로그인 유저 개인 피드)
+app/terms/page.tsx      이용약관 (opt-out 안내, 저작권 고지)
+components/Footer.tsx   푸터 (이용약관 링크)
+components/LoginPromptDialog.tsx  비로그인 마이피드 접근 시 안내
+
+lib/user.ts             getMasterUserId() 헬퍼 (서버 전용, 인메모리 캐시)
 lib/auth.ts             verifyCronAuth, verifySameOrigin
 lib/i18n.ts             4개 언어 번역 (ko, en, ja, zh)
 middleware.ts           Rate Limit, CORS, Security Headers

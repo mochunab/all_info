@@ -19,9 +19,10 @@
 │   Next.js Frontend   │  fetch()  │    Next.js API Routes     │
 │   (App Router)       │ ────────► │    (Vercel Serverless)    │
 │                      │           │    maxDuration: 300s      │
-│  - page.tsx (메인)   │           └────────────┬──────────────┘
+│  - page.tsx (홈피드)  │           └────────────┬──────────────┘
+│  - my-feed (마이피드) │                        │
 │  - AddSourcePage     │                        │
-│  - Components (10개) │       ┌────────────────┼──────────────┐
+│  - Components (11개) │       ┌────────────────┼──────────────┐
 └──────────────────────┘       │                │              │
                                ▼                ▼              ▼
                        ┌────────────┐  ┌──────────────┐  ┌──────────────┐
@@ -61,6 +62,9 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    ├─ crawl_logs 생성 (status: 'running')
    ├─ runCrawler(source) 호출
    │   ├─ [URL 결정] effectiveUrl = crawl_url || base_url
+   │   │
+   │   ├─ [robots.txt 체크] checkRobotsTxt(effectiveUrl)
+   │   │   └─ 거부 시 스킵 (에러 아닌 빈 결과 반환)
    │   │
    │   ├─ [크롤러 선택] getCrawler() → crawlWithStrategy()
    │   │   └─ DB crawler_type 또는 URL 패턴 추론 (inferCrawlerType)
@@ -123,28 +127,22 @@ processPendingSummaries()
 ## 3. 프론트엔드 데이터 플로우
 
 ```
-page.tsx (메인 페이지)
-  ├─ useEffect → GET /api/categories
-  ├─ useEffect → fetchArticles(page, append)
-  │    └─ GET /api/articles?page=1&limit=12&search=&category=
-  │       정렬: published_at DESC NULLS LAST, crawled_at DESC
+홈피드 page.tsx ("/")
+  ├─ master 계정 콘텐츠만 표시 (API user_id 미전달 → 기본값 master)
+  ├─ 마스터 계정: 소스 추가/크롤링 버튼 표시
+  ├─ 일반 로그인 유저: 소스 추가 버튼 숨김 (isNonMasterUser)
+  ├─ 비로그인: 소스 추가 버튼 표시 (클릭 시 master 소스 관리, readOnly)
   │
+  ├─ useEffect → GET /api/categories (master 기본값)
+  ├─ useEffect → fetchArticles → GET /api/articles?page=1&limit=12&...
   ├─ handleRefresh() → POST /api/crawl/trigger
-  │    └─ 폴링 기반 완료 감지 (crawlSeenRunning ref)
-  │    └─ 10분 AbortController 타임아웃
-  │
-  ├─ handleLoadMore() → fetchArticles(nextPage, true)
-  ├─ handleSearchChange() / onCategoryChange() → fetchArticles(1, false)
-  │
-  ├─ InsightChat (AI 채팅 패널)
-  │    ├─ POST /api/chat → chat-insight Edge Function (Gemini 2.5 Flash Lite)
-  │    └─ pinnedArticle 참조 시:
-  │         ├─ 카드 클릭 → onChatReference(article) → pinnedArticle state
-  │         ├─ GET /api/articles/{id}/content → content_preview 조회
-  │         └─ 질문 전송 시 pinnedArticle(title, summary, tags, content_preview) 포함
-  │              → Edge Function 시스템 프롬프트에 참조 아티클 본문 추가
-  │
-  └─ 채팅 닫힌 상태: 카드 클릭 → 외부 링크 (기존 동작)
+  └─ InsightChat, ArticleGrid 등 기존 UI 동일
+
+마이피드 my-feed/page.tsx ("/my-feed")
+  ├─ supabase.auth.getUser() → 비로그인 시 LoginPromptDialog
+  ├─ 모든 API 호출에 user_id=${user.id} 파라미터 추가
+  ├─ 별도 sessionStorage 키 (ih:my:articles, ih:my:categories)
+  └─ 소스 추가/크롤링 기능 포함 (개인 데이터)
 ```
 
 ---
@@ -296,6 +294,19 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.0 (2026-03-01)
+- 홈피드/마이피드 분리: 홈(`/`)은 master 콘텐츠, 마이피드(`/my-feed`)는 개인 피드
+- 멀티유저 user_id 스코핑: articles, categories, crawl_sources, 캐시 키 모두 user별 분리
+- `users` 테이블 (auth.users 가입 시 트리거 자동 생성, role: master/user)
+- LoginPromptDialog: 비로그인 마이피드 접근 시 안내
+- sources/add readOnly 모드: 비마스터 유저 홈피드 접근 시 저장/추가 제한
+- categories unique 변경: `name` → `(user_id, name)`
+
+### v1.7.0 (2026-03-01)
+- 법적 안전장치: robots.txt 준수 (`robots-checker.ts`, 1시간 캐시, fail-open)
+- User-Agent 정직화: `DEFAULT_HEADERS`를 `BOT_USER_AGENT` (`InsightHub/1.0`)로 변경
+- 이용약관 페이지 (`/terms`) + Footer 컴포넌트 (opt-out 안내, 저작권 고지)
 
 ### v1.6.6 (2026-02-25)
 - 네이버 뉴스 검색 API 연동: `search.naver.com` URL → Naver Open API 자동 변환

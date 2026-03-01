@@ -25,8 +25,15 @@ export class SitemapStrategy implements CrawlStrategy {
     const withinDays = (crawlConfig?.withinDays as number | undefined) || MAX_ARTICLE_AGE_DAYS;
     const urlFilters = (config as unknown as { url_filters?: { include?: string[]; exclude?: string[] } }).url_filters;
 
-    // 1. Sitemap URL 결정
+    // 1. Sitemap URL 결정 + 스코프 체크
     const sitemapUrl = this.resolveSitemapUrl(source);
+
+    if (!this.checkScopeCompatibility(source.base_url, sitemapUrl)) {
+      console.log(`[SITEMAP] 스코프 불일치 — base: ${source.base_url}`);
+      console.log(`[SITEMAP]                    sitemap: ${sitemapUrl}`);
+      throw new Error('Sitemap scope mismatch: sitemap covers broader scope than base_url');
+    }
+
     console.log(`[SITEMAP] Fetching: ${sitemapUrl}`);
 
     // 2. Sitemap XML 파싱 (Index 포함, 최대 30개 URL)
@@ -211,6 +218,28 @@ export class SitemapStrategy implements CrawlStrategy {
   // 3. source.crawl_url (crawl_sources.crawl_url)
   // 4. base_url 자체가 sitemap.xml인 경우
   // 5. {origin}/sitemap.xml (기본값)
+  private checkScopeCompatibility(baseUrl: string, sitemapUrl: string): boolean {
+    try {
+      const base = new URL(baseUrl);
+      const sitemap = new URL(sitemapUrl);
+      const basePath = base.pathname.replace(/\/+$/, '') || '';
+      const sitemapPath = sitemap.pathname.replace(/\/+$/, '') || '';
+
+      if (!basePath || basePath === '/') return true;
+      if (sitemapPath === basePath || sitemapPath.startsWith(basePath + '/')) return true;
+
+      // 루트 레벨 sitemap → 얕은 경로(1~2세그먼트)만 허용
+      const SITEMAP_ROOT = /^\/(sitemap\.xml|sitemap_index\.xml|sitemap)\/?$/i;
+      if (SITEMAP_ROOT.test(sitemap.pathname)) {
+        return basePath.split('/').filter(Boolean).length <= 2;
+      }
+
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
   private resolveSitemapUrl(source: CrawlSource): string {
     const config = parseConfig(source);
 
@@ -287,8 +316,8 @@ export class SitemapStrategy implements CrawlStrategy {
       });
 
       if (filtered.length === 0 && entries.length > 0) {
-        console.warn(`[SITEMAP] Path filter removed all — fallback to unfiltered`);
-        return entries;
+        console.warn(`[SITEMAP] Path filter removed all — 스코프 불일치`);
+        return [];
       }
       return filtered;
     } catch { return entries; }

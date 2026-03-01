@@ -11,21 +11,23 @@
 │   crawl_sources  │     │    crawl_logs    │     │    categories   │
 │─────────────────│     │──────────────────│     │─────────────────│
 │ id (PK, serial) │◄────│ source_id (FK)   │     │ id (PK, serial) │
-│ name             │     │ id (PK, serial)  │     │ name             │
-│ base_url         │     │ started_at       │     │ is_default       │
-│ crawl_url        │     │ finished_at      │     │ display_order    │
-│ priority         │     │ status           │     │ created_at       │
-│ crawler_type     │     │ articles_found   │     │ updated_at       │
-│ config (JSONB)   │     │ articles_new     │     └─────────────────┘
-│ is_active        │     │ error_message    │
-│ last_crawled_at  │     │ created_at       │
-│ created_at       │     └──────────────────┘
+│ user_id (FK)     │     │ id (PK, serial)  │     │ user_id (FK)     │
+│ name             │     │ started_at       │     │ name             │
+│ base_url         │     │ finished_at      │     │ is_default       │
+│ crawl_url        │     │ status           │     │ display_order    │
+│ priority         │     │ articles_found   │     │ created_at       │
+│ crawler_type     │     │ articles_new     │     │ updated_at       │
+│ config (JSONB)   │     │ error_message    │     └─────────────────┘
+│ is_active        │     │ created_at       │
+│ last_crawled_at  │     └──────────────────┘
+│ created_at       │
 └─────────────────┘
 
 ┌──────────────────────────────────────────────┐
 │                   articles                    │
 │──────────────────────────────────────────────│
 │ id (PK, uuid)                                │
+│ user_id (FK → users.id)                      │
 │ source_id (TEXT, 아티클 고유 식별자=URL)       │
 │ source_name, source_url                       │
 │ title                                         │
@@ -35,6 +37,17 @@
 │ priority, category, is_active                 │
 │ created_at, updated_at                        │
 └──────────────────────────────────────────────┘
+
+┌─────────────────┐
+│     users        │
+│─────────────────│
+│ id (PK, FK)      │  ← auth.users(id)
+│ email             │
+│ nickname          │
+│ role (master/user)│
+│ created_at        │
+│ updated_at        │
+└─────────────────┘
 ```
 
 ---
@@ -46,6 +59,7 @@
 | 컬럼 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `id` | `uuid` | `gen_random_uuid()` | PK |
+| `user_id` | `uuid` | NOT NULL | FK → users.id (소유 유저) |
 | `source_id` | `text` | NOT NULL | 아티클 고유 식별자 (URL 기반, 중복 방지) |
 | `source_name` | `text` | NOT NULL | 출처 이름 (와이즈앱, 브런치 등) |
 | `source_url` | `text` | NOT NULL | 원본 아티클 URL |
@@ -99,6 +113,7 @@ LIMIT 30;
 | 컬럼 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `id` | `serial` | AUTO | PK |
+| `user_id` | `uuid` | NOT NULL | FK → users.id (소유 유저) |
 | `name` | `text` | NOT NULL | 소스 이름 |
 | `base_url` | `text` | NOT NULL | 사용자 입력 원본 URL (UI 표시용) |
 | `crawl_url` | `text` | NULL | 실제 크롤링할 최적화된 URL (NULL이면 base_url 사용) |
@@ -239,7 +254,8 @@ LIMIT 30;
 | 컬럼 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `id` | `serial` | AUTO | PK |
-| `name` | `text` | NOT NULL, UNIQUE | 카테고리명 |
+| `user_id` | `uuid` | NOT NULL | FK → users.id (소유 유저) |
+| `name` | `text` | NOT NULL | 카테고리명 |
 | `is_default` | `boolean` | `false` | 기본 카테고리 여부 (deprecated) |
 | `display_order` | `integer` | `1` | 표시 순서 (드래그 앤 드롭으로 변경 가능) |
 | `created_at` | `timestamptz` | `now()` | 생성일 |
@@ -247,7 +263,7 @@ LIMIT 30;
 
 **인덱스**:
 - `categories_pkey` - PRIMARY KEY (id)
-- `categories_name_key` - UNIQUE (name)
+- `categories_user_name_unique` - UNIQUE (user_id, name)
 - `idx_categories_display_order` - (display_order) → 정렬 성능
 
 **주요 쿼리 패턴**:
@@ -262,18 +278,51 @@ UPDATE categories SET display_order = 3 WHERE id = 5;
 
 ---
 
+## 5. users 테이블
+
+유저 프로필 정보. `auth.users` 가입 시 `handle_new_user()` 트리거로 자동 생성.
+
+| 컬럼 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `id` | `uuid` | FK → auth.users(id) | PK, CASCADE DELETE |
+| `email` | `text` | NOT NULL | 유저 이메일 |
+| `nickname` | `text` | NULL | 닉네임 |
+| `role` | `text` | `'user'` | 역할 (`user` / `master`) |
+| `created_at` | `timestamptz` | `now()` | 생성일 |
+| `updated_at` | `timestamptz` | `now()` | 수정일 (트리거 자동 갱신) |
+
+**RLS 정책**:
+- SELECT: 본인 프로필만 조회 (`auth.uid() = id`)
+- UPDATE: 본인 프로필만 수정 (`auth.uid() = id`)
+
+**트리거**:
+- `on_auth_user_created` — `auth.users` INSERT 시 `public.users`에 자동 생성
+- `users_updated_at` — UPDATE 시 `updated_at` 자동 갱신
+
+**역할 참고**:
+- `master`: 홈피드 콘텐츠 소유자, `getMasterUserId()` (`lib/user.ts`)로 조회
+- `user`: 일반 유저, 마이피드에서 개인 소스 관리
+
+---
+
 ## 테이블 간 관계
 
 ```
+users (1:1 auth.users)
+    │ id (PK, FK → auth.users.id)
+    │ role: master / user
+    │
+    ├──── (1:N) articles.user_id
+    ├──── (1:N) crawl_sources.user_id
+    └──── (1:N) categories.user_id
+
 crawl_sources (1) ──── (N) crawl_logs
     │ id                    │ source_id (FK)
-    │
-articles (독립)
+
+articles (논리적 관계)
     │ source_id = 아티클 URL (crawl_sources와 직접 FK 없음)
     │ source_name = crawl_sources.name (비정규화)
-    │
-categories (독립)
-    │ articles.category = categories.name (논리적 관계)
+    │ category = categories.name (논리적 관계)
 ```
 
 ---
@@ -310,6 +359,25 @@ ALTER TABLE articles ADD COLUMN new_column text DEFAULT null;
 ---
 
 ## 마이그레이션 히스토리
+
+### 012_categories_unique_per_user.sql (2026-03-01)
+
+**목적**: 멀티유저 카테고리 중복 허용
+- `categories_name_key` (UNIQUE name) 제거
+- `categories_user_name_unique` (UNIQUE user_id, name) 추가
+- 같은 이름의 카테고리를 서로 다른 유저가 가질 수 있음
+
+```sql
+ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_name_key;
+ALTER TABLE categories ADD CONSTRAINT categories_user_name_unique UNIQUE (user_id, name);
+```
+
+### 009-011 유저 시스템 (2026-03-01)
+
+**목적**: 멀티유저 피드 인프라
+- `users` 테이블 생성 (auth.users 가입 시 트리거 자동 생성)
+- `articles`, `crawl_sources`, `categories`에 `user_id` 컬럼 추가
+- 기존 데이터에 master user_id 할당
 
 ### 006_drop_thumbnail_url.sql (2026-02-19)
 

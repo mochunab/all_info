@@ -10,6 +10,7 @@ import { getStrategy, inferCrawlerType, closeBrowser, isValidCrawlerType } from 
 import { parseDateToISO } from './date-parser';
 import { generateSourceId } from '@/lib/utils';
 import { filterGarbageArticles, getQualityStats } from './quality-filter';
+import { checkRobotsTxt } from './robots-checker';
 
 
 /**
@@ -600,9 +601,26 @@ function getCrawler(source: CrawlSource): (source: CrawlSource) => Promise<Crawl
 /**
  * 아티클 저장
  */
+/**
+ * 제목 정규화 — 교차 소스 중복 감지용
+ * 출판사 접미사 제거, 말줄임 정리, 공백 통합
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .replace(/\s*[|｜\-–—]\s*[^|｜\-–—]*$/, '')
+    .replace(/[…]+|\.{3,}$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeLikePattern(str: string): string {
+  return str.replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 export async function saveArticles(
   articles: CrawledArticle[],
-  supabase: SupabaseClient<Database>
+  supabase: SupabaseClient<Database>,
+  userId?: string
 ): Promise<{ saved: number; skipped: number; updated: number }> {
   let saved = 0;
   let skipped = 0;
@@ -611,7 +629,7 @@ export async function saveArticles(
   for (let idx = 0; idx < articles.length; idx++) {
     const article = articles[idx];
     try {
-      // source_id 기준 중복 확인
+      // source_id 기준 중복 확인 (동일 URL)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: existing } = await (supabase as any)
         .from('articles')
@@ -636,6 +654,24 @@ export async function saveArticles(
         continue;
       }
 
+      // 교차 소스 제목 중복 확인 (다른 URL, 같은 기사)
+      const normalized = normalizeTitle(article.title);
+      if (normalized.length >= 10) {
+        const prefix = escapeLikePattern(normalized.substring(0, Math.min(normalized.length, 40)));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: titleMatches } = await (supabase as any)
+          .from('articles')
+          .select('id, title')
+          .ilike('title', `${prefix}%`)
+          .limit(5);
+
+        if (titleMatches?.some((m: { title: string }) => normalizeTitle(m.title) === normalized)) {
+          console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (제목 중복): "${article.title.substring(0, 40)}..."`);
+          skipped++;
+          continue;
+        }
+      }
+
       // 새 아티클 저장
       // varchar 길이 제한 방어 (source_name: 100, author: 100, category: 50)
       const safeName = article.source_name?.substring(0, 100);
@@ -652,6 +688,7 @@ export async function saveArticles(
         author: safeAuthor,
         published_at: article.published_at,
         category: safeCategory,
+        ...(userId && { user_id: userId }),
       });
 
       if (error) {
@@ -709,6 +746,13 @@ export async function runCrawler(
     if (options?.dryRun) console.log(`   🧪 모드: 테스트 (DB 저장 안함)`);
     console.log(`${'─'.repeat(80)}`);
 
+    // robots.txt 준수 체크
+    const isAllowed = await checkRobotsTxt(effectiveUrl);
+    if (!isAllowed) {
+      console.log(`🚫 robots.txt에 의해 크롤링 거부됨: ${effectiveUrl}`);
+      return result;
+    }
+
     // 크롤러 선택 및 실행
     const crawler = getCrawler(effectiveSource);
     console.log(`\n🤖 크롤러: ${crawler.name || '전략 기반'}`);
@@ -734,7 +778,9 @@ export async function runCrawler(
     // DB 저장 (dry-run이 아닌 경우)
     if (!options?.dryRun) {
       console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
-      const { saved, skipped, updated } = await saveArticles(articles, supabase);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sourceUserId = (source as any).user_id as string | undefined;
+      const { saved, skipped, updated } = await saveArticles(articles, supabase, sourceUserId);
       result.new = saved;
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);

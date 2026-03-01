@@ -330,12 +330,17 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     if (cmsResult.cms) {
       console.log(`[3단계/9단계] ✅ CMS 감지 성공: ${cmsResult.cms}`);
 
-      // CMS별 RSS 경로 시도
+      // CMS별 RSS 경로 시도 (스코프 호환성 검사 포함)
       if (cmsResult.rssPath) {
         const cmsRssUrl = normalizeUrl(cmsResult.rssPath, url);
         console.log(`[3단계/9단계] 🔄 ${cmsResult.cms} RSS 경로 시도: ${cmsRssUrl}`);
 
-        const isValid = await validateRSSFeed(cmsRssUrl);
+        const scopeOk = isRssScopeCompatible(url, cmsRssUrl);
+        if (!scopeOk) {
+          console.log(`[3단계/9단계] ⚠️  RSS 스코프 불일치 (섹션/시리즈 URL에 사이트 전체 피드) - STATIC 전략 사용`);
+        }
+
+        const isValid = scopeOk && await validateRSSFeed(cmsRssUrl);
 
         if (isValid) {
           console.log(`[3단계/9단계] ✅ ${cmsResult.cms} RSS 검증 성공!`);
@@ -742,9 +747,51 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
 }
 
 /**
+ * RSS 스코프 호환성 검사
+ * - RSS 경로가 등록 URL 하위 → 항상 허용
+ * - 루트 레벨 RSS(/feed, /rss.xml) → 얕은 등록 URL(1~2세그먼트)이면 허용, 깊으면 거부
+ * - 중간 경로 RSS(/magazine/feed) → 등록 URL 하위가 아니면 거부
+ */
+function isRssScopeCompatible(registeredUrl: string, discoveredRssUrl: string): boolean {
+  try {
+    const reg = new URL(registeredUrl);
+    const rss = new URL(discoveredRssUrl);
+
+    const regPath = reg.pathname.replace(/\/+$/, '') || '';
+    const rssPath = rss.pathname.replace(/\/+$/, '') || '';
+
+    // 등록 URL이 사이트 루트 → 어떤 RSS든 OK
+    const UTM_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'fbclid', 'gclid'];
+    const regHasMeaningfulQuery = [...reg.searchParams.keys()]
+      .filter(k => !UTM_PARAMS.includes(k))
+      .length > 0;
+
+    if ((!regPath || regPath === '/') && !regHasMeaningfulQuery) return true;
+
+    // RSS 경로가 등록 URL 경로와 동일하거나 하위 → 스코프 호환
+    if (rssPath === regPath || rssPath.startsWith(regPath + '/')) return true;
+
+    // 루트 레벨 RSS (/feed, /rss.xml 등)
+    const RSS_ROOT_PATTERN = /^\/(feed|rss|atom|feed\.xml|rss\.xml|atom\.xml|index\.xml)\/?$/i;
+    if (RSS_ROOT_PATTERN.test(rss.pathname)) {
+      // 얕은 경로(1~2세그먼트: /blog, /news/tech)면 루트 RSS 허용
+      // 깊은 경로(3+세그먼트: /magazine/list/business)면 거부
+      const regSegments = regPath.split('/').filter(Boolean);
+      return regSegments.length <= 2;
+    }
+
+    // 중간 경로 RSS (/magazine/feed 등) → 등록 URL 하위가 아니면 스코프 불일치
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * RSS 피드 자동 발견
  * - HTML <link rel="alternate"> 태그
  * - 일반 경로 (/feed, /rss, /feed.xml 등)
+ * - 스코프 호환성 검사: 섹션/시리즈 URL에 사이트 전체 RSS 매칭 방지
  */
 async function discoverRSS(url: string, $: cheerio.CheerioAPI): Promise<string | null> {
   // 1. HTML <link> 태그 확인
@@ -755,7 +802,11 @@ async function discoverRSS(url: string, $: cheerio.CheerioAPI): Promise<string |
   if (rssLink.length > 0) {
     const href = rssLink.attr('href');
     if (href) {
-      return normalizeUrl(href, url);
+      const candidate = normalizeUrl(href, url);
+      if (isRssScopeCompatible(url, candidate)) {
+        return candidate;
+      }
+      console.log(`   ⚠️  RSS 스코프 불일치 (섹션/시리즈 URL에 사이트 전체 피드): ${candidate}`);
     }
   }
 
@@ -766,7 +817,7 @@ async function discoverRSS(url: string, $: cheerio.CheerioAPI): Promise<string |
   const results = await Promise.all(
     candidates.map(async (rssUrl) => ({
       rssUrl,
-      isValid: await validateRSSFeed(rssUrl),
+      isValid: isRssScopeCompatible(url, rssUrl) && await validateRSSFeed(rssUrl),
     }))
   );
 
@@ -848,6 +899,20 @@ async function discoverSitemap(url: string): Promise<string | null> {
     `${origin}/sitemap_index.xml`,
   ];
 
+  // 등록 URL의 경로 프리픽스 (섹션/시리즈 스코프 검증용)
+  let regPathPrefix: string | null = null;
+  try {
+    const reg = new URL(url);
+    const regPathIsRoot = reg.pathname === '/' || reg.pathname === '';
+    const UTM_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'fbclid', 'gclid'];
+    const regHasMeaningfulQuery = [...reg.searchParams.keys()]
+      .filter(k => !UTM_PARAMS.includes(k))
+      .length > 0;
+    if (!regPathIsRoot || regHasMeaningfulQuery) {
+      regPathPrefix = reg.pathname.replace(/\/+$/, '') || null;
+    }
+  } catch { /* ignore */ }
+
   // 병렬 검증 (직렬 2회 최대 10s → 병렬 최대 5s)
   const results = await Promise.all(
     candidates.map(async (candidate) => {
@@ -893,16 +958,51 @@ async function discoverSitemap(url: string): Promise<string | null> {
         }
         const text = new TextDecoder().decode(merged.slice(0, MAX_BYTES));
 
-        // <sitemapindex>는 서브 sitemap 목록 → 기존 scoreSitemapUrl이 필터링하므로 그대로 통과
-        if (text.includes('<sitemapindex')) return candidate;
+        // <sitemapindex>는 서브 sitemap 목록
+        if (text.includes('<sitemapindex')) {
+          // 섹션/시리즈 URL → 서브 sitemap 경로에 매칭 항목 있는지 확인
+          if (regPathPrefix) {
+            const locMatches = text.match(/<loc>(.*?)<\/loc>/g) || [];
+            const hasMatchingPath = locMatches.some(m => {
+              const match = m.match(/<loc>(.*?)<\/loc>/);
+              if (!match) return false;
+              try {
+                return new URL(match[1]).pathname.startsWith(regPathPrefix!);
+              } catch { return false; }
+            });
+            if (!hasMatchingPath) {
+              console.log(`   ⚠️  Sitemapindex 스코프 불일치 (섹션 경로 매칭 없음): ${candidate}`);
+              return null;
+            }
+          }
+          return candidate;
+        }
 
         // <urlset>은 직접 URL 목록 → 기사 URL 비율 검증
         if (text.includes('<urlset')) {
-          if (isArticleSitemap(text)) {
-            return candidate;
+          if (!isArticleSitemap(text)) {
+            console.log(`   ⚠️  Sitemap 거부 (기사 URL 비율 부족): ${candidate}`);
+            return null;
           }
-          console.log(`   ⚠️  Sitemap 거부 (기사 URL 비율 부족): ${candidate}`);
-          return null;
+
+          // 섹션/시리즈 URL → sitemap 내 경로 매칭 URL 존재 여부 확인
+          if (regPathPrefix) {
+            const locMatches = text.match(/<loc>(.*?)<\/loc>/g) || [];
+            const hasMatchingPath = locMatches.some(m => {
+              const match = m.match(/<loc>(.*?)<\/loc>/);
+              if (!match) return false;
+              try {
+                const locPath = new URL(match[1]).pathname;
+                return locPath.startsWith(regPathPrefix!);
+              } catch { return false; }
+            });
+            if (!hasMatchingPath) {
+              console.log(`   ⚠️  Sitemap 스코프 불일치 (섹션 URL 경로와 매칭되는 항목 없음): ${candidate}`);
+              return null;
+            }
+          }
+
+          return candidate;
         }
 
         return null;
