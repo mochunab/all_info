@@ -12,11 +12,13 @@ import LanguageSwitcher from './LanguageSwitcher';
 type HeaderProps = {
   language?: Language;
   onLanguageChange?: (lang: Language) => void;
+  logoHref?: string;
 };
 
 export default function Header({
   language = 'ko',
   onLanguageChange,
+  logoHref = '/landing',
 }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -53,7 +55,7 @@ export default function Header({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-3">
+            <Link href={logoHref} className="flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--accent)] text-white">
                 <svg
                   width="24"
@@ -85,7 +87,7 @@ export default function Header({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`text-sm font-medium transition-colors ${
+                    className={`text-base font-medium transition-colors ${
                       isActive
                         ? 'text-[var(--text-primary)]'
                         : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'

@@ -83,20 +83,20 @@ export const translations = {
     'sources.recommendLimitPartial': '남은 슬롯 {count}개만큼 추가되었습니다.',
 
     // Chat Insight
-    'chat.buttonLabel': '인사이트 얻기',
-    'chat.title': 'AI 인사이트',
+    'chat.buttonLabel': '면접 코칭 받기',
+    'chat.title': 'AI 면접 코칭',
     'chat.contextBadge': '{category}의 {count}개 기사 기반',
-    'chat.welcome': '수집된 아티클을 기반으로 인사이트를 제공합니다. 궁금한 것을 질문해보세요!',
-    'chat.placeholder': '질문을 입력하세요...',
+    'chat.welcome': '최신 업계 기사를 바탕으로 면접 답변을 코칭해드립니다. 궁금한 것을 질문해보세요!',
+    'chat.placeholder': '면접 질문이나 궁금한 점을 입력하세요...',
     'chat.send': '전송',
     'chat.error': '응답 생성에 실패했습니다.',
     'chat.networkError': '네트워크 오류가 발생했습니다.',
-    'chat.quickTrend': '최근 주요 트렌드는 무엇인가요?',
-    'chat.quickSummary': '전체 기사를 한 줄로 요약해주세요',
-    'chat.quickInsight': '비즈니스에 적용할 수 있는 인사이트는?',
+    'chat.quickTrend': '요즘 이슈를 면접에서 어떻게 말하면 좋을까요?',
+    'chat.quickSummary': '오늘 콘텐츠 중 면접에 쓸 만한 것 골라주세요',
+    'chat.quickInsight': '면접에서 "최근 관심 있는 뉴스"를 물으면 뭐라고 답할까요?',
     'chat.newChat': '새 대화',
     'chat.pinnedArticle': '참조 중: {title}',
-    'chat.pinHint': '채팅이 열린 상태에서 아티클을 클릭하면 해당 아티클을 참조할 수 있습니다.',
+    'chat.pinHint': '채팅이 열린 상태에서 콘텐츠를 클릭하면 해당 콘텐츠 기반으로 면접 코칭을 받을 수 있습니다.',
   },
   en: {
     // Header
