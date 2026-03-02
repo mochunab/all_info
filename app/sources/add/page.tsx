@@ -14,6 +14,7 @@ type Category = {
   id: number;
   name: string;
   is_default: boolean;
+  translations?: Record<string, string>;
 };
 
 // 페이지를 항상 동적으로 렌더링 + fetch Data Cache 비활성화

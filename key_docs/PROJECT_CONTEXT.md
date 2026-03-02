@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 데이터 플로우 & 런타임 동작 가이드
 
 > 이 문서의 핵심: **데이터가 시스템을 어떻게 흐르는가**
-> 최종 업데이트: 2026-03-02 (v1.8.1)
+> 최종 업데이트: 2026-03-02 (v1.8.2)
 >
 > **다른 문서 참조**:
 > - 개발 규칙, API Routes, 파일 구조, 환경변수, 디버깅 → [CLAUDE.md](../CLAUDE.md)
@@ -26,7 +26,7 @@
 └──────────────────────┘       │                │              │
                                ▼                ▼              ▼
                        ┌────────────┐  ┌──────────────┐  ┌──────────────┐
-                       │  Supabase  │  │  Crawlers    │  │  Edge Fn (5) │
+                       │  Supabase  │  │  Crawlers    │  │  Edge Fn (6) │
                        │  PostgreSQL│  │  (9 전략)    │  │ Gemini Flash │
                        └────────────┘  └──────────────┘  └──────────────┘
 ```
@@ -76,6 +76,12 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   │
    │   ├─ [목록 크롤링] strategy.crawlList() → RawContentItem[]
    │   │
+   │   ├─ [변경 감지] 2단계 스킵 최적화 (v1.8.2)
+   │   │   ├─ 1차: URL 해시 비교 — crawlList URL 해시 vs config._last_url_hash
+   │   │   │   └─ 동일 → 전체 스킵 (본문 추출 없음)
+   │   │   └─ 2차: DB 사전 중복 체크 — source_id로 기존 아티클 필터
+   │   │       └─ 신규 아티클만 본문 추출 대상
+   │   │
    │   ├─ [본문 추출] content 없는 아티클만
    │   │   └─ content-extractor.ts 우선순위:
    │   │       1. 커스텀 셀렉터 → 2. Readability → 3. 일반 셀렉터 → 4. body 전체
@@ -89,9 +95,10 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   ├─ [폴백 체인] 품질 검증 실패 시 → 대체 전략 시도
    │   │   ├─ 기본: PLATFORM_KAKAO/NAVER/NEWSLETTER → SPA, STATIC → SPA
    │   │   ├─ Cheerio 0건 또는 유효 아이템 부족 → SPA fallback 허용
-   │   │   └─ 전부 실패 → auto-recovery (resolveStrategy 9단계 재실행)
-   │   │       → AI 셀렉터 감지 → DB config 저장 → 재크롤링
-   │   │       → Cheerio 재감지도 실패 시 → SPA 기본 셀렉터 최종 폴백
+   │   │   └─ 전부 실패 → auto-recovery (3단계)
+   │   │       1순위: LLM 직접 추출 (extract-articles Edge Fn, 셀렉터 우회)
+   │   │       2순위: resolveStrategy 9단계 재실행 → 새 셀렉터로 재크롤링
+   │   │       3순위: SPA 기본 셀렉터 최종 폴백
    │   │
    │   ├─ [redirect 방어] fetchWithTimeout: redirect loop 감지 시 bot UA 재시도
    │   │
@@ -270,7 +277,7 @@ const SOURCE_COLORS: Record<string, string> = {
 
 | 항목 | 값 |
 |------|-----|
-| 크롤링 전체 | ~30-60초 (제한 병렬, v1.5.3) |
+| 크롤링 전체 | ~30-60초 (제한 병렬, 변경 감지 스킵 적용) |
 | AI 요약 1건 | ~2-3초 |
 | 배치 요약 20건 | ~12초 (5개 병렬 × 4청크) |
 | Vercel maxDuration | 300초 |
@@ -292,11 +299,35 @@ const SOURCE_COLORS: Record<string, string> = {
 | OpenAI API | 로컬 fallback 요약 (gpt-4.1-mini) | Edge Fn 실패 시 로컬 요약 불가 |
 | Vercel | 호스팅, Cron | 서비스 접속 불가 |
 | Naver Open API | 뉴스 검색 API (search→API 변환) | 네이버 검색 소스만 실패 |
+| DeepL Free API | 카테고리명 동적 번역 (4개 언어) | 카테고리 번역 불가 (생성/이름변경은 정상) |
 | 크롤링 대상 사이트 | 콘텐츠 소스 | 해당 소스만 실패 |
 
 ---
 
 ## 버전 히스토리
+
+### v1.8.4 (2026-03-02)
+- 카테고리명 동적 번역: 커스텀 카테고리 생성/이름변경 시 DeepL API로 4개 언어(en/vi/zh/ja) 자동 번역
+  - `categories.translations` JSONB 컬럼 추가 (마이그레이션 013)
+  - `app/api/categories/route.ts`: POST/PATCH 후 fire-and-forget DeepL 번역
+  - `lib/language-context.tsx`: `translateCat()` (DB → 하드코딩 fallback → 원본)
+  - 기존 카테고리 백필 스크립트: `scripts/backfill-category-translations.ts`
+
+### v1.8.3 (2026-03-02)
+- LLM 직접 아티클 추출: auto-recovery 1순위로 추가 (셀렉터 우회)
+  - `extract-articles` Edge Function (Gemini 2.5 Flash Lite, temp 0.2)
+  - `lib/ai/article-extractor.ts`: Edge Function → OpenAI fallback
+  - `lib/crawlers/html-preprocessor.ts`: Cheerio 기반 HTML 전처리 (30KB 제한)
+  - HTML 전처리 강화: 모달/다이얼로그/폼/구독·로그인 영역/숨김 요소 제거
+  - LLM 추출 시 `_original_base_url` 우선 사용 (crawl_url에 콘텐츠 없을 경우 대비)
+- 날짜 파서 개선: 혼합 상대 시간 + 한국어 수식어 ("1년 이상 전", "3개월 넘게 전") 파싱 추가
+
+### v1.8.2 (2026-03-02)
+- 크롤링 변경 감지 최적화: 미변경 소스 본문 추출 스킵
+  - 1단계: URL 해시 비교 (`config._last_url_hash`) — 목록 동일 시 전체 스킵
+  - 2단계: DB 사전 중복 체크 (`_known_source_ids`) — 기존 아티클 본문 추출 스킵
+  - `CrawlResult.skipped` 필드 추가, route 로그에 스킵 상태 반영
+  - DB 변경 없음 (`crawl_sources.config` JSONB에 `_last_url_hash` 키 자동 추가)
 
 ### v1.8.1 (2026-03-02)
 - RSS/Sitemap 스코프 체크: 피드 범위가 base_url보다 넓으면 자동 거부 → STATIC/SPA 폴백

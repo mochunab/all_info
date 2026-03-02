@@ -268,7 +268,7 @@ mblogthumb-phinf.pstatic.net
 **일시**: 2026-02-12
 **상태**: 확정
 
-**결정**: 커스텀 번역 시스템을 구현하여 4개 언어(한국어, English, 日本語, 中文)를 지원한다.
+**결정**: 커스텀 번역 시스템을 구현하여 5개 언어(한국어, English, Tiếng Việt, 日本語, 中文)를 지원한다.
 
 **이유**:
 - 글로벌 사용자 접근성 향상
@@ -277,8 +277,8 @@ mblogthumb-phinf.pstatic.net
 - localStorage로 사용자 언어 설정 유지 (회원가입 불필요)
 
 **구현**:
-- 파일: `lib/i18n.ts` - translations 객체에 ko, en, ja, zh 모든 키 정의
-- 타입: `Language = 'ko' | 'en' | 'ja' | 'zh'` (`types/index.ts`)
+- 파일: `lib/i18n.ts` - translations 객체에 ko, en, vi, zh, ja 모든 키 정의
+- 타입: `Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja'` (`types/index.ts`)
 - 컴포넌트: `LanguageSwitcher.tsx` - 드롭다운 UI
 - localStorage 키: `ih:language`
 - 변수 치환: `{name}`, `{count}` 형식 지원
@@ -901,6 +901,38 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 - 홈피드 제거 (마이피드만): 비로그인 사용자에게 콘텐츠를 보여줄 수 없음
 
 **관련 파일**: `lib/user.ts`, `app/my-feed/page.tsx`, `components/LoginPromptDialog.tsx`, API routes 전체
+
+---
+
+## ADR-023: 카테고리명 동적 번역 (DeepL API + DB 저장)
+
+**일시**: 2026-03-02
+**상태**: 확정
+
+**결정**: 커스텀 카테고리 생성/이름변경 시 DeepL Free API로 4개 언어(en/vi/zh/ja) 번역을 생성하여 `categories.translations` JSONB 컬럼에 저장한다.
+
+**배경**:
+- `translateCategory()`의 하드코딩 매핑은 기본 6개 카테고리만 지원
+- 유저가 추가한 커스텀 카테고리(예: "베트남")는 비한국어 UI에서도 한국어 그대로 표시
+- ADR-012의 커스텀 i18n 시스템은 정적 UI 키 번역용이라 동적 카테고리에 부적합
+
+**구현**:
+- DB: `categories.translations` JSONB (`{ "en": "Vietnam", "vi": "Việt Nam", ... }`)
+- 백엔드: `POST/PATCH /api/categories` → DeepL 직접 호출 (fire-and-forget, 실패 시 빈 객체)
+- 프론트엔드: `translateCat(name)` — DB translations → 하드코딩 fallback (`lib/i18n.ts`) → 원본명
+- 백필: `scripts/backfill-category-translations.ts` (기본 6개 하드코딩 + 나머지 DeepL)
+
+**대안 검토**:
+- `/api/translate` 엔드포인트 경유: 서버→서버 통신에 불필요한 HTTP 오버헤드
+- 프론트엔드 실시간 번역: 매 렌더링마다 API 호출, 비용 과다
+- 하드코딩 맵 확장: 동적 카테고리에는 대응 불가
+
+**트레이드오프**:
+- DeepL Free API 월 50만 자 제한 (카테고리명은 짧아서 충분)
+- 번역 실패 시 원본 한국어 이름 표시 (graceful degradation)
+- `DEEPL_API_KEY` 미설정 시 번역 스킵 (카테고리 생성 자체는 정상)
+
+**관련 파일**: `app/api/categories/route.ts`, `lib/language-context.tsx`, `supabase/migrations/013_add_category_translations.sql`
 
 ---
 

@@ -13,8 +13,9 @@
 | 3 | `detect-api-endpoint` | Puppeteer 네트워크 탐지 → API 엔드포인트 자동 발견 | Gemini 2.5 Flash Lite | 운영 중 | 2026-02-19 |
 | 4 | `recommend-sources` | 카테고리별 AI 콘텐츠 소스 추천 (웹 검색 + URL 검증) | Gemini 2.5 Flash Lite + google_search | 운영 중 | 2026-02-21 |
 | 5 | `chat-insight` | AI 채팅 인사이트 (카테고리/아티클 기반 질의) | Gemini 2.5 Flash Lite | 운영 중 | 2026-02-25 |
+| 6 | `extract-articles` | HTML에서 아티클 직접 추출 (auto-recovery용) | Gemini 2.5 Flash Lite | 운영 중 | 2026-03-02 |
 
-> 현재 5개의 Edge Function이 배포되어 있습니다. (v1.6.4에서 전체 Gemini 2.5 Flash Lite로 마이그레이션)
+> 현재 6개의 Edge Function이 배포되어 있습니다. (v1.6.4에서 전체 Gemini 2.5 Flash Lite로 마이그레이션)
 
 ---
 
@@ -397,7 +398,72 @@ supabase functions deploy recommend-sources
 
 ---
 
-## 5. chat-insight
+## 5. extract-articles
+
+### 개요
+
+| 항목 | 값 |
+|------|-----|
+| **파일** | `supabase/functions/extract-articles/index.ts` |
+| **런타임** | Deno |
+| **모델** | Gemini 2.5 Flash Lite (temp 0.2, maxOutputTokens 2000) |
+| **환경변수** | `google_API_KEY` |
+| **호출 시점** | 크롤링 auto-recovery — 셀렉터 기반 크롤링 실패 시 1순위 |
+
+### 역할
+
+CSS 셀렉터 없이 LLM이 HTML에서 아티클 데이터(제목, 링크, 날짜, 썸네일)를 직접 추출합니다. Tailwind 클래스 변동 등으로 셀렉터가 무력화되는 사이트에 대응.
+
+### 요청 (Request)
+
+```
+POST /functions/v1/extract-articles
+Content-Type: application/json
+Authorization: Bearer {SERVICE_ROLE_KEY}
+```
+
+```json
+{
+  "url": "https://example.com/blog",
+  "html": "전처리된 HTML (최대 30KB)"
+}
+```
+
+### 응답 (Response)
+
+**성공 (200)**:
+```json
+{
+  "success": true,
+  "articles": [
+    {
+      "title": "아티클 제목 (5자+)",
+      "link": "https://example.com/post/123",
+      "date": "2026-03-01 또는 null",
+      "thumbnail": "https://example.com/img.jpg 또는 null"
+    }
+  ]
+}
+```
+
+### 클라이언트 호출 (`lib/ai/article-extractor.ts`)
+
+```
+extractArticlesViaLLM(html, baseUrl)
+  → 1차: Edge Function (Gemini)
+  → 2차: 로컬 OpenAI (gpt-4.1-mini, response_format: json_object)
+  → 결과를 RawContentItem[]로 변환 (processTitle, isWithinDays 적용)
+```
+
+### 배포 방법
+
+```bash
+supabase functions deploy extract-articles --project-ref tcpvxihjswauwrmcxhhh
+```
+
+---
+
+## 6. chat-insight
 
 ### 개요
 
@@ -532,7 +598,7 @@ return new Response(JSON.stringify(data), {
 
 | Secret | 용도 | 사용 함수 |
 |--------|------|-----------|
-| `google_API_KEY` | Google Gemini API 키 | 5개 함수 공유 (`summarize-article`, `detect-crawler-type`, `detect-api-endpoint`, `recommend-sources`, `chat-insight`) |
+| `google_API_KEY` | Google Gemini API 키 | 6개 함수 공유 (`summarize-article`, `detect-crawler-type`, `detect-api-endpoint`, `extract-articles`, `recommend-sources`, `chat-insight`) |
 
 ```bash
 # Secret 확인

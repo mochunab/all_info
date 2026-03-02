@@ -3,15 +3,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer, LoginPromptDialog } from '@/components';
-import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
+import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/language-context';
 
 const STORAGE_KEY = {
   MY_ARTICLES: 'ih:my:articles',
   MY_CATEGORIES: 'ih:my:categories',
-  LANGUAGE: 'ih:language',
   MY_CATEGORY: 'ih:my:category',
 } as const;
 
@@ -38,7 +37,7 @@ export default function MyFeed() {
   const [crawlProgress, setCrawlProgress] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
-  const [language, setLanguage] = useState<Language>('ko');
+  const { language, setLanguage, t, setCategoryTranslations } = useLanguage();
   const initialLoadDone = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef(search);
@@ -63,33 +62,6 @@ export default function MyFeed() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  // Language init
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const urlLang = params.get('lang');
-      if (urlLang && ['ko', 'en', 'ja', 'zh'].includes(urlLang)) {
-        setLanguage(urlLang as Language);
-        localStorage.setItem(STORAGE_KEY.LANGUAGE, urlLang);
-        return;
-      }
-      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
-      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
-        setLanguage(saved as Language);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const handleLanguageChange = useCallback((lang: Language) => {
-    setLanguage(lang);
-    try {
-      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
-      const url = new URL(window.location.href);
-      url.searchParams.set('lang', lang);
-      window.history.replaceState(null, '', url.toString());
-    } catch { /* ignore */ }
   }, []);
 
   const fetchArticles = useCallback(
@@ -192,6 +164,7 @@ export default function MyFeed() {
           if (data.categories && data.categories.length > 0) {
             const categoryNames = data.categories.map((c: { name: string }) => c.name);
             setCategories(categoryNames);
+            setCategoryTranslations(data.categories);
             const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
             setCategory(saved && categoryNames.includes(saved) ? saved : categoryNames[0] || '');
             try {
@@ -329,7 +302,7 @@ export default function MyFeed() {
         setCrawlProgress('');
 
         if (data.error) {
-          setToastMessage(t(language, 'toast.crawlFailed', { error: data.error }));
+          setToastMessage(t('toast.crawlFailed', { error: data.error }));
           setShowToast(true);
           return;
         }
@@ -341,8 +314,8 @@ export default function MyFeed() {
 
         setToastMessage(
           totalNew > 0
-            ? t(language, 'toast.crawlSuccess', { count: String(totalNew) })
-            : t(language, 'toast.noNewInsights')
+            ? t('toast.crawlSuccess', { count: String(totalNew) })
+            : t('toast.noNewInsights')
         );
         setShowToast(true);
 
@@ -394,7 +367,7 @@ export default function MyFeed() {
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');
-        setToastMessage(t(language, 'toast.networkError', {
+        setToastMessage(t('toast.networkError', {
           error: error instanceof Error ? error.message : 'Unknown error'
         }));
         setShowToast(true);
@@ -409,7 +382,7 @@ export default function MyFeed() {
     setArticles((prev) => prev.filter((article) => article.id !== articleId));
     setTotalCount((prev) => Math.max(0, prev - 1));
 
-    setToastMessage(t(language, 'toast.articleDeleted'));
+    setToastMessage(t('toast.articleDeleted'));
     setShowToast(true);
 
     if (category) articlesCacheRef.current.delete(category);
@@ -420,7 +393,7 @@ export default function MyFeed() {
   if (authChecked && !user) {
     return (
       <div className="min-h-screen">
-        <Header language={language} onLanguageChange={handleLanguageChange} />
+        <Header language={language} onLanguageChange={setLanguage} />
         <LoginPromptDialog
           isOpen={showLoginDialog}
           onClose={() => router.push('/')}
@@ -433,7 +406,7 @@ export default function MyFeed() {
   if (!authChecked) {
     return (
       <div className="min-h-screen">
-        <Header language={language} onLanguageChange={handleLanguageChange} />
+        <Header language={language} onLanguageChange={setLanguage} />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="animate-pulse space-y-4">
             <div className="h-10 bg-[var(--bg-secondary)] rounded w-1/3" />
@@ -452,7 +425,7 @@ export default function MyFeed() {
     <div className="min-h-screen">
       <Header
         language={language}
-        onLanguageChange={handleLanguageChange}
+        onLanguageChange={setLanguage}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -495,7 +468,7 @@ export default function MyFeed() {
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            <span className="text-sm font-medium">{t(language, 'chat.buttonLabel')}</span>
+            <span className="text-sm font-medium">{t('chat.buttonLabel')}</span>
           </button>
         </div>
       )}

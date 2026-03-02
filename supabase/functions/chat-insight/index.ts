@@ -37,8 +37,9 @@ function buildSystemPrompt(category: string, articles: ChatRequest['articles'], 
 
   const langInstruction = language === 'ko' ? '한국어로 답변하세요.'
     : language === 'en' ? 'Answer in English.'
-    : language === 'ja' ? '日本語で回答してください。'
+    : language === 'vi' ? 'Trả lời bằng tiếng Việt.'
     : language === 'zh' ? '请用中文回答。'
+    : language === 'ja' ? '日本語で回答してください。'
     : '한국어로 답변하세요.';
 
   let pinnedSection = '';
