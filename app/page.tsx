@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer } from '@/components';
-import type { Article, ArticleListResponse, CrawlStatus, Language } from '@/types';
+import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import { createClient } from '@/lib/supabase/client';
-import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/language-context';
 
 const STORAGE_KEY = {
   HOME_ARTICLES: 'ih:home:articles',
   HOME_CATEGORIES: 'ih:home:categories',
-  LANGUAGE: 'ih:language',
   CATEGORY: 'ih:category',
 } as const;
 
@@ -31,7 +30,7 @@ export default function Home() {
   const [crawlProgress, setCrawlProgress] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
-  const [language, setLanguage] = useState<Language>('ko');
+  const { language, setLanguage, t, setCategoryTranslations } = useLanguage();
   const [isNonMasterUser, setIsNonMasterUser] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   useEffect(() => {
@@ -55,35 +54,6 @@ export default function Home() {
   const crawlAbortRef = useRef<AbortController | null>(null);
   const articlesCacheRef = useRef<Map<string, { articles: Article[]; totalCount: number; hasMore: boolean; timestamp: number }>>(new Map());
   const fetchAbortRef = useRef<AbortController | null>(null);
-
-  // 언어 설정 초기화 (URL 파라미터 우선, localStorage 차선)
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const urlLang = params.get('lang');
-      if (urlLang && ['ko', 'en', 'ja', 'zh'].includes(urlLang)) {
-        setLanguage(urlLang as Language);
-        localStorage.setItem(STORAGE_KEY.LANGUAGE, urlLang);
-        return;
-      }
-      const saved = localStorage.getItem(STORAGE_KEY.LANGUAGE);
-      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
-        setLanguage(saved as Language);
-      }
-    } catch { /* 무시 */ }
-  }, []);
-
-  // 언어 변경 핸들러 (localStorage + URL 파라미터 동시 업데이트)
-  const handleLanguageChange = useCallback((lang: Language) => {
-    setLanguage(lang);
-    try {
-      localStorage.setItem(STORAGE_KEY.LANGUAGE, lang);
-      // URL 파라미터 업데이트 (영어권 공유 링크 등에 활용)
-      const url = new URL(window.location.href);
-      url.searchParams.set('lang', lang);
-      window.history.replaceState(null, '', url.toString());
-    } catch { /* 무시 */ }
-  }, []);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false, options?: { signal?: AbortSignal; silent?: boolean }) => {
@@ -186,6 +156,7 @@ export default function Home() {
               (c: { name: string }) => c.name
             );
             setCategories(categoryNames);
+            setCategoryTranslations(data.categories);
             const saved = localStorage.getItem(STORAGE_KEY.CATEGORY);
             setCategory(saved && categoryNames.includes(saved) ? saved : categoryNames[0] || '');
             try {
@@ -337,7 +308,7 @@ export default function Home() {
         setCrawlProgress('');
 
         if (data.error) {
-          setToastMessage(t(language, 'toast.crawlFailed', { error: data.error }));
+          setToastMessage(t('toast.crawlFailed', { error: data.error }));
           setShowToast(true);
           return;
         }
@@ -349,8 +320,8 @@ export default function Home() {
 
         setToastMessage(
           totalNew > 0
-            ? t(language, 'toast.crawlSuccess', { count: String(totalNew) })
-            : t(language, 'toast.noNewInsights')
+            ? t('toast.crawlSuccess', { count: String(totalNew) })
+            : t('toast.noNewInsights')
         );
         setShowToast(true);
 
@@ -405,7 +376,7 @@ export default function Home() {
         stopPolling();
         setIsCrawling(false);
         setCrawlProgress('');
-        setToastMessage(t(language, 'toast.networkError', {
+        setToastMessage(t('toast.networkError', {
           error: error instanceof Error ? error.message : 'Unknown error'
         }));
         setShowToast(true);
@@ -420,7 +391,7 @@ export default function Home() {
     setArticles((prev) => prev.filter((article) => article.id !== articleId));
     setTotalCount((prev) => Math.max(0, prev - 1));
 
-    setToastMessage(t(language, 'toast.articleDeleted'));
+    setToastMessage(t('toast.articleDeleted'));
     setShowToast(true);
 
     if (category) articlesCacheRef.current.delete(category);
@@ -434,7 +405,7 @@ export default function Home() {
     <div className="min-h-screen">
       <Header
         language={language}
-        onLanguageChange={handleLanguageChange}
+        onLanguageChange={setLanguage}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -480,7 +451,7 @@ export default function Home() {
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            <span className="text-sm font-medium">{t(language, 'chat.buttonLabel')}</span>
+            <span className="text-sm font-medium">{t('chat.buttonLabel')}</span>
           </button>
         </div>
       )}

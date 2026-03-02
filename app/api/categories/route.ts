@@ -5,8 +5,49 @@ import { getCache, setCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } fr
 import { getMasterUserId } from '@/lib/user';
 
 type CategoryResponse = {
-  categories: { id: number; name: string; is_default: boolean }[];
+  categories: { id: number; name: string; is_default: boolean; translations?: Record<string, string> }[];
 };
+
+const DEEPL_TARGET_LANGS: Record<string, string> = {
+  en: 'EN',
+  vi: 'VI',
+  zh: 'ZH',
+  ja: 'JA',
+};
+
+async function translateCategoryName(name: string): Promise<Record<string, string>> {
+  const apiKey = process.env.DEEPL_API_KEY;
+  if (!apiKey) return {};
+
+  try {
+    const results = await Promise.allSettled(
+      Object.entries(DEEPL_TARGET_LANGS).map(async ([lang, deeplLang]) => {
+        const response = await fetch('https://api-free.deepl.com/v2/translate', {
+          method: 'POST',
+          headers: {
+            'Authorization': `DeepL-Auth-Key ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: [name], target_lang: deeplLang, source_lang: 'KO' }),
+        });
+        if (!response.ok) throw new Error(`DeepL ${response.status}`);
+        const data = await response.json();
+        return { lang, text: data.translations[0].text };
+      })
+    );
+
+    const translations: Record<string, string> = {};
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        translations[result.value.lang] = result.value.text;
+      }
+    }
+    return translations;
+  } catch (error) {
+    console.error('[CATEGORIES] Translation failed:', error);
+    return {};
+  }
+}
 
 const defaultCategoryResponse: CategoryResponse = {
   categories: [],
@@ -251,6 +292,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Translate category name via DeepL (non-blocking for category creation)
+    translateCategoryName(trimmedName).then(async (translations) => {
+      if (Object.keys(translations).length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from('categories')
+          .update({ translations })
+          .eq('id', data.id);
+        invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+        console.log(`[CATEGORIES] Translated "${trimmedName}":`, translations);
+      }
+    }).catch(() => {});
+
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
 
@@ -364,6 +418,20 @@ export async function PATCH(request: NextRequest) {
     }
 
     console.log(`[CATEGORIES] Renamed "${trimmedOld}" → "${trimmedNew}" (${sources?.length || 0} sources updated)`);
+
+    // Translate new category name via DeepL (non-blocking)
+    translateCategoryName(trimmedNew).then(async (translations) => {
+      if (Object.keys(translations).length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from('categories')
+          .update({ translations })
+          .eq('name', trimmedNew)
+          .eq('user_id', user.id);
+        invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+        console.log(`[CATEGORIES] Translated renamed "${trimmedNew}":`, translations);
+      }
+    }).catch(() => {});
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);

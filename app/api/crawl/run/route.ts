@@ -141,10 +141,14 @@ async function handleCrawlRun(request: NextRequest) {
 
         const sourceDuration = ((Date.now() - sourceStartTime) / 1000).toFixed(2);
 
-        console.log(`\n✅ [크롤링 완료] "${source.name}"`);
-        console.log(`   📊 발견: ${crawlResult.found}개`);
-        console.log(`   💾 저장: ${crawlResult.new}개`);
-        console.log(`   ⏱️  소요시간: ${sourceDuration}초`);
+        if (crawlResult.skipped) {
+          console.log(`\n⏭️  [SKIP] "${source.name}" — 변경 없음, 크롤링 스킵 (${sourceDuration}초)`);
+        } else {
+          console.log(`\n✅ [크롤링 완료] "${source.name}"`);
+          console.log(`   📊 발견: ${crawlResult.found}개`);
+          console.log(`   💾 저장: ${crawlResult.new}개`);
+          console.log(`   ⏱️  소요시간: ${sourceDuration}초`);
+        }
 
         // Update log with results
         console.log(`📝 크롤링 로그 업데이트 중...`);

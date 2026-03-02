@@ -161,7 +161,11 @@ export async function POST(request: NextRequest) {
           .update({ last_crawled_at: new Date().toISOString() })
           .eq('id', source.id);
 
-        console.log(`✅ [완료] ${source.name} — ${elapsed}초, 신규 ${crawlResult.new}개`);
+        if (crawlResult.skipped) {
+          console.log(`⏭️  [SKIP] ${source.name} — 변경 없음 (${elapsed}초)`);
+        } else {
+          console.log(`✅ [완료] ${source.name} — ${elapsed}초, 신규 ${crawlResult.new}개`);
+        }
 
         results.push({
           source: source.name,

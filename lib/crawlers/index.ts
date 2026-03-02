@@ -1,6 +1,7 @@
 // 범용 크롤러 메인 모듈
 // 전략 패턴 기반 크롤링 시스템
 
+import { createHash } from 'crypto';
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import type { CrawlSource } from '@/types';
@@ -11,6 +12,12 @@ import { parseDateToISO } from './date-parser';
 import { generateSourceId } from '@/lib/utils';
 import { filterGarbageArticles, getQualityStats } from './quality-filter';
 import { checkRobotsTxt } from './robots-checker';
+
+
+function computeUrlHash(urls: string[]): string {
+  const sorted = [...urls].sort();
+  return createHash('sha256').update(sorted.join('|')).digest('hex').substring(0, 16);
+}
 
 
 /**
@@ -370,6 +377,25 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
 
       console.log(`   ✅ 크롤링 완료: ${rawItemsAll.length}개 발견 → 최신 ${rawItems.length}개 선택`);
 
+      // URL 해시 기반 변경 감지
+      if (rawItems.length > 0) {
+        const urlHash = computeUrlHash(rawItems.map(item => item.link));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const lastHash = (source.config as any)?._last_url_hash as string | undefined;
+
+        if (lastHash && urlHash === lastHash) {
+          console.log(`⏭️  [SKIP] 변경 없음 — 아티클 URL 동일`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (source.config as any)._computed_url_hash = urlHash;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (source.config as any)._skipped = true;
+          return [];
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (source.config as any)._computed_url_hash = urlHash;
+      }
+
       // 4. 품질 검증
       console.log(`   🔍 품질 검증 중...`);
       const validation = validateCrawlResults(rawItems);
@@ -397,6 +423,60 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
           validation.reason === 'No items found' ||
           validation.reason?.startsWith('Insufficient valid items')
         )) {
+          // [1순위] LLM 직접 추출 시도 (셀렉터 우회)
+          try {
+            // crawl_url과 원본 base_url이 다르면 원본 URL도 시도 (crawl_url에 콘텐츠 없을 수 있음)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const originalBaseUrl = (source.config as any)?._original_base_url as string | undefined;
+            const llmTargetUrl = (originalBaseUrl && originalBaseUrl !== source.base_url) ? originalBaseUrl : source.base_url;
+
+            console.log(`\n🤖 [LLM 추출] 셀렉터 우회 — LLM 직접 아티클 추출 시도...`);
+            if (llmTargetUrl !== source.base_url) {
+              console.log(`   📍 원본 URL 사용: ${llmTargetUrl} (crawl_url: ${source.base_url})`);
+            }
+            const { fetchPage } = await import('./auto-detect');
+            const { preprocessHtmlForExtraction } = await import('./html-preprocessor');
+            const { extractArticlesViaLLM } = await import('@/lib/ai/article-extractor');
+
+            const llmHtml = await fetchPage(llmTargetUrl);
+            if (llmHtml) {
+              const preprocessed = preprocessHtmlForExtraction(llmHtml);
+              const origin = new URL(llmTargetUrl).origin;
+              const llmItems = await extractArticlesViaLLM(preprocessed, origin);
+
+              if (llmItems.length >= 2) {
+                console.log(`   ✅ LLM 추출 성공: ${llmItems.length}건 — 본문 추출 진행...`);
+
+                const llmArticles: CrawledArticle[] = [];
+                const llmStrategy = getStrategy('STATIC');
+                for (let idx = 0; idx < Math.min(llmItems.length, 5); idx++) {
+                  const item = llmItems[idx];
+                  if (!item.content && llmStrategy.crawlContent) {
+                    try {
+                      item.content = await llmStrategy.crawlContent(item.link, config.content_selectors);
+                    } catch (error) {
+                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
+                  }
+                  llmArticles.push(convertToArticle(item, source, config.category));
+                }
+
+                const llmFiltered = filterGarbageArticles(llmArticles, source.name);
+                if (llmFiltered.length >= 2) {
+                  console.log(`   ✅ LLM 추출 최종 결과: ${llmFiltered.length}개 아티클`);
+                  return llmFiltered;
+                }
+                console.warn(`   ⚠️  LLM 추출 후 품질 필터링 결과 부족: ${llmFiltered.length}건`);
+              } else {
+                console.warn(`   ⚠️  LLM 추출 결과 부족: ${llmItems.length}건`);
+              }
+            }
+          } catch (llmError) {
+            console.warn(`   ⚠️  LLM 추출 오류:`, llmError instanceof Error ? llmError.message : llmError);
+          }
+
+          // [2순위] 기존 resolveStrategy 파이프라인 재분석
           console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 8단계 파이프라인 재분석 시도...`);
 
           try {
@@ -530,16 +610,33 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         console.log(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 중복제거 ${validation.stats.uniqueTitles}개`);
       }
 
-      // 5. 본문 크롤링
-      console.log(`\n   📄 본문 추출 시작... (${rawItems.length}개)`);
+      // 5. 사전 중복 체크 + 본문 크롤링
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const knownIds = new Set((source.config as any)?._known_source_ids as string[] || []);
+      const newItems = knownIds.size > 0
+        ? rawItems.filter(item => !knownIds.has(generateSourceId(item.link)))
+        : rawItems;
+
+      if (newItems.length === 0 && knownIds.size > 0) {
+        console.log(`⏭️  [SKIP] 모든 아티클이 DB에 존재 — 본문 추출 스킵`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (source.config as any)._skipped = true;
+        return [];
+      }
+
+      if (newItems.length < rawItems.length) {
+        console.log(`   ⚡ 사전 중복 제거: ${rawItems.length}개 → ${newItems.length}개만 본문 추출`);
+      }
+
+      console.log(`\n   📄 본문 추출 시작... (${newItems.length}개)`);
       const articles: CrawledArticle[] = [];
       let contentFetchCount = 0;
 
-      for (let idx = 0; idx < rawItems.length; idx++) {
-        const item = rawItems[idx];
+      for (let idx = 0; idx < newItems.length; idx++) {
+        const item = newItems[idx];
         if (!item.content && strategy.crawlContent) {
           try {
-            console.log(`      [${idx + 1}/${rawItems.length}] "${item.title.substring(0, 40)}..." 본문 추출 중...`);
+            console.log(`      [${idx + 1}/${newItems.length}] "${item.title.substring(0, 40)}..." 본문 추출 중...`);
             item.content = await strategy.crawlContent(item.link, config.content_selectors);
             contentFetchCount++;
             console.log(`      ✅ 본문 추출 완료 (${item.content.length}자)`);
@@ -553,7 +650,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         articles.push(convertToArticle(item, source, config.category));
       }
 
-      console.log(`   ✅ 본문 추출 완료: ${contentFetchCount}/${rawItems.length}개 성공`);
+      console.log(`   ✅ 본문 추출 완료: ${contentFetchCount}/${newItems.length}개 성공`);
 
       // 6. 쓰레기 필터 적용
       console.log(`   🗑️  품질 필터링 중...`);
@@ -757,6 +854,21 @@ export async function runCrawler(
     const crawler = getCrawler(effectiveSource);
     console.log(`\n🤖 크롤러: ${crawler.name || '전략 기반'}`);
 
+    // 사전 중복 체크용 기존 아티클 source_id 조회
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourceUserId = (source as any).user_id as string | undefined;
+    if (sourceUserId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: knownArticles } = await (supabase as any)
+        .from('articles')
+        .select('source_id')
+        .eq('user_id', sourceUserId)
+        .eq('source_name', source.name);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (effectiveSource.config as any)._known_source_ids =
+        knownArticles?.map((a: { source_id: string }) => a.source_id) || [];
+    }
+
     // 크롤링 실행
     console.log(`🔍 아티클 수집 중...`);
     const articlesAll = await crawler(effectiveSource);
@@ -767,8 +879,34 @@ export async function runCrawler(
     result.found = articles.length;
     console.log(`\n📊 수집 결과: ${articlesAll.length}개 발견 → 최신 ${articles.length}개 선택`);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wasSkipped = (effectiveSource.config as any)?._skipped === true;
+    result.skipped = wasSkipped;
+
     if (articles.length === 0) {
-      console.log(`⚠️  아티클을 찾을 수 없습니다 - ${source.name}`);
+      if (wasSkipped) {
+        console.log(`⏭️  [SKIP] "${source.name}" — 변경 없음, 크롤링 스킵`);
+      } else {
+        console.log(`⚠️  아티클을 찾을 수 없습니다 - ${source.name}`);
+      }
+      // URL 해시 저장 (스킵된 경우에도)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const computedHash = (effectiveSource.config as any)?._computed_url_hash;
+      if (computedHash && !options?.dryRun) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: current } = await (supabase as any)
+          .from('crawl_sources')
+          .select('config')
+          .eq('id', source.id)
+          .single();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from('crawl_sources')
+          .update({
+            config: { ...(current?.config || {}), _last_url_hash: computedHash }
+          })
+          .eq('id', source.id);
+      }
       return result;
     }
 
@@ -778,8 +916,6 @@ export async function runCrawler(
     // DB 저장 (dry-run이 아닌 경우)
     if (!options?.dryRun) {
       console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sourceUserId = (source as any).user_id as string | undefined;
       const { saved, skipped, updated } = await saveArticles(articles, supabase, sourceUserId);
       result.new = saved;
 
@@ -793,6 +929,25 @@ export async function runCrawler(
       if (updated > 0) console.log(`🔄 카테고리 업데이트: ${updated}개`);
       console.log(`⏭️  건너뜀: ${skipped - updated}개 (중복)`);
       console.log(`${'='.repeat(80)}\n`);
+
+      // URL 해시 DB 업데이트 (변경 감지용)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const computedHash = (effectiveSource.config as any)?._computed_url_hash;
+      if (computedHash) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: current } = await (supabase as any)
+          .from('crawl_sources')
+          .select('config')
+          .eq('id', source.id)
+          .single();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from('crawl_sources')
+          .update({
+            config: { ...(current?.config || {}), _last_url_hash: computedHash }
+          })
+          .eq('id', source.id);
+      }
     } else {
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log(`\n${'='.repeat(80)}`);

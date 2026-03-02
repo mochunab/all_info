@@ -137,11 +137,12 @@ export interface CrawlStrategy {
 }
 
 // 크롤링 결과
-export interface CrawlResult {
+export type CrawlResult = {
   found: number;
   new: number;
   errors: string[];
-}
+  skipped?: boolean;
+};
 
 // 저장용 아티클 (articles 테이블 INSERT용)
 export interface CrawledArticle {

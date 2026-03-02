@@ -10,7 +10,7 @@ Insight Hub는 다양한 비즈니스 콘텐츠 소스(블로그, 뉴스레터, 
 
 - **다중 소스 크롤링**: 정적 페이지, SPA, RSS, Sitemap, 네이버 블로그, 브런치, 뉴스레터, API + 자동 감지 (9가지 전략)
 - **AI 요약**: OpenAI (GPT-4.1-mini / GPT-5-nano) 기반 1줄 요약 + 태그 3개 + 한국어 제목 번역 자동 생성
-- **다국어 지원**: 한국어, English, 日本語, 中文 4개 언어 UI
+- **다국어 지원**: 한국어, English, Tiếng Việt, 日本語, 中文 5개 언어 UI
 - **실시간 검색/필터**: 키워드 검색, 카테고리 필터링, 소스별 필터링
 - **멀티유저 피드**: 홈피드 (공개 큐레이션) + 마이피드 (개인 소스 관리)
 - **자동 크롤링**: Vercel Cron으로 매일 아침 9시 자동 수집
@@ -66,6 +66,9 @@ CRON_SECRET=your_random_secret
 
 # Edge Function 사용 여부 (선택)
 USE_EDGE_FUNCTION=false
+
+# DeepL 번역 (선택 — 카테고리 동적 번역)
+DEEPL_API_KEY=your_deepl_key
 ```
 
 ### 4. Supabase 테이블 생성
@@ -125,7 +128,7 @@ npm run crawl -- --list
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Backend | Supabase (PostgreSQL), Supabase Edge Functions |
 | AI | OpenAI API (GPT-4.1-mini, GPT-5-nano) |
-| i18n | 커스텀 번역 시스템 (ko, en, ja, zh) |
+| i18n | 커스텀 번역 시스템 (ko, en, vi, zh, ja) + DeepL 동적 번역 |
 | Crawling | Cheerio, Puppeteer, rss-parser, @mozilla/readability |
 | Deployment | Vercel (Cron Jobs) |
 
