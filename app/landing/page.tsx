@@ -127,10 +127,10 @@ export default function LandingPage() {
                 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight mb-6"
                 style={{ color: 'var(--text-primary)' }}
               >
-                면접에서 할 말이 없다면
+                30년이 달라진다,
                 <br />
                 <span style={{ color: 'var(--accent)' }}>
-                  준비가 부족한 겁니다
+                  하루 30초로
                 </span>
               </motion.h1>
 
@@ -142,9 +142,9 @@ export default function LandingPage() {
                 className="text-lg mb-8 max-w-lg"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                매일 30초, AI가 정리해주는 업계 브리핑으로
+                면접 자신감이 달라지는 습관, 아카인포
                 <br className="hidden sm:block" />
-                면접 자신감을 채우세요
+                AI가 매일 업계 브리핑을 읽고 면접 답변까지 만들어드립니다
               </motion.p>
 
               <motion.div

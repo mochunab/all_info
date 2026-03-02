@@ -46,8 +46,8 @@ export default function Header({
   };
 
   const NAV_ITEMS = [
-    { label: '홈피드', href: '/' },
-    { label: '마이피드', href: '/my-feed' },
+    { label: t(language, 'header.home'), href: '/' },
+    { label: t(language, 'header.myFeed'), href: '/my-feed' },
   ];
 
   return (
@@ -76,7 +76,7 @@ export default function Header({
                 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]"
                 style={{ fontFamily: 'Pretendard, sans-serif' }}
               >
-                아카인포
+                {t(language, 'header.logo')}
               </h1>
             </Link>
 
