@@ -42,14 +42,20 @@
 7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
 9. 사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차
-10. 자동 복구 — 품질 검증 실패 (0건/유효 부족) → resolveStrategy 재실행
-    → Cheerio 재감지도 실패 시 → SPA 기본 셀렉터 최종 폴백
+10. 자동 복구 — 품질 검증 실패 (0건/유효 부족)
+    → 1순위: LLM 직접 추출 (extract-articles Edge Fn) — 셀렉터 우회
+    → 2순위: resolveStrategy 재실행 → 새 셀렉터로 재크롤링
+    → 3순위: SPA 기본 셀렉터 최종 폴백
 ```
 
 ### 데이터 파이프라인
 
 ```
-크롤링 → HTML 파싱 → Readability → content_preview (500자)
+크롤링 → URL 해시 비교 → 동일? → SKIP
+                          ↓ 다름
+                   DB 사전 중복 체크 → 신규만 본문 추출
+                          ↓
+         HTML 파싱 → Readability → content_preview (500자)
          → Edge Function (Gemini 2.5 Flash Lite) → title_ko + summary + summary_tags
            └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
@@ -154,7 +160,8 @@ import { createServiceClient } from '@/lib/supabase/server';
 
 ### i18n
 - 번역: `t(language, 'key')` — `lib/i18n.ts`
-- 새 키 추가 시 `ko`, `en`, `ja`, `zh` 4개 언어 모두 추가
+- 새 키 추가 시 `ko`, `en`, `vi`, `zh`, `ja` 5개 언어 모두 추가
+- 카테고리명 동적 번역: `translateCat(name)` — `lib/language-context.tsx` (DB translations → 하드코딩 fallback → 원본)
 
 ---
 
@@ -188,9 +195,10 @@ USE_EDGE_FUNCTION=true           # false 시 로컬 OpenAI 직접 호출
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NAVER_CLIENT_ID=                 # 네이버 Open API (News Search)
 NAVER_CLIENT_SECRET=             # https://developers.naver.com
+DEEPL_API_KEY=                   # 카테고리 동적 번역 (DeepL Free API)
 
 # Supabase Edge Function Secrets (Dashboard에서 설정)
-google_API_KEY=                  # 5개 Edge Function 공유 (Gemini)
+google_API_KEY=                  # 6개 Edge Function 공유 (Gemini)
 ```
 
 ---
@@ -211,6 +219,7 @@ supabase functions deploy summarize-article --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-crawler-type --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy detect-api-endpoint --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy recommend-sources --project-ref tcpvxihjswauwrmcxhhh
+supabase functions deploy extract-articles --project-ref tcpvxihjswauwrmcxhhh
 supabase functions deploy chat-insight --project-ref tcpvxihjswauwrmcxhhh
 # Docker 없어도 deploy 가능 (WARNING은 무시)
 
@@ -270,16 +279,19 @@ lib/crawlers/
   robots-checker.ts     robots.txt 파싱/캐싱 (1시간 TTL, fail-open)
   strategy-resolver.ts  AUTO 9단계 감지 파이프라인
   infer-type.ts         URL 패턴 기반 크롤러 타입 추론
+  html-preprocessor.ts  Cheerio 기반 HTML 전처리 (LLM 추출용)
   strategies/           STATIC / SPA / RSS / SITEMAP / NAVER / KAKAO / NEWSLETTER / API
 
 lib/ai/
   batch-summarizer.ts   배치 요약 (Edge Function 우선 → 로컬 fallback)
+  article-extractor.ts  LLM 아티클 직접 추출 (Edge Function → OpenAI fallback)
   summarizer.ts         로컬 OpenAI (gpt-4.1-mini)
 
 supabase/functions/
   summarize-article/    AI 요약 (Gemini 2.5 Flash Lite)
   detect-crawler-type/  크롤러 타입 감지 (Gemini 2.5 Flash Lite)
   detect-api-endpoint/  API 엔드포인트 감지 (Gemini 2.5 Flash Lite)
+  extract-articles/     LLM 아티클 직접 추출 (Gemini 2.5 Flash Lite, auto-recovery용)
   recommend-sources/    AI 소스 추천 (Gemini 2.5 Flash Lite + google_search + 6단계 URL 검증)
   chat-insight/         AI 채팅 인사이트 (Gemini 2.5 Flash Lite, pinnedArticle 지원)
 
@@ -290,7 +302,7 @@ components/LoginPromptDialog.tsx  비로그인 마이피드 접근 시 안내
 
 lib/user.ts             getMasterUserId() 헬퍼 (서버 전용, 인메모리 캐시)
 lib/auth.ts             verifyCronAuth, verifySameOrigin
-lib/i18n.ts             4개 언어 번역 (ko, en, ja, zh)
+lib/i18n.ts             5개 언어 번역 (ko, en, vi, zh, ja)
 middleware.ts           Rate Limit, CORS, Security Headers
 ```
 

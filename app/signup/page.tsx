@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { useLanguage } from '@/lib/language-context';
 
 export default function SignupPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -18,7 +20,7 @@ export default function SignupPage() {
     setError('');
 
     if (password !== confirmPassword) {
-      setError('비밀번호가 일치하지 않습니다.');
+      setError(t('signup.passwordMismatch'));
       return;
     }
 
@@ -41,13 +43,13 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-[var(--text-primary)] text-center mb-8">
-          회원가입
+          {t('signup.title')}
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-              이메일
+              {t('signup.email')}
             </label>
             <input
               id="email"
@@ -62,7 +64,7 @@ export default function SignupPage() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-              비밀번호
+              {t('signup.password')}
             </label>
             <input
               id="password"
@@ -72,13 +74,13 @@ export default function SignupPage() {
               required
               minLength={6}
               className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
-              placeholder="6자 이상"
+              placeholder={t('signup.passwordPlaceholder')}
             />
           </div>
 
           <div>
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-              비밀번호 확인
+              {t('signup.confirmPassword')}
             </label>
             <input
               id="confirmPassword"
@@ -88,7 +90,7 @@ export default function SignupPage() {
               required
               minLength={6}
               className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
-              placeholder="비밀번호 재입력"
+              placeholder={t('signup.confirmPlaceholder')}
             />
           </div>
 
@@ -101,14 +103,14 @@ export default function SignupPage() {
             disabled={isLoading}
             className="w-full py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium transition-colors disabled:opacity-50"
           >
-            {isLoading ? '가입 중...' : '회원가입'}
+            {isLoading ? t('signup.signingUp') : t('signup.submit')}
           </button>
         </form>
 
         <p className="mt-6 text-center text-sm text-[var(--text-tertiary)]">
-          이미 계정이 있으신가요?{' '}
+          {t('signup.hasAccount')}{' '}
           <Link href="/login" className="text-[var(--accent)] hover:underline font-medium">
-            로그인
+            {t('signup.login')}
           </Link>
         </p>
       </div>

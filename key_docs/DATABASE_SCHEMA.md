@@ -15,8 +15,8 @@
 │ name             │     │ started_at       │     │ name             │
 │ base_url         │     │ finished_at      │     │ is_default       │
 │ crawl_url        │     │ status           │     │ display_order    │
-│ priority         │     │ articles_found   │     │ created_at       │
-│ crawler_type     │     │ articles_new     │     │ updated_at       │
+│ priority         │     │ articles_found   │     │ translations     │
+│ crawler_type     │     │ articles_new     │     │ created_at       │
 │ config (JSONB)   │     │ error_message    │     └─────────────────┘
 │ is_active        │     │ created_at       │
 │ last_crawled_at  │     └──────────────────┘
@@ -258,6 +258,7 @@ LIMIT 30;
 | `name` | `text` | NOT NULL | 카테고리명 |
 | `is_default` | `boolean` | `false` | 기본 카테고리 여부 (deprecated) |
 | `display_order` | `integer` | `1` | 표시 순서 (드래그 앤 드롭으로 변경 가능) |
+| `translations` | `jsonb` | `'{}'` | 다국어 번역 (`{ "en": "...", "vi": "...", "zh": "...", "ja": "..." }`) |
 | `created_at` | `timestamptz` | `now()` | 생성일 |
 | `updated_at` | `timestamptz` | `now()` | 수정일 (트리거 자동 갱신) |
 
@@ -359,6 +360,16 @@ ALTER TABLE articles ADD COLUMN new_column text DEFAULT null;
 ---
 
 ## 마이그레이션 히스토리
+
+### 013_add_category_translations.sql (2026-03-02)
+
+**목적**: 카테고리명 다국어 번역 저장
+- `categories.translations` JSONB 컬럼 추가 (기본값 `'{}'`)
+- DeepL API로 카테고리 생성/이름변경 시 자동 번역 (en/vi/zh/ja)
+
+```sql
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS translations jsonb DEFAULT '{}';
+```
 
 ### 012_categories_unique_per_user.sql (2026-03-01)
 

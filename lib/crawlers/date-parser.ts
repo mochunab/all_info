@@ -40,6 +40,10 @@ export function parseDate(dateStr: string | null | undefined): Date | null {
   const relativeKorean = parseKoreanRelativeDate(cleaned);
   if (relativeKorean) return relativeKorean;
 
+  // 2.5. 상대 시간 (혼합: English unit + 한글 "전")
+  const relativeMixed = parseMixedRelativeDate(cleaned);
+  if (relativeMixed) return relativeMixed;
+
   // 3. 상대 시간 (영문)
   const relativeEnglish = parseEnglishRelativeDate(cleaned);
   if (relativeEnglish) return relativeEnglish;
@@ -96,8 +100,11 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
     return dayBeforeYesterday;
   }
 
+  // 한국어 수식어 (이상/이하/넘게/약/가량 등) — 모든 상대 날짜에 공통 적용
+  const KO_MODIFIER = '(?:이상|이하|넘게|가량|거의|정도|남짓)?';
+
   // "N분 전"
-  const minutesMatch = dateStr.match(/(\d+)\s*분\s*전/);
+  const minutesMatch = dateStr.match(new RegExp(`(\\d+)\\s*분\\s*${KO_MODIFIER}\\s*전`));
   if (minutesMatch) {
     const minutes = parseInt(minutesMatch[1], 10);
     const date = new Date(now);
@@ -106,7 +113,7 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   // "N시간 전"
-  const hoursMatch = dateStr.match(/(\d+)\s*시간\s*전/);
+  const hoursMatch = dateStr.match(new RegExp(`(\\d+)\\s*시간\\s*${KO_MODIFIER}\\s*전`));
   if (hoursMatch) {
     const hours = parseInt(hoursMatch[1], 10);
     const date = new Date(now);
@@ -115,7 +122,7 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   // "N일 전"
-  const daysMatch = dateStr.match(/(\d+)\s*일\s*전/);
+  const daysMatch = dateStr.match(new RegExp(`(\\d+)\\s*일\\s*${KO_MODIFIER}\\s*전`));
   if (daysMatch) {
     const days = parseInt(daysMatch[1], 10);
     const date = new Date(now);
@@ -124,7 +131,7 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   // "N주 전"
-  const weeksMatch = dateStr.match(/(\d+)\s*주\s*전/);
+  const weeksMatch = dateStr.match(new RegExp(`(\\d+)\\s*주\\s*${KO_MODIFIER}\\s*전`));
   if (weeksMatch) {
     const weeks = parseInt(weeksMatch[1], 10);
     const date = new Date(now);
@@ -133,7 +140,7 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   // "N개월 전"
-  const monthsMatch = dateStr.match(/(\d+)\s*(개월|달)\s*전/);
+  const monthsMatch = dateStr.match(new RegExp(`(\\d+)\\s*(개월|달)\\s*${KO_MODIFIER}\\s*전`));
   if (monthsMatch) {
     const months = parseInt(monthsMatch[1], 10);
     const date = new Date(now);
@@ -142,7 +149,7 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   // "N년 전"
-  const yearsMatch = dateStr.match(/(\d+)\s*년\s*전/);
+  const yearsMatch = dateStr.match(new RegExp(`(\\d+)\\s*년\\s*${KO_MODIFIER}\\s*전`));
   if (yearsMatch) {
     const years = parseInt(yearsMatch[1], 10);
     const date = new Date(now);
@@ -151,6 +158,44 @@ function parseKoreanRelativeDate(dateStr: string): Date | null {
   }
 
   return null;
+}
+
+/**
+ * 혼합 상대 시간 파싱 (English unit + 한글 "전")
+ * "8 months 전", "over 1 year 전", "almost 2 years 전", "about 3 weeks 전"
+ */
+function parseMixedRelativeDate(dateStr: string): Date | null {
+  const match = dateStr.match(/(?:about|over|almost|~)?\s*(\d+)\s*(minute|hour|day|week|month|year)s?\s*전/i);
+  if (!match) return null;
+
+  const amount = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  const now = new Date();
+
+  switch (unit) {
+    case 'minute':
+      now.setMinutes(now.getMinutes() - amount);
+      break;
+    case 'hour':
+      now.setHours(now.getHours() - amount);
+      break;
+    case 'day':
+      now.setDate(now.getDate() - amount);
+      break;
+    case 'week':
+      now.setDate(now.getDate() - amount * 7);
+      break;
+    case 'month':
+      now.setMonth(now.getMonth() - amount);
+      break;
+    case 'year':
+      now.setFullYear(now.getFullYear() - amount);
+      break;
+    default:
+      return null;
+  }
+
+  return now;
 }
 
 /**

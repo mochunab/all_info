@@ -121,13 +121,14 @@ export const SOURCE_COLORS: Record<string, string> = {
 export const DEFAULT_SOURCE_COLOR = '#6B7280';
 
 // 번역 관련 타입
-export type Language = 'ko' | 'en' | 'ja' | 'zh';
+export type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 
 export const LANGUAGES = {
   ko: { code: 'ko', name: '한국어', flag: '🇰🇷', deepl: 'KO' },
   en: { code: 'en', name: 'English', flag: '🇺🇸', deepl: 'EN' },
-  ja: { code: 'ja', name: '日本語', flag: '🇯🇵', deepl: 'JA' },
+  vi: { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳', deepl: '' },
   zh: { code: 'zh', name: '中文', flag: '🇨🇳', deepl: 'ZH' },
+  ja: { code: 'ja', name: '日本語', flag: '🇯🇵', deepl: 'JA' },
 } as const;
 
 export interface TranslationCache {

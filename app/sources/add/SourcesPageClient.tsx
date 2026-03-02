@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Toast, Footer, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { t, translateCategory } from '@/lib/i18n';
+import { useLanguage } from '@/lib/language-context';
 import {
   DndContext,
   closestCenter,
@@ -36,6 +35,7 @@ type Category = {
   id: number;
   name: string;
   is_default: boolean;
+  translations?: Record<string, string>;
 };
 
 type SortableCategoryProps = {
@@ -51,15 +51,15 @@ type SortableCategoryProps = {
 
 const getCrawlerTypeLabel = (type: string, language: Language): string => {
   const labels: Record<string, Record<Language, string>> = {
-    AUTO: { ko: '자동지정', en: 'Auto-detect', ja: '自動検出', zh: '自动检测' },
-    STATIC: { ko: '정적페이지', en: 'Static', ja: '静的', zh: '静态' },
-    SPA: { ko: 'SPA (동적)', en: 'SPA (Dynamic)', ja: 'SPA (動的)', zh: 'SPA (动态)' },
-    RSS: { ko: 'RSS 피드', en: 'RSS Feed', ja: 'RSSフィード', zh: 'RSS订阅' },
-    SITEMAP: { ko: 'Sitemap', en: 'Sitemap', ja: 'サイトマップ', zh: '网站地图' },
-    PLATFORM_NAVER: { ko: '네이버 블로그', en: 'Naver Blog', ja: 'Naverブログ', zh: 'Naver博客' },
-    PLATFORM_KAKAO: { ko: '카카오 브런치', en: 'Kakao Brunch', ja: 'Kakaoブランチ', zh: 'Kakao Brunch' },
-    NEWSLETTER: { ko: '뉴스레터', en: 'Newsletter', ja: 'ニュースレター', zh: '新闻订阅' },
-    API: { ko: 'API', en: 'API', ja: 'API', zh: 'API' },
+    AUTO: { ko: '자동지정', en: 'Auto-detect', vi: 'Tự động', zh: '自动检测', ja: '自動検出' },
+    STATIC: { ko: '정적페이지', en: 'Static', vi: 'Tĩnh', zh: '静态', ja: '静的' },
+    SPA: { ko: 'SPA (동적)', en: 'SPA (Dynamic)', vi: 'SPA (Động)', zh: 'SPA (动态)', ja: 'SPA (動的)' },
+    RSS: { ko: 'RSS 피드', en: 'RSS Feed', vi: 'RSS Feed', zh: 'RSS订阅', ja: 'RSSフィード' },
+    SITEMAP: { ko: 'Sitemap', en: 'Sitemap', vi: 'Sitemap', zh: '网站地图', ja: 'サイトマップ' },
+    PLATFORM_NAVER: { ko: '네이버 블로그', en: 'Naver Blog', vi: 'Naver Blog', zh: 'Naver博客', ja: 'Naverブログ' },
+    PLATFORM_KAKAO: { ko: '카카오 브런치', en: 'Kakao Brunch', vi: 'Kakao Brunch', zh: 'Kakao Brunch', ja: 'Kakaoブランチ' },
+    NEWSLETTER: { ko: '뉴스레터', en: 'Newsletter', vi: 'Bản tin', zh: '新闻订阅', ja: 'ニュースレター' },
+    API: { ko: 'API', en: 'API', vi: 'API', zh: 'API', ja: 'API' },
   };
   return labels[type]?.[language] || type;
 };
@@ -81,6 +81,7 @@ const CRAWLER_TYPES = [
 
 // SortableCategory component for drag & drop + double-click rename
 function SortableCategory({ category, isActive, count, onSelect, onDelete, onRename, language, readOnly }: SortableCategoryProps) {
+  const { translateCat } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(category);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -145,7 +146,7 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, onRen
           {...attributes}
           {...listeners}
           className="cursor-grab active:cursor-grabbing touch-none"
-          title={language === 'ko' ? '드래그하여 순서 변경' : language === 'en' ? 'Drag to reorder' : language === 'ja' ? 'ドラッグして並び替え' : '拖动以重新排序'}
+          title={language === 'ko' ? '드래그하여 순서 변경' : language === 'en' ? 'Drag to reorder' : language === 'vi' ? 'Kéo để sắp xếp lại' : language === 'zh' ? '拖动以重新排序' : 'ドラッグして並び替え'}
         >
           <svg className="w-3 h-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
@@ -164,7 +165,7 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, onRen
             style={{ color: 'inherit' }}
           />
         ) : (
-          <span>{translateCategory(category, language)}</span>
+          <span>{translateCat(category)}</span>
         )}
         {count > 0 && !isEditing && (
           <span className={`text-xs ${
@@ -231,24 +232,13 @@ export default function SourcesPageClient({
   const [recommendProgress, setRecommendProgress] = useState(0);
   const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [language, setLanguage] = useState<Language>('ko');
-
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const urlLang = params.get('lang');
-      if (urlLang && ['ko', 'en', 'ja', 'zh'].includes(urlLang)) {
-        setLanguage(urlLang as Language);
-        return;
-      }
-      const saved = localStorage.getItem('ih:language');
-      if (saved && ['ko', 'en', 'ja', 'zh'].includes(saved)) {
-        setLanguage(saved as Language);
-      }
-    } catch { /* ignore */ }
-  }, []);
+  const { language, t, setCategoryTranslations } = useLanguage();
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCategoryTranslations(initialCategories);
+  }, [initialCategories, setCategoryTranslations]);
 
   // Focus category input
   useEffect(() => {
@@ -307,17 +297,17 @@ export default function SourcesPageClient({
             sessionStorage.removeItem('ih:home:articles');
           } catch { /* 무시 */ }
         } else if (response.status === 409) {
-          setToastMessage(t(language, 'sources.categoryExists', { name: trimmed }));
+          setToastMessage(t('sources.categoryExists', { name: trimmed }));
           setShowToast(true);
         } else {
           const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-          setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+          setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
           setShowToast(true);
         }
       } catch (err) {
         console.error('Error saving category:', err);
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        setToastMessage(t(language, 'toast.networkError', { error: msg }));
+        setToastMessage(t('toast.networkError', { error: msg }));
         setShowToast(true);
       }
 
@@ -413,17 +403,17 @@ export default function SourcesPageClient({
           sessionStorage.removeItem('ih:home:articles');
         } catch { /* 무시 */ }
       } else if (response.status === 409) {
-        setToastMessage(t(language, 'sources.categoryExists', { name: newName }));
+        setToastMessage(t('sources.categoryExists', { name: newName }));
         setShowToast(true);
       } else {
         const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-        setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+        setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
         setShowToast(true);
       }
     } catch (err) {
       console.error('Error renaming category:', err);
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      setToastMessage(t(language, 'toast.networkError', { error: msg }));
+      setToastMessage(t('toast.networkError', { error: msg }));
       setShowToast(true);
     }
   };
@@ -451,7 +441,7 @@ export default function SourcesPageClient({
           setActiveCategory(newCategories[0]?.name || '');
         }
 
-        setToastMessage(t(language, 'sources.categoryDeleted', { name: deletingCategory }));
+        setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
         setShowToast(true);
         // 홈 화면 캐시 무효화
         try {
@@ -484,7 +474,7 @@ export default function SourcesPageClient({
 
   const handleAddLink = () => {
     if (currentSources.length >= MAX_LINKS_PER_CATEGORY) {
-      setToastMessage(t(language, 'sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
+      setToastMessage(t('sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
       setShowToast(true);
       return;
     }
@@ -604,7 +594,7 @@ export default function SourcesPageClient({
 
     const currentCount = (sourcesByCategory[activeCategory] || []).length;
     if (currentCount >= MAX_LINKS_PER_CATEGORY) {
-      setToastMessage(t(language, 'sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
+      setToastMessage(t('sources.maxLinksReached', { max: String(MAX_LINKS_PER_CATEGORY) }));
       setShowToast(true);
       return;
     }
@@ -644,23 +634,23 @@ export default function SourcesPageClient({
         const isPartial = allRecs.length > remainingSlots;
         setToastMessage(
           isPartial
-            ? t(language, 'sources.recommendLimitPartial', { count: String(remainingSlots) })
-            : t(language, 'sources.recommendSuccess', { count: String(newLinks.length) })
+            ? t('sources.recommendLimitPartial', { count: String(remainingSlots) })
+            : t('sources.recommendSuccess', { count: String(newLinks.length) })
         );
         setShowToast(true);
       } else if (response.ok && data.success && (!data.recommendations || data.recommendations.length === 0)) {
         stopRecommendProgress(false);
-        setToastMessage(t(language, 'sources.recommendEmpty'));
+        setToastMessage(t('sources.recommendEmpty'));
         setShowToast(true);
       } else {
         stopRecommendProgress(false);
-        setToastMessage(t(language, 'sources.recommendFailed', { error: data.error || `HTTP ${response.status}` }));
+        setToastMessage(t('sources.recommendFailed', { error: data.error || `HTTP ${response.status}` }));
         setShowToast(true);
       }
     } catch (error) {
       stopRecommendProgress(false);
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      setToastMessage(t(language, 'sources.recommendFailed', { error: msg }));
+      setToastMessage(t('sources.recommendFailed', { error: msg }));
       setShowToast(true);
     }
   };
@@ -681,14 +671,14 @@ export default function SourcesPageClient({
           setCategories((prev) => [...prev, newCat]);
         } else if (response.status !== 409) {
           const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-          setToastMessage(t(language, 'toast.error', { error: data.error || `HTTP ${response.status}` }));
+          setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
           setShowToast(true);
           return;
         }
       } catch (err) {
         console.error('Error saving pending category:', err);
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        setToastMessage(t(language, 'toast.networkError', { error: msg }));
+        setToastMessage(t('toast.networkError', { error: msg }));
         setShowToast(true);
         return;
       }
@@ -739,7 +729,7 @@ export default function SourcesPageClient({
         stopAnalysisProgress(true);
 
         // 분석 결과를 토스트 메시지에 포함
-        let message = t(language, 'sources.saved');
+        let message = t('sources.saved');
         if (data.analysis && data.analysis.length > 0) {
           const ruleCount = data.analysis.filter((a: { method: string }) => a.method === 'rule').length;
           const aiCount = data.analysis.filter((a: { method: string }) => a.method === 'ai').length;
@@ -747,7 +737,7 @@ export default function SourcesPageClient({
           if (ruleCount > 0) parts.push(`${ruleCount} rule`);
           if (aiCount > 0) parts.push(`${aiCount} AI`);
           if (parts.length > 0) {
-            message = t(language, 'sources.autoAnalysis', {
+            message = t('sources.autoAnalysis', {
               count: String(data.sources?.length || allSources.length),
               methods: parts.join(' / '),
             });
@@ -787,13 +777,13 @@ export default function SourcesPageClient({
       } else {
         stopAnalysisProgress(false);
         const detail = data.error || `HTTP ${response.status}`;
-        setToastMessage(t(language, 'toast.crawlFailed', { error: detail }));
+        setToastMessage(t('toast.crawlFailed', { error: detail }));
         setShowToast(true);
       }
     } catch (error) {
       stopAnalysisProgress(false);
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      setToastMessage(t(language, 'toast.networkError', { error: msg }));
+      setToastMessage(t('toast.networkError', { error: msg }));
       setShowToast(true);
       console.error('Error saving sources:', error);
     } finally {
@@ -837,7 +827,7 @@ export default function SourcesPageClient({
                   d="M15 19l-7-7 7-7"
                 />
               </svg>
-              <span>{t(language, 'sources.back')}</span>
+              <span>{t('sources.back')}</span>
             </Link>
 
           </div>
@@ -847,10 +837,10 @@ export default function SourcesPageClient({
       {/* Main Content */}
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
-          {t(language, 'sources.title')}
+          {t('sources.title')}
         </h1>
         <p className="text-sm text-[var(--text-tertiary)] mb-8">
-          {t(language, 'sources.subtitle')}
+          {t('sources.subtitle')}
         </p>
 
         {/* Category Tabs (Chips) with Drag & Drop */}
@@ -900,7 +890,7 @@ export default function SourcesPageClient({
                   onClick={handleAddCategory}
                   className="px-3 py-2 text-xs font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)]"
                 >
-                  {language === 'ko' ? '추가' : language === 'en' ? 'Add' : language === 'ja' ? '追加' : '添加'}
+                  {language === 'ko' ? '추가' : language === 'en' ? 'Add' : language === 'vi' ? 'Thêm' : language === 'zh' ? '添加' : '追加'}
                 </button>
                 <button
                   onClick={() => {
@@ -925,7 +915,7 @@ export default function SourcesPageClient({
                   }}
                   className="px-3 py-2 text-xs font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-full border border-[var(--border)]"
                 >
-                  {t(language, 'sources.cancel')}
+                  {t('sources.cancel')}
                 </button>
               </div>
             ) : (
@@ -936,7 +926,7 @@ export default function SourcesPageClient({
                     return;
                   }
                   if (categories.length >= MAX_CATEGORIES) {
-                    setToastMessage(t(language, 'sources.maxCategoriesReached', { max: String(MAX_CATEGORIES) }));
+                    setToastMessage(t('sources.maxCategoriesReached', { max: String(MAX_CATEGORIES) }));
                     setShowToast(true);
                     return;
                   }
@@ -969,7 +959,7 @@ export default function SourcesPageClient({
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-[var(--text-secondary)]">
-                {t(language, 'sources.linkLabel')}
+                {t('sources.linkLabel')}
               </label>
               <button
                 onClick={() => setShowScopeDialog(true)}
@@ -978,7 +968,7 @@ export default function SourcesPageClient({
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
                 </svg>
-                {t(language, 'sources.recommendLink')}
+                {t('sources.recommendLink')}
               </button>
             </div>
             <div className="space-y-3">
@@ -989,7 +979,7 @@ export default function SourcesPageClient({
                       type="url"
                       value={source.url}
                       onChange={(e) => handleSourceChange(source.id, 'url', e.target.value)}
-                      placeholder={t(language, 'sources.urlPlaceholder')}
+                      placeholder={t('sources.urlPlaceholder')}
                       className="flex-1 px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
                     />
                     <button
@@ -1017,7 +1007,7 @@ export default function SourcesPageClient({
                         type="text"
                         value={source.name}
                         onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
-                        placeholder={t(language, 'sources.namePlaceholder')}
+                        placeholder={t('sources.namePlaceholder')}
                         className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
                       />
                       <select
@@ -1055,7 +1045,7 @@ export default function SourcesPageClient({
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              <span>{t(language, 'sources.addLink')}</span>
+              <span>{t('sources.addLink')}</span>
             </button>
           </div>
         )}
@@ -1077,7 +1067,7 @@ export default function SourcesPageClient({
             disabled={!hasValidSources || isSaving}
             className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? t(language, 'sources.saving') : t(language, 'sources.save')}
+            {isSaving ? t('sources.saving') : t('sources.save')}
           </button>
         </div>
       </div>
@@ -1088,14 +1078,14 @@ export default function SourcesPageClient({
           <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-                {t(language, 'sources.deleteCategory')}
+                {t('sources.deleteCategory')}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                {t(language, 'sources.deleteCategoryConfirm', { name: deletingCategory })}
+                {t('sources.deleteCategoryConfirm', { name: deletingCategory })}
               </p>
               {(sourcesByCategory[deletingCategory]?.filter((s) => s.isExisting).length || 0) > 0 && (
                 <p className="mt-2 text-sm text-red-500">
-                  {t(language, 'sources.deleteWithLinks', {
+                  {t('sources.deleteWithLinks', {
                     count: String(sourcesByCategory[deletingCategory].filter((s) => s.isExisting).length),
                   })}
                 </p>
@@ -1107,7 +1097,7 @@ export default function SourcesPageClient({
                 disabled={isDeleting}
                 className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
               >
-                {t(language, 'sources.cancel')}
+                {t('sources.cancel')}
               </button>
               <div className="w-px bg-[var(--border)]" />
               <button
@@ -1115,7 +1105,7 @@ export default function SourcesPageClient({
                 disabled={isDeleting}
                 className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
               >
-                {isDeleting ? t(language, 'sources.deleting') : t(language, 'sources.delete')}
+                {isDeleting ? t('sources.deleting') : t('sources.delete')}
               </button>
             </div>
           </div>
@@ -1163,26 +1153,26 @@ export default function SourcesPageClient({
           <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
-                {t(language, 'sources.recommendScope')}
+                {t('sources.recommendScope')}
               </h3>
               <div className="space-y-2">
                 <button
                   onClick={() => handleRecommendSources('domestic')}
                   className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
                 >
-                  {t(language, 'sources.scopeDomestic')}
+                  {t('sources.scopeDomestic')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('international')}
                   className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
                 >
-                  {t(language, 'sources.scopeInternational')}
+                  {t('sources.scopeInternational')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('both')}
                   className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
                 >
-                  {t(language, 'sources.scopeBoth')}
+                  {t('sources.scopeBoth')}
                 </button>
               </div>
             </div>
@@ -1191,7 +1181,7 @@ export default function SourcesPageClient({
                 onClick={() => setShowScopeDialog(false)}
                 className="w-full py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
               >
-                {t(language, 'sources.cancel')}
+                {t('sources.cancel')}
               </button>
             </div>
           </div>
@@ -1212,10 +1202,10 @@ export default function SourcesPageClient({
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                    {t(language, 'sources.recommendLoading')}
+                    {t('sources.recommendLoading')}
                   </h3>
                   <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                    {t(language, 'sources.recommendLoadingDesc')}
+                    {t('sources.recommendLoadingDesc')}
                   </p>
                 </div>
               </div>
