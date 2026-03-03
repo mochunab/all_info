@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Toast, Footer, LoginPromptDialog } from '@/components';
+import { Toast, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
 import { useLanguage } from '@/lib/language-context';
 import {
@@ -1050,8 +1050,6 @@ export default function SourcesPageClient({
           </div>
         )}
       </main>
-
-      <Footer language={language} />
 
       {/* Bottom Sticky Save Button */}
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-primary)] border-t border-[var(--border)] p-4">
