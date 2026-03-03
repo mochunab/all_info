@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getMasterUserId } from '@/lib/user';
 import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
@@ -43,13 +44,11 @@ export async function POST(request: NextRequest) {
   const runStartTime = Date.now();
 
   try {
-    // 로그인 유저 확인
+    // 로그인 유저 확인 — 비로그인 시 master 소스 크롤링
     const authClient = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: { user } } = await (authClient as any).auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Login required' }, { status: 401 });
-    }
+    const userId = user?.id ?? await getMasterUserId();
 
     // 요청 body에서 category 파라미터 추출
     let category: string | undefined;
@@ -67,7 +66,7 @@ export async function POST(request: NextRequest) {
       .from('crawl_sources')
       .select('*')
       .eq('is_active', true)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('priority', { ascending: false });
 
     if (category) {
