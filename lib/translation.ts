@@ -1,6 +1,6 @@
 import type { Language, TranslationCache } from '@/types';
 
-const CACHE_KEY = 'ih:translation:cache';
+const CACHE_KEY = 'ih:translation:cache:v2';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7일
 
 export function getTranslationCache(): TranslationCache {

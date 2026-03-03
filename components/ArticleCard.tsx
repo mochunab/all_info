@@ -43,10 +43,10 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
       return;
     }
 
-    // 번역 실행
+    // 번역 실행 — title_ko(한국어)를 소스로 사용 (원본이 영어일 수 있어 sourceLang='ko'와 불일치 방지)
     setIsTranslating(true);
     const textsToTranslate = [
-      article.title,
+      article.title_ko || article.title,
       article.summary || '',
     ];
 
