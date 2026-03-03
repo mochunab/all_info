@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import Providers from "./providers";
+
+const GA_ID = "G-ZCQ6LNWWBE";
 
 export const metadata: Metadata = {
   title: "아카인포 - 비즈니스 인사이트 아카이브",
@@ -48,6 +51,18 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased min-h-screen">
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_ID}');
+          `}
+        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>
