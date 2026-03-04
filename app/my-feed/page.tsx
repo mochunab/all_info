@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer, LoginPromptDialog } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
+import { event as gaEvent } from '@/lib/gtag';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/language-context';
@@ -240,6 +241,7 @@ export default function MyFeed() {
 
   const handleRefresh = () => {
     if (isCrawling || !user) return;
+    gaEvent({ action: 'crawl_trigger', category: 'crawling', label: 'my_feed' });
 
     setIsCrawling(true);
     setCrawlProgress('크롤링 시작...');

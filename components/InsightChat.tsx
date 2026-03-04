@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
+import { event as gaEvent } from '@/lib/gtag';
 import type { Article, ChatMessage, ChatResponse, Language } from '@/types';
 import { t } from '@/lib/i18n';
 import LoginPromptDialog from './LoginPromptDialog';
@@ -87,6 +88,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
+    gaEvent({ action: 'send_message', category: 'chat', label: text.trim().slice(0, 50) });
 
     const userMessage: ChatMessage = { role: 'user', content: text.trim() };
     const newMessages = [...messages, userMessage];

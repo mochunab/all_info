@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { event as gaEvent } from '@/lib/gtag';
 import { Toast, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
 import { useLanguage } from '@/lib/language-context';
@@ -590,6 +591,7 @@ export default function SourcesPageClient({
   };
 
   const handleRecommendSources = async (scope: 'domestic' | 'international' | 'both') => {
+    gaEvent({ action: 'recommend_sources', category: 'source', label: scope });
     setShowScopeDialog(false);
 
     const currentCount = (sourcesByCategory[activeCategory] || []).length;
@@ -656,6 +658,7 @@ export default function SourcesPageClient({
   };
 
   const handleSave = async () => {
+    gaEvent({ action: 'save_sources', category: 'source' });
     // pending 카테고리가 있으면 먼저 DB에 생성
     if (pendingCategory && !categories.some((c) => c.name === pendingCategory)) {
       try {
