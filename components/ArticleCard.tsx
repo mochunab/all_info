@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { Article, Language } from '@/types';
 import { SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
+import { event as gaEvent } from '@/lib/gtag';
 import { formatDistanceToNow } from '@/lib/utils';
 import { getCachedTranslation, setCachedTranslation, translateTexts } from '@/lib/translation';
 import { t } from '@/lib/i18n';
@@ -70,9 +71,11 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
 
   const handleClick = () => {
     if (onChatReference) {
+      gaEvent({ action: 'chat_reference', category: 'article', label: article.source_name });
       onChatReference(article);
       return;
     }
+    gaEvent({ action: 'click', category: 'article', label: article.source_name });
     window.open(article.source_url, '_blank', 'noopener,noreferrer');
   };
 
@@ -88,6 +91,7 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
   };
 
   const handleDeleteConfirm = async () => {
+    gaEvent({ action: 'delete', category: 'article', label: article.source_name });
     setIsDeleting(true);
     try {
       const response = await fetch(`/api/articles/${article.id}`, {
