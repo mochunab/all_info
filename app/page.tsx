@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer } from '@/components';
+import dynamic from 'next/dynamic';
+import { Header, FilterBar, ArticleGrid, Toast, Footer } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import { event as gaEvent } from '@/lib/gtag';
+import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/language-context';
+
+const InsightChat = dynamic(() => import('@/components/InsightChat'), { ssr: false });
 
 const STORAGE_KEY = {
   HOME_ARTICLES: 'ih:home:articles',
@@ -32,20 +36,18 @@ export default function Home() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const { language, setLanguage, t, setCategoryTranslations } = useLanguage();
+  const { user: authUser } = useAuth();
+  const isLoggedIn = !!authUser;
   const [isNonMasterUser, setIsNonMasterUser] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   useEffect(() => {
+    if (!authUser) { setIsNonMasterUser(false); return; }
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      setIsLoggedIn(true);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase as any).from('users').select('role').eq('id', user.id).single()
-        .then(({ data }: { data: { role: string } | null }) => {
-          if (data && data.role !== 'master') setIsNonMasterUser(true);
-        });
-    });
-  }, []);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).from('users').select('role').eq('id', authUser.id).single()
+      .then(({ data }: { data: { role: string } | null }) => {
+        if (data && data.role !== 'master') setIsNonMasterUser(true);
+      });
+  }, [authUser]);
 
   const initialLoadDone = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);

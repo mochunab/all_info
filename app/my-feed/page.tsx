@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer, LoginPromptDialog } from '@/components';
+import dynamic from 'next/dynamic';
+import { Header, FilterBar, ArticleGrid, Toast, Footer, LoginPromptDialog } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import { event as gaEvent } from '@/lib/gtag';
-import type { User } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
+
+const InsightChat = dynamic(() => import('@/components/InsightChat'), { ssr: false });
 
 const STORAGE_KEY = {
   MY_ARTICLES: 'ih:my:articles',
@@ -19,8 +21,8 @@ const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 
 export default function MyFeed() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const { user, isLoading: authLoading } = useAuth();
+  const authChecked = !authLoading;
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   const [articles, setArticles] = useState<Article[]>([]);
@@ -48,22 +50,9 @@ export default function MyFeed() {
   const articlesCacheRef = useRef<Map<string, { articles: Article[]; totalCount: number; hasMore: boolean; timestamp: number }>>(new Map());
   const fetchAbortRef = useRef<AbortController | null>(null);
 
-  // Auth check
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setAuthChecked(true);
-      if (!user) setShowLoginDialog(true);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) setShowLoginDialog(true);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    if (authChecked && !user) setShowLoginDialog(true);
+  }, [authChecked, user]);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false, options?: { signal?: AbortSignal; silent?: boolean }) => {
@@ -171,10 +160,15 @@ export default function MyFeed() {
             try {
               sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify(categoryNames));
             } catch { /* ignore */ }
+          } else {
+            setIsLoading(false);
           }
+        } else {
+          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error fetching categories:', error);
+        setIsLoading(false);
       }
     }
 
