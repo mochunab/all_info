@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Script from "next/script";
 import "./globals.css";
 import Providers from "./providers";
-
-const GA_ID = "G-1JHEHJCLXN";
+import GTagPageView from "@/components/GTagPageView";
+import { GA_ID } from "@/lib/gtag";
 
 export const metadata: Metadata = {
   title: "아카인포 - 비즈니스 인사이트 아카이브",
@@ -63,6 +64,9 @@ export default function RootLayout({
             gtag('config', '${GA_ID}');
           `}
         </Script>
+        <Suspense fallback={null}>
+          <GTagPageView />
+        </Suspense>
         <Providers>{children}</Providers>
       </body>
     </html>

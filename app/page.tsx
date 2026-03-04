@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Header, FilterBar, ArticleGrid, Toast, InsightChat, Footer } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
+import { event as gaEvent } from '@/lib/gtag';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/language-context';
 
@@ -198,6 +199,7 @@ export default function Home() {
 
   // Load more handler
   const handleLoadMore = () => {
+    gaEvent({ action: 'load_more', category: 'navigation', label: `page_${page + 1}` });
     const nextPage = page + 1;
     setPage(nextPage);
     fetchArticles(nextPage, true);
@@ -205,10 +207,12 @@ export default function Home() {
 
   // Debounced search
   const handleSearchChange = useCallback((value: string) => {
+    if (value) gaEvent({ action: 'search', category: 'filter', label: value });
     setSearch(value);
   }, []);
 
   const handleCategoryChange = useCallback((value: string) => {
+    gaEvent({ action: 'filter_category', category: 'filter', label: value || 'all' });
     setCategory(value);
     try { localStorage.setItem(STORAGE_KEY.CATEGORY, value); } catch { /* 무시 */ }
   }, []);
@@ -237,7 +241,7 @@ export default function Home() {
   // Handle refresh - 자료 불러오기 (폴링 기반 실시간 갱신)
   const handleRefresh = () => {
     if (isCrawling) return;
-
+    gaEvent({ action: 'crawl_trigger', category: 'crawling', label: 'home' });
     setIsCrawling(true);
     setCrawlProgress('크롤링 시작...');
 
