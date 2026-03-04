@@ -20,46 +20,46 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
   const sourceColor = SOURCE_COLORS[article.source_name] || DEFAULT_SOURCE_COLOR;
   const [translatedTitle, setTranslatedTitle] = useState(article.title);
   const [translatedSummary, setTranslatedSummary] = useState(article.summary || '');
+  const [translatedTags, setTranslatedTags] = useState<string[]>(article.summary_tags || []);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // 태그 3개 (ai에서 생성된 것 또는 빈 배열)
   const tags = article.summary_tags?.length > 0 ? article.summary_tags : [];
 
   useEffect(() => {
-    // 한국어면 번역 불필요 (title_ko가 있으면 사용, 없으면 원본 title)
     if (language === 'ko') {
       setTranslatedTitle(article.title_ko || article.title);
       setTranslatedSummary(article.summary || '');
+      setTranslatedTags(tags);
       return;
     }
 
-    // 캐시 확인
     const cached = getCachedTranslation(article.id, language);
     if (cached) {
       setTranslatedTitle(cached.title);
       setTranslatedSummary(cached.summary || '');
+      if (cached.tags?.length) setTranslatedTags(cached.tags);
       return;
     }
 
-    // 번역 실행 — title_ko(한국어)를 소스로 사용 (원본이 영어일 수 있어 sourceLang='ko'와 불일치 방지)
     setIsTranslating(true);
     const textsToTranslate = [
       article.title_ko || article.title,
       article.summary || '',
+      ...tags,
     ];
 
     translateTexts(textsToTranslate, language, 'ko')
-      .then(([title, summary]) => {
+      .then((translated) => {
+        const [title, summary, ...translatedTagResults] = translated;
         setTranslatedTitle(title);
         setTranslatedSummary(summary);
-        // 캐시 저장 (ai_summary는 null로)
-        setCachedTranslation(article.id, language, title, null, summary, null);
+        if (translatedTagResults.length) setTranslatedTags(translatedTagResults);
+        setCachedTranslation(article.id, language, title, null, summary, null, translatedTagResults);
       })
       .catch((err) => {
         console.error('Translation failed:', err);
-        // 실패 시 원문 유지
         setTranslatedTitle(article.title);
         setTranslatedSummary(article.summary || '');
       })
@@ -217,9 +217,9 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
         )}
 
         {/* Tags */}
-        {tags.length > 0 && (
+        {translatedTags.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {tags.slice(0, 3).map((tag, index) => (
+            {translatedTags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
                 className="px-2 py-0.5 text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded"
@@ -247,7 +247,7 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
               />
             </svg>
             <span>
-              {formatDistanceToNow(article.crawled_at)}
+              {formatDistanceToNow(article.crawled_at, language)}
             </span>
           </div>
         </div>
