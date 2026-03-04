@@ -7,20 +7,37 @@ import GTagPageView from "@/components/GTagPageView";
 import { GA_ID } from "@/lib/gtag";
 
 export const metadata: Metadata = {
-  title: "아카인포 - 비즈니스 인사이트 아카이브",
-  description: "비즈니스 인사이트를 수집하고 보관합니다. 마케팅, 브랜딩, 스타트업, 리테일 트렌드를 AI가 요약해드립니다.",
-  keywords: ["비즈니스", "마케팅", "인사이트", "트렌드", "브랜딩", "스타트업", "아카이브"],
+  metadataBase: new URL("https://aca-info.com"),
+  title: {
+    default: "아카인포 - 나만의 면접 치트키",
+    template: "%s | 아카인포",
+  },
+  description: "면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!",
+  keywords: [
+    "AI 면접 코칭",
+    "업계 브리핑",
+    "비즈니스 인사이트",
+    "마케팅 트렌드",
+    "스타트업",
+    "아카인포",
+  ],
   authors: [{ name: "아카인포" }],
+  creator: "아카인포",
   openGraph: {
-    title: "아카인포 - 비즈니스 인사이트 아카이브",
-    description: "비즈니스 인사이트를 수집하고 보관합니다",
+    title: "아카인포 - 나만의 면접 치트키",
+    description: "면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!",
     type: "website",
     locale: "ko_KR",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "아카인포 - 나만의 면접 치트키" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "아카인포 - 비즈니스 인사이트 아카이브",
-    description: "비즈니스 인사이트를 수집하고 보관합니다",
+    title: "아카인포 - 나만의 면접 치트키",
+    description: "면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "아카인포 - 나만의 면접 치트키" }],
+  },
+  alternates: {
+    canonical: "/",
   },
   robots: {
     index: true,
@@ -52,6 +69,29 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased min-h-screen">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@graph": [
+                {
+                  "@type": "Organization",
+                  name: "아카인포",
+                  url: "https://aca-info.com",
+                  logo: "https://aca-info.com/logo.png",
+                },
+                {
+                  "@type": "WebSite",
+                  name: "아카인포",
+                  url: "https://aca-info.com",
+                  description:
+                    "면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!",
+                },
+              ],
+            }),
+          }}
+        />
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
           strategy="afterInteractive"
