@@ -131,16 +131,17 @@ export const LANGUAGES = {
   ja: { code: 'ja', name: '日本語', flag: '🇯🇵', deepl: 'JA' },
 } as const;
 
-export interface TranslationCache {
+export type TranslationCache = {
   [articleId: string]: {
     [lang: string]: {
       title: string;
       summary: string | null;
       content_preview: string | null;
-      cached_at: number; // timestamp
+      tags?: string[];
+      cached_at: number;
     };
   };
-}
+};
 
 // Chat Insight
 export type ChatMessage = {

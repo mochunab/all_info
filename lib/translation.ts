@@ -1,6 +1,6 @@
 import type { Language, TranslationCache } from '@/types';
 
-const CACHE_KEY = 'ih:translation:cache:v2';
+const CACHE_KEY = 'ih:translation:cache:v3';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7일
 
 export function getTranslationCache(): TranslationCache {
@@ -42,12 +42,11 @@ export function setTranslationCache(cache: TranslationCache): void {
 export function getCachedTranslation(
   articleId: string,
   lang: Language
-): { title: string; summary: string | null; content_preview: string | null } | null {
+): { title: string; summary: string | null; content_preview: string | null; tags?: string[] } | null {
   const cache = getTranslationCache();
   const translation = cache[articleId]?.[lang];
   if (!translation) return null;
 
-  // TTL 체크
   if (Date.now() - translation.cached_at > CACHE_TTL) {
     return null;
   }
@@ -56,6 +55,7 @@ export function getCachedTranslation(
     title: translation.title,
     summary: translation.summary,
     content_preview: translation.content_preview,
+    tags: translation.tags,
   };
 }
 
@@ -65,7 +65,8 @@ export function setCachedTranslation(
   title: string,
   ai_summary: string | null, // deprecated, kept for compatibility
   summary: string | null,
-  content_preview: string | null
+  content_preview: string | null,
+  tags?: string[]
 ): void {
   const cache = getTranslationCache();
   if (!cache[articleId]) {
@@ -75,6 +76,7 @@ export function setCachedTranslation(
     title,
     summary,
     content_preview,
+    tags,
     cached_at: Date.now(),
   };
   setTranslationCache(cache);
