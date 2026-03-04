@@ -1,7 +1,9 @@
 import Link from 'next/link';
 
 export const metadata = {
-  title: '이용약관 - 아카인포',
+  title: '이용약관',
+  description: '아카인포 서비스 이용약관, 크롤링 Opt-out 안내 및 저작권 고지.',
+  robots: { index: true, follow: false },
 };
 
 export default function TermsPage() {
