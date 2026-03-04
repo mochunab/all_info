@@ -3,7 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import Providers from "./providers";
 
-const GA_ID = "G-ZCQ6LNWWBE";
+const GA_ID = "G-1JHEHJCLXN";
 
 export const metadata: Metadata = {
   title: "아카인포 - 비즈니스 인사이트 아카이브",
