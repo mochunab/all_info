@@ -1,51 +1,45 @@
 import { createHash } from 'crypto';
+import type { Language } from '@/types';
 
-/**
- * URL을 해시하여 고유한 source_id 생성
- */
 export function generateSourceId(url: string): string {
   return createHash('sha256').update(url).digest('hex').substring(0, 16);
 }
 
-/**
- * 날짜를 상대적 시간으로 표시 (예: "3시간 전", "2일 전")
- */
-export function formatDistanceToNow(dateString: string): string {
+const TIME_UNITS: Record<Language, {
+  now: string; min: string; hour: string; day: string; week: string; month: string; year: string;
+}> = {
+  ko: { now: '방금 전', min: '분 전', hour: '시간 전', day: '일 전', week: '주 전', month: '개월 전', year: '년 전' },
+  en: { now: 'just now', min: ' min ago', hour: 'h ago', day: 'd ago', week: 'w ago', month: ' mo ago', year: 'y ago' },
+  vi: { now: 'vừa xong', min: ' phút trước', hour: ' giờ trước', day: ' ngày trước', week: ' tuần trước', month: ' tháng trước', year: ' năm trước' },
+  zh: { now: '刚刚', min: '分钟前', hour: '小时前', day: '天前', week: '周前', month: '个月前', year: '年前' },
+  ja: { now: 'たった今', min: '分前', hour: '時間前', day: '日前', week: '週間前', month: 'ヶ月前', year: '年前' },
+};
+
+export function formatDistanceToNow(dateString: string, lang: Language = 'ko'): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const u = TIME_UNITS[lang];
 
-  if (diffInSeconds < 60) {
-    return '방금 전';
-  }
+  if (diffInSeconds < 60) return u.now;
 
   const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) {
-    return `${diffInMinutes}분 전`;
-  }
+  if (diffInMinutes < 60) return `${diffInMinutes}${u.min}`;
 
   const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) {
-    return `${diffInHours}시간 전`;
-  }
+  if (diffInHours < 24) return `${diffInHours}${u.hour}`;
 
   const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 7) {
-    return `${diffInDays}일 전`;
-  }
+  if (diffInDays < 7) return `${diffInDays}${u.day}`;
 
   const diffInWeeks = Math.floor(diffInDays / 7);
-  if (diffInWeeks < 4) {
-    return `${diffInWeeks}주 전`;
-  }
+  if (diffInWeeks < 4) return `${diffInWeeks}${u.week}`;
 
   const diffInMonths = Math.floor(diffInDays / 30);
-  if (diffInMonths < 12) {
-    return `${diffInMonths}개월 전`;
-  }
+  if (diffInMonths < 12) return `${diffInMonths}${u.month}`;
 
   const diffInYears = Math.floor(diffInDays / 365);
-  return `${diffInYears}년 전`;
+  return `${diffInYears}${u.year}`;
 }
 
 /**
