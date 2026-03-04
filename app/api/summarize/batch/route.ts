@@ -15,8 +15,17 @@ function verifyCronSecret(request: NextRequest): boolean {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
-// POST - Process batch summaries (for cron jobs)
+// Vercel Cron sends GET requests
+export async function GET(request: NextRequest) {
+  return handleBatchSummarize(request);
+}
+
+// POST - Process batch summaries (for manual/trigger calls)
 export async function POST(request: NextRequest) {
+  return handleBatchSummarize(request);
+}
+
+async function handleBatchSummarize(request: NextRequest) {
   try {
     // Verify authorization
     if (!verifyCronSecret(request)) {
