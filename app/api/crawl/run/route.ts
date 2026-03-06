@@ -237,8 +237,13 @@ async function handleCrawlRun(request: NextRequest) {
     if (totalNew > 0) {
       try {
         const { submitToIndexNow } = await import('@/lib/indexnow');
-        const submitted = await submitToIndexNow(['/', '/landing']);
-        console.log(`🔔 IndexNow ${submitted ? '제출 완료' : '제출 실패 (키 미설정?)'}`);
+        const indexNowUrls = ['/', '/topics', '/tags', '/sources'];
+        const sourcesWithNew = results.filter(r => r.success && (r.new || 0) > 0);
+        for (const r of sourcesWithNew) {
+          indexNowUrls.push(`/sources/${encodeURIComponent(r.source)}`);
+        }
+        const submitted = await submitToIndexNow(indexNowUrls);
+        console.log(`🔔 IndexNow ${submitted ? `제출 완료 (${indexNowUrls.length}개 URL)` : '제출 실패 (키 미설정?)'}`);
       } catch { /* IndexNow 실패는 무시 */ }
     }
 

@@ -10,6 +10,7 @@ interface ArticleGridProps {
   language: Language;
   isLoading?: boolean;
   hasMore?: boolean;
+  search?: string;
   onLoadMore?: () => void;
   onDelete?: (articleId: string) => void;
   onChatReference?: (article: Article) => void;
@@ -21,6 +22,7 @@ export default function ArticleGrid({
   language,
   isLoading = false,
   hasMore = false,
+  search = '',
   onLoadMore,
   onDelete,
   onChatReference,
@@ -28,6 +30,7 @@ export default function ArticleGrid({
 }: ArticleGridProps) {
   // Empty state
   if (!isLoading && articles.length === 0) {
+    const isEmptyFeed = !search;
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
         <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mb-4">
@@ -37,19 +40,28 @@ export default function ArticleGrid({
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
+            {isEmptyFeed ? (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              />
+            ) : (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            )}
           </svg>
         </div>
         <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-          {t(language, 'article.noResults')}
+          {t(language, isEmptyFeed ? 'article.emptyFeed' : 'article.noResults')}
         </h3>
         <p className="text-sm text-[var(--text-tertiary)] text-center max-w-sm">
-          {t(language, 'article.noResultsHint')}
+          {t(language, isEmptyFeed ? 'article.emptyFeedHint' : 'article.noResultsHint')}
         </p>
       </div>
     );

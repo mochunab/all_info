@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import LandingContent from './LandingContent';
+import { buildAlternateLanguages } from '@/lib/hreflang';
 
 export const metadata: Metadata = {
   title: '취준생 면접 준비 AI 코칭',
   description: 'AI가 매일 업계 브리핑을 읽고 면접 답변까지 만들어드립니다. 하루 30초 투자로 면접 합격률을 높이세요.',
-  alternates: { canonical: 'https://aca-info.com/landing' },
+  alternates: { canonical: 'https://aca-info.com/landing', languages: buildAlternateLanguages('/landing') },
   openGraph: {
     title: '아카인포 - 나만의 면접 치트키',
     description: '30년이 달라진다, 하루 30초로. AI 업계 브리핑 + 면접 코칭.',
