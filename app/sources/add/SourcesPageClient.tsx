@@ -377,6 +377,8 @@ export default function SourcesPageClient({
             sessionStorage.removeItem('ih:home:articles');
             sessionStorage.removeItem('ih:my:categories');
             sessionStorage.removeItem('ih:my:articles');
+            localStorage.removeItem('ih:my:category');
+            localStorage.removeItem('ih:category');
           } catch { /* 무시 */ }
         } else if (response.status === 409) {
           setToastMessage(t('sources.categoryExists', { name: trimmed }));
@@ -499,14 +501,14 @@ export default function SourcesPageClient({
 
         setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
         setShowToast(true);
-        // 홈/마이피드 캐시 무효화
         try {
           sessionStorage.removeItem('ih:home:categories');
           sessionStorage.removeItem('ih:home:articles');
           sessionStorage.removeItem('ih:my:categories');
           sessionStorage.removeItem('ih:my:articles');
+          localStorage.removeItem('ih:my:category');
+          localStorage.removeItem('ih:category');
         } catch { /* 무시 */ }
-        // Router Cache 무효화 (네비게이션 시 stale 데이터 방지)
         router.refresh();
       }
     } catch (error) {
@@ -817,12 +819,13 @@ export default function SourcesPageClient({
     }
 
     if (allSources.length === 0) {
-      // 소스 변경 없어도 rename/reorder 캐시 무효화
       try {
         sessionStorage.removeItem('ih:home:categories');
         sessionStorage.removeItem('ih:home:articles');
         sessionStorage.removeItem('ih:my:categories');
         sessionStorage.removeItem('ih:my:articles');
+        localStorage.removeItem('ih:my:category');
+        localStorage.removeItem('ih:category');
       } catch { /* 무시 */ }
       setIsSaving(false);
       setToastMessage(t('sources.saved'));
