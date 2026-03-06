@@ -372,10 +372,11 @@ export default function SourcesPageClient({
           }
           setActiveCategory(trimmed);
           setPendingCategory(null);
-          // 홈 화면 캐시 무효화
           try {
             sessionStorage.removeItem('ih:home:categories');
             sessionStorage.removeItem('ih:home:articles');
+            sessionStorage.removeItem('ih:my:categories');
+            sessionStorage.removeItem('ih:my:articles');
           } catch { /* 무시 */ }
         } else if (response.status === 409) {
           setToastMessage(t('sources.categoryExists', { name: trimmed }));
