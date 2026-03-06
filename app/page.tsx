@@ -15,9 +15,10 @@ export default async function Home() {
   // Fetch categories
   const { data: categoriesData } = await supabase
     .from('categories')
-    .select('name')
+    .select('name, display_order')
     .eq('user_id', masterUserId)
-    .order('id', { ascending: true });
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name');
 
   const categoryNames = categoriesData?.map((c: { name: string }) => c.name) || [];
   const defaultCategory = categoryNames[0] || '';
