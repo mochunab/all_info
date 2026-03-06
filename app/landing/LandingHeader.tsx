@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { Header } from '@/components';
-import type { Language } from '@/types';
+import { useLanguage } from '@/lib/language-context';
 
 export default function LandingHeader() {
-  const [language, setLanguage] = useState<Language>('ko');
+  const { language, setLanguage } = useLanguage();
   return <Header logoHref="/landing" language={language} onLanguageChange={setLanguage} />;
 }

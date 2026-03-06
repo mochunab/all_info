@@ -256,15 +256,21 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
     ? inferred
     : ((source.crawler_type as CrawlerType) || inferred);
 
-  // 1.5. 사전 셀렉터 감지: STATIC 소스에 셀렉터 없으면 AI 자동 감지
-  if (primaryType === 'STATIC' && !config.selectors) {
-    console.log(`\n🔍 [사전 감지] STATIC 소스에 셀렉터 없음 — 자동 감지 시도...`);
+  // 1.5. 사전 셀렉터 감지: STATIC/SPA 소스에 셀렉터 없으면 AI 자동 감지
+  if ((primaryType === 'STATIC' || primaryType === 'SPA') && !config.selectors) {
+    console.log(`\n🔍 [사전 감지] ${primaryType} 소스에 셀렉터 없음 — 자동 감지 시도...`);
     try {
       const { fetchPage, detectByRules } = await import('./auto-detect');
       const { detectByUnifiedAI } = await import('./strategy-resolver');
       const cheerioLib = await import('cheerio');
 
-      const html = await fetchPage(source.base_url);
+      let html: string | null = null;
+      if (primaryType === 'SPA') {
+        const { getRenderedHTML } = await import('./strategies/spa');
+        html = await getRenderedHTML(source.base_url);
+      } else {
+        html = await fetchPage(source.base_url);
+      }
       if (html) {
         // 1차: AI 통합 감지 (Edge Function)
         console.log(`   🤖 [1차] AI 통합 감지 시도...`);
@@ -438,7 +444,13 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
             const { preprocessHtmlForExtraction } = await import('./html-preprocessor');
             const { extractArticlesViaLLM } = await import('@/lib/ai/article-extractor');
 
-            const llmHtml = await fetchPage(llmTargetUrl);
+            let llmHtml: string | null = null;
+            if (primaryType === 'SPA') {
+              const { getRenderedHTML } = await import('./strategies/spa');
+              llmHtml = await getRenderedHTML(llmTargetUrl);
+            } else {
+              llmHtml = await fetchPage(llmTargetUrl);
+            }
             if (llmHtml) {
               const preprocessed = preprocessHtmlForExtraction(llmHtml);
               const origin = new URL(llmTargetUrl).origin;
