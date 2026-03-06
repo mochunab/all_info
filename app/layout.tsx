@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Script from "next/script";
+import localFont from "next/font/local";
+import { Outfit } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
 import GTagPageView from "@/components/GTagPageView";
 import { GA_ID } from "@/lib/gtag";
+
+const pretendard = localFont({
+  src: "../public/fonts/PretendardVariable.woff2",
+  variable: "--font-pretendard",
+  display: "swap",
+  weight: "100 900",
+});
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-outfit",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://aca-info.com"),
@@ -51,22 +67,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" className={`${pretendard.variable} ${outfit.variable}`}>
       <head>
-        {/* Pretendard Font */}
-        <link
-          rel="stylesheet"
-          as="style"
-          crossOrigin="anonymous"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-        />
-        {/* Outfit Font for Logo */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="alternate" type="application/rss+xml" title="아카인포 RSS" href="/feed.xml" />
       </head>
       <body className="antialiased min-h-screen">
         <script

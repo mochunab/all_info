@@ -58,7 +58,6 @@ export default function Header({
               </div>
               <h1
                 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]"
-                style={{ fontFamily: 'Pretendard, sans-serif' }}
               >
                 {t(language, 'header.logo')}
               </h1>

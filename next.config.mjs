@@ -38,10 +38,10 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com",
-              "font-src 'self' cdn.jsdelivr.net fonts.gstatic.com",
+              "style-src 'self' 'unsafe-inline'",
+              "font-src 'self'",
               "img-src 'self' data: blob: *.pstatic.net *.supabase.co *.kakaocdn.net *.daumcdn.net stonebc.com *.stibee.com",
-              "connect-src 'self' *.supabase.co api.openai.com cdn.jsdelivr.net",
+              "connect-src 'self' *.supabase.co api.openai.com",
               "object-src 'none'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
