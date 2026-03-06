@@ -218,8 +218,8 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
   7.5 API 감지 — SPA 확정 후 detect-api-endpoint 호출
       └─ Puppeteer 네트워크 캡처 → Gemini 2.5 Flash Lite → crawl_config 생성
   8.5 SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재시도
-  9.  사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면:
-      └─ AI 1차 → Rule-based 2차 → DB 자동 저장
+  9.  사전 감지 (크롤링 시점) — STATIC/SPA 소스에 셀렉터 없으면:
+      └─ AI 1차 → Rule-based 2차 → DB 자동 저장 (SPA는 Puppeteer HTML 사용)
 ```
 
 감지 우선순위 요약:
@@ -305,6 +305,14 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.5 (2026-03-06)
+- SPA 소스 사전 감지 + auto-recovery Puppeteer HTML 지원
+  - 사전 감지(Stage 9): STATIC → STATIC/SPA 확장, SPA는 `getRenderedHTML()`으로 HTML 획득
+  - Auto-recovery LLM 추출: SPA면 Puppeteer HTML 사용 + SPA 전략으로 본문 추출
+- Rule-based 셀렉터 감지 정확도 개선 (`auto-detect.ts`)
+  - `article` 시맨틱 태그 가산점 (+0.15), Tailwind 유틸리티 클래스 감점 (-0.2)
+  - `getUniqueSelector` body 폴백: `div`/`section` 등 일반 태그 → `body` (첫 번째만 매칭되는 버그 방지)
 
 ### v1.8.4 (2026-03-02)
 - 카테고리명 동적 번역: 커스텀 카테고리 생성/이름변경 시 DeepL API로 4개 언어(en/vi/zh/ja) 자동 번역

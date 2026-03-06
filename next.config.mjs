@@ -3,6 +3,9 @@ const nextConfig = {
   // Vercel Serverless 호환성: @sparticuz/chromium 외부 패키지 처리
   experimental: {
     serverComponentsExternalPackages: ['@sparticuz/chromium'],
+    staleTimes: {
+      dynamic: 0,
+    },
   },
   async headers() {
     return [

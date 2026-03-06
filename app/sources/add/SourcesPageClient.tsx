@@ -298,8 +298,10 @@ export default function SourcesPageClient({
     setShowBrowseMaster(true);
     setSelectedMasterCats(new Set());
     setExpandedMasterCats(new Set());
-    fetchMasterCategories();
-  }, [fetchMasterCategories]);
+    if (!masterData) {
+      fetchMasterCategories();
+    }
+  }, [fetchMasterCategories, masterData]);
 
   const handleAddMasterCategories = useCallback(() => {
     if (!masterData || selectedMasterCats.size === 0) return;
@@ -744,6 +746,22 @@ export default function SourcesPageClient({
       setIsAddingCategory(false);
     }
 
+    // 로컬에 있는 카테고리 중 DB에 없는 것(isExisting 아닌 새 카테고리) 일괄 생성
+    const newCatsToCreate = categories.filter(
+      (c) => !initialCategories.some((ic) => ic.name === c.name) && c.name !== pendingCategory
+    );
+    if (newCatsToCreate.length > 0) {
+      await Promise.allSettled(
+        newCatsToCreate.map((c) =>
+          fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: c.name }),
+          })
+        )
+      );
+    }
+
     // 카테고리 이름 변경 일괄 처리
     for (const rename of pendingRenames) {
       try {
@@ -809,9 +827,9 @@ export default function SourcesPageClient({
       return;
     }
 
-    // 신규 소스 또는 AUTO 타입이 있을 때만 분석 다이얼로그 표시
+    // 크롤러 타입이 미지정이거나 AUTO인 소스가 있을 때만 분석 다이얼로그 표시
     const needsAnalysis = Object.values(sourcesByCategory).some((sources) =>
-      sources.some((s) => s.url.trim() && (!s.isExisting || s.crawlerType === 'AUTO'))
+      sources.some((s) => s.url.trim() && (!s.crawlerType || s.crawlerType === 'AUTO'))
     );
 
     setIsSaving(true);
@@ -824,6 +842,7 @@ export default function SourcesPageClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sources: allSources,
+          categoryNames: categories.map((c) => c.name),
           ...(pendingDeleteIds.length > 0 && { deleteIds: pendingDeleteIds }),
         }),
       });

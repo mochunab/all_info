@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServiceClient();
     const body = await request.json();
-    const { sources, deleteIds } = body;
+    const { sources, deleteIds, categoryNames: clientCategoryNames } = body;
 
     if (!sources || !Array.isArray(sources)) {
       return NextResponse.json(
@@ -103,6 +103,44 @@ export async function POST(request: NextRequest) {
         console.error('Error deleting sources:', deleteError);
       } else {
         console.log(`[SOURCES] Deleted ${deleteIds.length} sources: ${deleteIds.join(', ')}`);
+      }
+    }
+
+    // 카테고리를 categories 테이블에 자동 생성 (없는 것만)
+    // 클라이언트에서 전달한 전체 카테고리 목록 우선, 없으면 소스에서 추출
+    const categoryNames = (
+      Array.isArray(clientCategoryNames) && clientCategoryNames.length > 0
+        ? [...new Set(clientCategoryNames.map((n: string) => n.trim()))]
+        : [...new Set(
+            sources
+              .filter((s: { category?: string }) => s.category)
+              .map((s: { category: string }) => s.category.trim())
+          )]
+    ) as string[];
+
+    if (categoryNames.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: existingCats } = await (supabase as any)
+        .from('categories')
+        .select('name')
+        .eq('user_id', user.id)
+        .in('name', categoryNames);
+
+      const existingCatNames = new Set((existingCats || []).map((c: { name: string }) => c.name));
+      const newCatNames = categoryNames.filter((n) => !existingCatNames.has(n));
+
+      if (newCatNames.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from('categories')
+          .insert(newCatNames.map((name, i) => ({
+            name,
+            user_id: user.id,
+            is_default: false,
+            display_order: (existingCats?.length || 0) + i,
+          })));
+        console.log(`[SOURCES] Created ${newCatNames.length} categories for user: ${newCatNames.join(', ')}`);
+        invalidateCache(`${CACHE_KEYS.CATEGORIES}:${user.id}`);
       }
     }
 
@@ -140,15 +178,11 @@ export async function POST(request: NextRequest) {
     );
 
     // 2단계: 분석이 필요한 URL만 필터링
-    // - 신규 소스 (DB에 없음)
-    // - 크롤러 타입이 AUTO이거나 미지정인 소스 (재분석 요청)
+    // - 크롤러 타입이 AUTO이거나 미지정인 소스만 분석
+    // - 이미 확정된 크롤러 타입(RSS, STATIC 등)은 분석 스킵
     const urlsNeedingAnalysis = sources
       .filter((s: { url?: string; crawlerType?: string }) =>
-        s.url && (
-          !existingMap.has(s.url.trim()) ||
-          !s.crawlerType ||
-          s.crawlerType === 'AUTO'
-        )
+        s.url && (!s.crawlerType || s.crawlerType === 'AUTO')
       )
       .map((s: { url: string }) => s.url.trim());
 

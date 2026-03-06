@@ -936,6 +936,28 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 
 ---
 
+## ADR-024: SPA 소스 사전 감지 + Rule-based 감지 정확도 개선
+
+**일시**: 2026-03-06
+**상태**: 확정
+
+**결정**: 사전 셀렉터 감지(Stage 9)와 auto-recovery LLM 추출을 SPA 소스에도 확장하고, Rule-based 감지에 시맨틱 태그 가산/유틸리티 클래스 감점을 도입한다.
+
+**이유**:
+- SPA 소스에 셀렉터가 없으면 DEFAULT_SELECTORS로만 시도 → 불일치 시 0건 반환
+- Auto-recovery LLM 추출이 static fetch만 사용 → SPA는 빈 HTML → LLM도 실패
+- Rule-based 감지가 Tailwind `div.box-border`(286개)를 `article`(10개)보다 우선 선택하는 문제
+
+**변경 내용**:
+1. `index.ts`: Pre-detection 조건에 SPA 추가, SPA면 `getRenderedHTML()`으로 Puppeteer HTML 획득
+2. `index.ts`: Auto-recovery LLM 추출/본문 추출 시 SPA면 Puppeteer HTML + SPA 전략 사용
+3. `auto-detect.ts`: `article` 시맨틱 태그 +0.15, Tailwind 유틸리티 클래스 div -0.2
+4. `auto-detect.ts`: `getUniqueSelector`에서 `div`/`section` 등 일반 태그 → `body` 폴백
+
+**트레이드오프**: SPA 사전 감지 시 Puppeteer 브라우저 기동 비용 (약 3~5초 추가). 셀렉터 감지 후 DB 저장하므로 초회만 발생.
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown

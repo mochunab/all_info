@@ -460,7 +460,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
                 console.log(`   ✅ LLM 추출 성공: ${llmItems.length}건 — 본문 추출 진행...`);
 
                 const llmArticles: CrawledArticle[] = [];
-                const llmStrategy = getStrategy('STATIC');
+                const llmStrategy = getStrategy(primaryType === 'SPA' ? 'SPA' : 'STATIC');
                 for (let idx = 0; idx < Math.min(llmItems.length, 5); idx++) {
                   const item = llmItems[idx];
                   if (!item.content && llmStrategy.crawlContent) {
