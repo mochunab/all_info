@@ -17,7 +17,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': '인사이트 검색...',
-    'filter.addSource': '소스 추가하기',
+    'filter.addSource': '링크 저장하기',
     'filter.totalCount': '총 {count}개의 인사이트',
     'filter.searchResult': '검색 결과: {count}개',
     'filter.allCategory': '전체',
@@ -211,7 +211,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': 'Search insights...',
-    'filter.addSource': 'Add Source',
+    'filter.addSource': 'Save Link',
     'filter.totalCount': 'Total {count} insights',
     'filter.searchResult': 'Results: {count}',
     'filter.allCategory': 'All',
@@ -405,7 +405,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': 'Tìm kiếm insight...',
-    'filter.addSource': 'Thêm nguồn',
+    'filter.addSource': 'Lưu liên kết',
     'filter.totalCount': 'Tổng {count} insight',
     'filter.searchResult': 'Kết quả: {count}',
     'filter.allCategory': 'Tất cả',
@@ -599,7 +599,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': '搜索洞察...',
-    'filter.addSource': '添加来源',
+    'filter.addSource': '保存链接',
     'filter.totalCount': '共 {count} 条洞察',
     'filter.searchResult': '搜索结果：{count} 条',
     'filter.allCategory': '全部',
@@ -793,7 +793,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': 'インサイトを検索...',
-    'filter.addSource': 'ソース追加',
+    'filter.addSource': 'リンク保存',
     'filter.totalCount': '合計 {count} 件',
     'filter.searchResult': '検索結果: {count} 件',
     'filter.allCategory': 'すべて',
