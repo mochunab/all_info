@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-
+import { getMasterUserId } from '@/lib/user';
 import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
-// Verify cron secret for scheduled runs
+export const maxDuration = 300;
+
+const SPA_CRAWLER_TYPES = new Set(['SPA']);
+
+type CrawlResultEntry = {
+  source: string;
+  success: boolean;
+  found?: number;
+  new?: number;
+  error?: string;
+};
+
 function verifyCronSecret(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -15,6 +26,24 @@ function verifyCronSecret(request: NextRequest): boolean {
   }
 
   return authHeader === `Bearer ${cronSecret}`;
+}
+
+async function runWithConcurrency(
+  items: CrawlSource[],
+  concurrency: number,
+  fn: (source: CrawlSource) => Promise<void>
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (queue.length > 0) {
+        const source = queue.shift();
+        if (source) await fn(source);
+      }
+    }
+  );
+  await Promise.all(workers);
 }
 
 // Vercel Cron sends GET requests
@@ -30,7 +59,6 @@ async function handleCrawlRun(request: NextRequest) {
   const runStartTime = Date.now();
 
   try {
-    // Verify authorization
     if (!verifyCronSecret(request)) {
       console.log('[AUTH] Unauthorized request - invalid or missing cron secret');
       return NextResponse.json(
@@ -40,24 +68,24 @@ async function handleCrawlRun(request: NextRequest) {
     }
 
     const supabase = createServiceClient();
+    const masterUserId = await getMasterUserId();
 
-    // Check for query parameters
     const { searchParams } = new URL(request.url);
     const sourceId = searchParams.get('sourceId');
     const category = searchParams.get('category');
-    const _skipSummary = searchParams.get('skipSummary') === 'true'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
     console.log(`\n${'='.repeat(80)}`);
-    console.log(`🚀 크롤링 시작 ${sourceId ? `(소스 ID: ${sourceId})` : category ? `(카테고리: ${category})` : '(전체 소스)'}`);
+    console.log(`🚀 크롤링 시작 ${sourceId ? `(소스 ID: ${sourceId})` : category ? `(카테고리: ${category})` : '(master 소스)'}`);
     console.log(`⏰ 시작 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+    console.log(`👤 master user: ${masterUserId}`);
     console.log(`${'='.repeat(80)}\n`);
 
-    // Fetch sources: single source, category filter, or all active sources
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query = (supabase as any)
       .from('crawl_sources')
       .select('*')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .eq('user_id', masterUserId);
 
     if (sourceId) {
       query = query.eq('id', parseInt(sourceId, 10));
@@ -88,70 +116,48 @@ async function handleCrawlRun(request: NextRequest) {
       console.log(`⚠️  [알림] ${message}`);
       return NextResponse.json({
         success: true,
-        message: category
-          ? `No active crawl sources found for category: ${category}`
-          : 'No active crawl sources found',
+        message,
         results: [],
       });
     }
 
-    console.log(`\n📋 [소스 목록] 총 ${sources.length}개의 활성 소스 발견:`);
+    const { runCrawler } = await import('@/lib/crawlers');
+    const { processPendingSummaries } = await import('@/lib/ai/batch-summarizer');
+
+    const parallelSources = sources.filter(s => !SPA_CRAWLER_TYPES.has(s.crawler_type ?? ''));
+    const serialSources = sources.filter(s => SPA_CRAWLER_TYPES.has(s.crawler_type ?? ''));
+
+    console.log(`\n📋 [소스 목록] 총 ${sources.length}개 (병렬 ${parallelSources.length}개, 직렬 ${serialSources.length}개)`);
     sources.forEach((s, i) => {
-      console.log(`   ${i + 1}. 📌 ${s.name}`);
-      console.log(`      └─ URL: ${s.base_url}`);
-      console.log(`      └─ 타입: ${s.crawler_type || '자동감지'}`);
-      console.log(`      └─ 우선순위: ${s.priority || 1}`);
+      console.log(`   ${i + 1}. ${s.name} (${s.crawler_type || 'AUTO'}) — ${s.base_url}`);
     });
-    console.log('');
 
-    const results = [];
+    const results: CrawlResultEntry[] = [];
 
-    for (let idx = 0; idx < sources.length; idx++) {
-      const source = sources[idx];
-      console.log(`\n${'─'.repeat(80)}`);
-      console.log(`🔄 [${idx + 1}/${sources.length}] "${source.name}" 크롤링 시작...`);
-      console.log(`${'─'.repeat(80)}`);
+    const runSourceCrawl = async (source: CrawlSource): Promise<void> => {
+      const crawlStartTime = Date.now();
 
-      // Create crawl log entry
-      console.log(`📝 크롤링 로그 생성 중...`);
+      console.log(`\n${'─'.repeat(60)}`);
+      console.log(`📌 [시작] ${source.name} (${source.crawler_type || 'AUTO'})`);
+      console.log(`${'─'.repeat(60)}`);
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: log, error: logError } = await (supabase as any)
         .from('crawl_logs')
-        .insert({
-          source_id: source.id,
-          status: 'running',
-        })
+        .insert({ source_id: source.id, status: 'running' })
         .select()
         .single();
 
       if (logError) {
-        console.error(`❌ [로그 생성 실패] ${source.name}:`, logError);
-        continue;
+        console.error(`❌ [로그 오류] ${source.name}:`, logError);
+        return;
       }
-      console.log(`✅ 로그 생성 완료 (ID: ${log.id})`);
-
-      const sourceStartTime = Date.now();
 
       try {
-        // Import and run the appropriate crawler
-        console.log(`\n🎯 크롤러 실행 중...`);
-        const { runCrawler } = await import('@/lib/crawlers');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const crawlResult = await runCrawler(source, supabase as any);
+        const elapsed = ((Date.now() - crawlStartTime) / 1000).toFixed(1);
 
-        const sourceDuration = ((Date.now() - sourceStartTime) / 1000).toFixed(2);
-
-        if (crawlResult.skipped) {
-          console.log(`\n⏭️  [SKIP] "${source.name}" — 변경 없음, 크롤링 스킵 (${sourceDuration}초)`);
-        } else {
-          console.log(`\n✅ [크롤링 완료] "${source.name}"`);
-          console.log(`   📊 발견: ${crawlResult.found}개`);
-          console.log(`   💾 저장: ${crawlResult.new}개`);
-          console.log(`   ⏱️  소요시간: ${sourceDuration}초`);
-        }
-
-        // Update log with results
-        console.log(`📝 크롤링 로그 업데이트 중...`);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('crawl_logs')
@@ -163,14 +169,17 @@ async function handleCrawlRun(request: NextRequest) {
           })
           .eq('id', log.id);
 
-        // Update source last_crawled_at
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('crawl_sources')
           .update({ last_crawled_at: new Date().toISOString() })
           .eq('id', source.id);
 
-        console.log(`✅ 로그 업데이트 완료`);
+        if (crawlResult.skipped) {
+          console.log(`⏭️  [SKIP] ${source.name} — 변경 없음 (${elapsed}초)`);
+        } else {
+          console.log(`✅ [완료] ${source.name} — ${elapsed}초, 신규 ${crawlResult.new}개`);
+        }
 
         results.push({
           source: source.name,
@@ -179,55 +188,52 @@ async function handleCrawlRun(request: NextRequest) {
           new: crawlResult.new,
         });
       } catch (crawlError) {
-        const sourceDuration = ((Date.now() - sourceStartTime) / 1000).toFixed(2);
-        console.error(`\n❌ [크롤링 실패] "${source.name}"`);
-        console.error(`   ⚠️  오류: ${crawlError instanceof Error ? crawlError.message : 'Unknown error'}`);
-        console.error(`   ⏱️  소요시간: ${sourceDuration}초`);
+        const elapsed = ((Date.now() - crawlStartTime) / 1000).toFixed(1);
+        const errorMessage = crawlError instanceof Error ? crawlError.message : 'Unknown error';
 
-        // Update log with error
+        console.error(`❌ [실패] ${source.name} — ${elapsed}초: ${errorMessage}`);
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('crawl_logs')
           .update({
             status: 'failed',
             finished_at: new Date().toISOString(),
-            error_message: crawlError instanceof Error ? crawlError.message : 'Unknown error',
+            error_message: errorMessage,
           })
           .eq('id', log.id);
 
-        results.push({
-          source: source.name,
-          success: false,
-          error: crawlError instanceof Error ? crawlError.message : 'Unknown error',
-        });
+        results.push({ source: source.name, success: false, error: errorMessage });
       }
+    };
+
+    if (parallelSources.length > 0) {
+      console.log(`\n📡 [병렬 처리 시작] ${parallelSources.length}개`);
+      await runWithConcurrency(parallelSources, 5, runSourceCrawl);
+      console.log(`📡 [병렬 처리 완료]`);
     }
 
-    // Summary of crawl results
-    const totalFound = results.reduce((sum, r) => sum + (r.found || 0), 0);
-    const totalNew = results.reduce((sum, r) => sum + (r.new || 0), 0);
-    const totalSuccess = results.filter(r => r.success).length;
-    const totalFailed = results.filter(r => !r.success).length;
+    if (serialSources.length > 0) {
+      console.log(`\n🔄 [직렬 처리 시작] ${serialSources.length}개 SPA 소스`);
+      for (const source of serialSources) {
+        await runSourceCrawl(source);
+      }
+      console.log(`🔄 [직렬 처리 완료]`);
+    }
 
+    // AI 배치 요약 — 크롤링 직후 실행
     console.log(`\n${'='.repeat(80)}`);
-    console.log(`📊 크롤링 결과 요약`);
+    console.log(`🤖 [AI 요약] 배치 요약 시작...`);
     console.log(`${'='.repeat(80)}`);
-    console.log(`✅ 성공: ${totalSuccess}개 소스`);
-    console.log(`❌ 실패: ${totalFailed}개 소스`);
-    console.log(`📰 발견한 콘텐츠: ${totalFound}개`);
-    console.log(`💾 새로 저장된 콘텐츠: ${totalNew}개`);
-    console.log(`${'='.repeat(80)}\n`);
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
+    console.log(`✅ [AI 요약] ${summaryResult.success}/${summaryResult.processed}개 완료\n`);
 
-    // AI 요약은 별도 Cron (/api/summarize/batch, 매일 00:05 UTC)에서 실행
-    const summaryResult = { processed: 0, success: 0, failed: 0 };
-    console.log(`\nℹ️  AI 요약은 별도 Cron (00:05 UTC)에서 실행됩니다.`);
-
-    // 크롤링 완료 후 articles 캐시 무효화
-    console.log(`\n🗑️  캐시 무효화 중...`);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
-    console.log(`✅ 캐시 무효화 완료`);
 
     // IndexNow: 새 콘텐츠가 있으면 검색엔진에 알림
+    const totalNew = results.reduce((sum, r) => sum + (r.new || 0), 0);
     if (totalNew > 0) {
       try {
         const { submitToIndexNow } = await import('@/lib/indexnow');
@@ -236,22 +242,23 @@ async function handleCrawlRun(request: NextRequest) {
       } catch { /* IndexNow 실패는 무시 */ }
     }
 
-    const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`🎉 전체 크롤링 완료! ${sourceId ? `(소스 ID: ${sourceId})` : ''}`);
+    const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(1);
+    const totalFound = results.reduce((sum, r) => sum + (r.found || 0), 0);
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
     console.log(`${'='.repeat(80)}`);
-    console.log(`⏱️  총 소요시간: ${totalDuration}초`);
-    console.log(`💾 새로 저장된 콘텐츠: ${totalNew}개`);
-    console.log(`🤖 AI 요약 생성: ${summaryResult.success}개`);
+    console.log(`🎉 [전체 완료] ${totalDuration}초`);
+    console.log(`   소스: ${sources.length}개 (성공 ${successCount}, 실패 ${failCount})`);
+    console.log(`   아티클: ${totalFound}개 발견 → ${totalNew}개 저장`);
+    console.log(`   AI 요약: ${summaryResult.success}/${summaryResult.processed}개`);
     console.log(`${'='.repeat(80)}\n`);
 
     return NextResponse.json({
       success: true,
       message: sourceId
         ? `Crawled source ${sourceId}`
-        : category
-          ? `Crawled ${sources.length} sources for category: ${category}`
-          : `Crawled ${sources.length} sources`,
+        : `Crawled ${sources.length} master sources`,
       results,
       summarization: {
         processed: summaryResult.processed,
