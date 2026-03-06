@@ -23,8 +23,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        try {
+          sessionStorage.removeItem('ih:my:articles');
+          sessionStorage.removeItem('ih:my:categories');
+          sessionStorage.removeItem('ih:my:category');
+          sessionStorage.removeItem('ih:home:articles');
+          sessionStorage.removeItem('ih:home:categories');
+        } catch { /* ignore */ }
+      }
     });
 
     return () => subscription.unsubscribe();
