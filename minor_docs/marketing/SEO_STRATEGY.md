@@ -1,4 +1,4 @@
-# 아카인포 SEO 전략 — 구현 완료
+# 아카인포 SEO 전략
 
 > 최초 작성: 2026-03-02
 > 최종 업데이트: 2026-03-06
@@ -6,7 +6,40 @@
 
 ---
 
-## 구현 현황
+## 경쟁사 분석 (2026-03-06)
+
+### Daigest (daige.st) — 핵심 경쟁자
+
+AI 기반 멀티소스 모니터링 & 브리핑 서비스 (RSS, YouTube, Slack, Reddit, Notion 등).
+
+| 항목 | Daigest | 아카인포 | 격차 |
+|------|---------|---------|------|
+| **Sitemap URL 수** | **500+** | 3개 | 압도적 열세 |
+| **블로그/콘텐츠 마케팅** | 30+ SEO 블로그 포스트 | 없음 | 열세 |
+| **프로그래매틱 페이지** | 소스별·템플릿별 랜딩 20+ | 없음 | 열세 |
+| **다국어 hreflang** | ko/en/ja (URL 분리) | i18n 5개 있으나 hreflang 미적용 | 열세 |
+| **FAQ** | 8개 Q&A | 3개 Q&A | 약간 열세 |
+| **JSON-LD** | Organization + SoftwareApplication | Organization + WebSite + FAQ + SoftwareApp | 동등 |
+| **OG/Twitter 카드** | 완비 (언어별 이미지) | 완비 | 동등 |
+| **SSR** | Next.js SSR | SSR 전환 완료 | 동등 |
+| **RSS 피드** | 미확인 | RSS 2.0 제공 | 우세 |
+| **IndexNow** | 미확인 | 자동 제출 | 우세 |
+| **AI 크롤러 차단** | ClaudeBot, GPTBot 등 명시 차단 | 미적용 | 참고 |
+
+**Daigest 핵심 전략**:
+- **콘텐츠 볼륨**: 블로그 30+편 + 템플릿 20+ + 소스별 랜딩 → 롱테일 키워드 대량 커버
+- **프로그래매틱 SEO**: `/sources/slack`, `/templates/competitor-tracking` 등 자동 생성 페이지로 검색 유입 극대화
+- **다국어 URL 분리**: `/ko/`, `/en/`, `/ja/` + hreflang 태그 → 국제 검색 노출
+
+### blink.archive (litt.ly) — 간접 경쟁
+
+링크 바이오 플랫폼 (Linktree 유사). SPA only, SEO 거의 없음. 직접 경쟁 위협 낮음.
+
+---
+
+## SEO 로드맵
+
+### 완료 (Phase 1~8)
 
 | Phase | 내용 | 상태 | 배포일 |
 |-------|------|------|--------|
@@ -18,6 +51,57 @@
 | Phase 6 | 폰트 최적화 (next/font self-hosting) | ✅ 완료 | 2026-03-06 |
 | Phase 7 | RSS 2.0 피드 | ✅ 완료 | 2026-03-06 |
 | Phase 8 | IndexNow (크롤링 후 자동 제출) | ✅ 완료 | 2026-03-06 |
+
+### 예정 (Phase 9~13) — 격차 해소 전략
+
+| Phase | 내용 | 목표 | 우선순위 |
+|-------|------|------|----------|
+| Phase 9 | 프로그래매틱 SEO 페이지 | sitemap 3개 → 50+ URL, 카테고리·태그별 자동 생성 랜딩 | **P0 (최우선)** |
+| Phase 10 | hreflang 다국어 URL 구조 | `/ko/`, `/en/` 등 URL 분리 + hreflang 태그 | P1 |
+| Phase 11 | 블로그/콘텐츠 허브 | 타겟 키워드 블로그 시스템 (마크다운 or DB 기반) | P1 |
+| Phase 12 | FAQ 확장 + AI 크롤러 차단 | FAQ 3→10개, robots.txt에 GPTBot/ClaudeBot 차단 | P2 |
+| Phase 13 | 아티클 상세 페이지 SEO | `/articles/[slug]` 개별 페이지 + JSON-LD Article 스키마 | P2 |
+
+### Phase 9: 프로그래매틱 SEO 페이지 (상세)
+
+**목표**: DB에 있는 카테고리·태그 데이터를 활용해 검색 가능한 페이지를 자동 생성
+
+**생성할 페이지 유형**:
+
+| URL 패턴 | 내용 | 예시 |
+|----------|------|------|
+| `/topics/[category]` | 카테고리별 아티클 모음 | `/topics/마케팅`, `/topics/스타트업` |
+| `/tags/[tag]` | 태그별 아티클 모음 | `/tags/AI`, `/tags/브랜딩` |
+| `/sources/[source]` | 소스별 아티클 모음 | `/sources/와이즈앱`, `/sources/브런치` |
+
+**각 페이지 포함 요소**:
+- SSR (서버 컴포넌트, Supabase 직접 조회)
+- 페이지별 고유 title/description/OG 메타데이터
+- JSON-LD `CollectionPage` 스키마
+- 카테고리/태그 설명 텍스트 (SEO용 고유 콘텐츠)
+- 최근 아티클 목록 (최대 20개)
+- 내부 링크 (관련 카테고리, 태그 상호 링크)
+- sitemap.ts에 동적 URL 추가
+
+**기대 효과**:
+- sitemap URL: 3개 → 50~100+ (카테고리 수 + 태그 수 + 소스 수)
+- 롱테일 키워드 자연 커버: "마케팅 트렌드 요약", "AI 스타트업 뉴스" 등
+- 내부 링크 네트워크 강화 → 크롤링 깊이 개선
+
+### Phase 10: hreflang 다국어 URL (상세)
+
+- 기존 i18n 5개 언어 → URL prefix 기반 라우팅 (`/ko/`, `/en/`, `/vi/`, `/zh/`, `/ja/`)
+- `<link rel="alternate" hreflang="ko" href="...">` 태그 추가
+- sitemap에 hreflang 엔트리 포함
+- Daigest 대비 2개 언어 추가 커버 (vi, zh)
+
+### Phase 11: 블로그/콘텐츠 허브 (상세)
+
+- `/blog/[slug]` 라우트
+- MDX 또는 DB 기반 콘텐츠 관리
+- 타겟 키워드 예시: "AI 면접 준비 방법", "업계 트렌드 파악하는 법", "비즈니스 인사이트 큐레이션"
+- JSON-LD `BlogPosting` 스키마
+- 블로그 전용 sitemap 섹션
 
 ---
 

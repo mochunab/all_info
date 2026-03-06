@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
 import { getCache, setCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
@@ -194,6 +195,7 @@ export async function DELETE(request: NextRequest) {
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
     invalidateCacheByPrefix(CACHE_KEYS.SOURCES);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+    revalidatePath('/sources/add');
 
     return NextResponse.json({
       success: true,
@@ -307,6 +309,7 @@ export async function POST(request: NextRequest) {
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    revalidatePath('/sources/add');
 
     return NextResponse.json({ category: data });
   } catch (error) {
@@ -437,6 +440,7 @@ export async function PATCH(request: NextRequest) {
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
     invalidateCacheByPrefix(CACHE_KEYS.SOURCES);
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+    revalidatePath('/sources/add');
 
     return NextResponse.json({ success: true, oldName: trimmedOld, newName: trimmedNew });
   } catch (error) {
@@ -484,6 +488,7 @@ export async function PUT(request: NextRequest) {
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    revalidatePath('/sources/add');
 
     return NextResponse.json({ success: true });
   } catch (error) {

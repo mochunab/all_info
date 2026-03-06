@@ -75,6 +75,11 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Access-Control-Allow-Origin', origin);
   }
 
+  const langParam = request.nextUrl.searchParams.get('lang');
+  if (langParam && ['ko', 'en', 'vi', 'zh', 'ja'].includes(langParam)) {
+    response.headers.set('x-locale', langParam);
+  }
+
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');

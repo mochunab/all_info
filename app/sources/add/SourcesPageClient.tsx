@@ -505,6 +505,8 @@ export default function SourcesPageClient({
           sessionStorage.removeItem('ih:my:categories');
           sessionStorage.removeItem('ih:my:articles');
         } catch { /* 무시 */ }
+        // Router Cache 무효화 (네비게이션 시 stale 데이터 방지)
+        router.refresh();
       }
     } catch (error) {
       console.error('Error deleting category:', error);
