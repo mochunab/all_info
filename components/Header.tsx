@@ -1,10 +1,12 @@
 'use client';
 
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
 import { createClient } from '@/lib/supabase/client';
+import { event as gaEvent } from '@/lib/gtag';
 import { useAuth } from '@/lib/auth-context';
 import LanguageSwitcher from './LanguageSwitcher';
 
@@ -22,12 +24,19 @@ export default function Header({
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
+    gaEvent({ action: 'logout', category: 'auth' });
     const supabase = createClient();
     await supabase.auth.signOut();
+    setMobileMenuOpen(false);
     router.refresh();
-  };
+  }, [router]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   const NAV_ITEMS = [
     { label: t(language, 'header.home'), href: '/' },
@@ -56,14 +65,12 @@ export default function Header({
                   <path d="M9 12h6M9 15h4" strokeWidth="1.5" />
                 </svg>
               </div>
-              <h1
-                className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]"
-              >
+              <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">
                 {t(language, 'header.logo')}
               </h1>
             </Link>
 
-            <nav className="flex items-center gap-6">
+            <nav className="hidden md:flex items-center gap-6">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -86,7 +93,7 @@ export default function Header({
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-[var(--text-secondary)] hidden sm:inline">
+                <span className="text-sm text-[var(--text-secondary)] hidden lg:inline">
                   {user.email}
                 </span>
                 <button
@@ -111,9 +118,49 @@ export default function Header({
                 onLanguageChange={onLanguageChange}
               />
             )}
+
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+              aria-label="메뉴"
+            >
+              {mobileMenuOpen ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12h18M3 6h18M3 18h18" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
       </div>
+
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-[var(--border)] bg-[var(--bg-primary)]">
+          <div className="px-4 py-3 space-y-1">
+            {NAV_ITEMS.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-3 py-2.5 rounded-lg text-base font-medium transition-colors ${
+                    isActive
+                      ? 'text-[var(--text-primary)] bg-[var(--bg-secondary)]'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+
+          </div>
+        </div>
+      )}
     </header>
   );
 }

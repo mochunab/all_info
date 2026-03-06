@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { event as gaEvent } from '@/lib/gtag';
 import { useLanguage } from '@/lib/language-context';
 
 export default function LoginPage() {
@@ -28,6 +29,7 @@ export default function LoginPage() {
       return;
     }
 
+    gaEvent({ action: 'login', category: 'auth', label: 'email' });
     router.push('/');
     router.refresh();
   };

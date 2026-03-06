@@ -200,16 +200,19 @@ export default function MyFeed() {
   }, [search, category, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadMore = () => {
+    gaEvent({ action: 'load_more', category: 'navigation', label: `my_feed_page_${page + 1}` });
     const nextPage = page + 1;
     setPage(nextPage);
     fetchArticles(nextPage, true);
   };
 
   const handleSearchChange = useCallback((value: string) => {
+    if (value) gaEvent({ action: 'search', category: 'filter', label: value });
     setSearch(value);
   }, []);
 
   const handleCategoryChange = useCallback((value: string) => {
+    gaEvent({ action: 'filter_category', category: 'filter', label: value || 'all' });
     setCategory(value);
     try { localStorage.setItem(STORAGE_KEY.MY_CATEGORY, value); } catch { /* ignore */ }
   }, []);
