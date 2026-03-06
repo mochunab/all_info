@@ -39,6 +39,18 @@ export default function FilterBar({
   const { translateCat } = useLanguage();
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [localSearch, setLocalSearch] = useState(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => { setLocalSearch(search); }, [search]);
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleSearchInput = (value: string) => {
+    setLocalSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value) { onSearchChange(''); return; }
+    debounceRef.current = setTimeout(() => onSearchChange(value), 300);
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -75,14 +87,14 @@ export default function FilterBar({
           </div>
           <input
             type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            value={localSearch}
+            onChange={(e) => handleSearchInput(e.target.value)}
             placeholder={t(language, 'filter.search')}
             className="input pl-12"
           />
-          {search && (
+          {localSearch && (
             <button
-              onClick={() => onSearchChange('')}
+              onClick={() => { setLocalSearch(''); onSearchChange(''); }}
               className="absolute inset-y-0 right-0 pr-4 flex items-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
             >
               <svg

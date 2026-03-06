@@ -110,7 +110,7 @@ export default function HomeFeed({
           setArticles(data.articles);
           if (pageNum === 1 && !search && category === categories[0]) {
             try {
-              sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify(data));
+              sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify({ data, timestamp: Date.now() }));
             } catch { /* quota exceeded */ }
           }
         }
@@ -141,8 +141,18 @@ export default function HomeFeed({
     [search, category, lastUpdated, articles.length]
   );
 
-  // Revalidate categories on mount
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(STORAGE_KEY.HOME_CATEGORIES);
+      if (cached) {
+        const raw = JSON.parse(cached);
+        if (raw.timestamp && Date.now() - raw.timestamp < CLIENT_CACHE_TTL) {
+          if (raw.translations) setCategoryTranslations(raw.translations);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+
     async function revalidateCategories() {
       try {
         const response = await fetch('/api/categories');
@@ -155,7 +165,7 @@ export default function HomeFeed({
             setCategories(categoryNames);
             setCategoryTranslations(data.categories);
             try {
-              sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify(categoryNames));
+              sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify({ data: categoryNames, translations: data.categories, timestamp: Date.now() }));
             } catch { /* ignore */ }
           }
         }
@@ -240,9 +250,8 @@ export default function HomeFeed({
     setCrawlProgress('\uD06C\uB864\uB9C1 \uC2DC\uC791...');
 
     articlesCacheRef.current.clear();
-    try {
-      sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
-    } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.HOME_CATEGORIES); } catch { /* ignore */ }
 
     pollingRef.current = setInterval(async () => {
       try {
@@ -416,6 +425,7 @@ export default function HomeFeed({
           language={language}
           isLoading={isLoading}
           hasMore={hasMore}
+          search={search}
           onLoadMore={handleLoadMore}
           onDelete={isLoggedIn ? handleArticleDelete : undefined}
           onChatReference={isChatOpen ? handleChatReference : undefined}

@@ -84,7 +84,7 @@ export default function MyFeed() {
           setArticles(data.articles);
           if (pageNum === 1 && !search && category === categories[0]) {
             try {
-              sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify(data));
+              sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data, timestamp: Date.now() }));
             } catch { /* quota */ }
           }
         }
@@ -115,51 +115,107 @@ export default function MyFeed() {
     [user, search, category, lastUpdated, articles.length, categories]
   );
 
-  // Load initial data after auth
   useEffect(() => {
     if (!user) return;
 
-    // 1. articles stale data
+    let articlesFresh = false;
+    let categoriesFresh = false;
+    let resolvedCategory = '';
+
+    // 1. categories stale data (load first to resolve category for cache key)
+    try {
+      const cachedCats = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
+      if (cachedCats) {
+        const raw = JSON.parse(cachedCats);
+        const names: string[] = raw.timestamp ? raw.data : raw;
+        const translations = raw.translations;
+        const timestamp = raw.timestamp || 0;
+        if (names.length > 0) {
+          setCategories(names);
+          if (translations) setCategoryTranslations(translations);
+          const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+          resolvedCategory = (saved && names.includes(saved)) ? saved : names[0];
+          setCategory(resolvedCategory);
+        }
+        if (timestamp && Date.now() - timestamp < CLIENT_CACHE_TTL) categoriesFresh = true;
+      }
+    } catch { /* ignore */ }
+
+    // 2. articles stale data
     try {
       const cached = sessionStorage.getItem(STORAGE_KEY.MY_ARTICLES);
       if (cached) {
-        const data: ArticleListResponse = JSON.parse(cached);
+        const raw = JSON.parse(cached);
+        const data: ArticleListResponse = raw.timestamp ? raw.data : raw;
+        const timestamp = raw.timestamp || 0;
         setArticles(data.articles);
         setHasMore(data.hasMore);
         setTotalCount(data.total);
         if (data.articles.length > 0) setLastUpdated(data.articles[0].crawled_at);
         setIsLoading(false);
-      }
-    } catch { /* ignore */ }
-
-    // 2. categories stale data
-    try {
-      const cachedCats = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
-      if (cachedCats) {
-        const names: string[] = JSON.parse(cachedCats);
-        if (names.length > 0) {
-          setCategories(names);
-          const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
-          setCategory(saved && names.includes(saved) ? saved : names[0]);
+        if (timestamp && Date.now() - timestamp < CLIENT_CACHE_TTL) {
+          articlesFresh = true;
+          if (resolvedCategory) {
+            articlesCacheRef.current.set(resolvedCategory, {
+              articles: data.articles,
+              totalCount: data.total,
+              hasMore: data.hasMore,
+              timestamp,
+            });
+          }
         }
       }
     } catch { /* ignore */ }
 
-    // 3. categories API revalidate
-    async function revalidateCategories() {
+    // 3. Both fresh → skip API calls
+    if (articlesFresh && categoriesFresh) {
+      initialLoadDone.current = true;
+      return;
+    }
+
+    // 4. Parallel revalidate (categories + articles)
+    async function revalidate() {
       try {
-        const response = await fetch(`/api/categories?user_id=${user!.id}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.categories && data.categories.length > 0) {
-            const categoryNames = data.categories.map((c: { name: string }) => c.name);
+        const savedCat = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+        const defaultCat = resolvedCategory;
+
+        const catPromise = fetch(`/api/categories?user_id=${user!.id}`);
+        const artPromise = defaultCat
+          ? fetch(`/api/articles?page=1&limit=12&user_id=${user!.id}&category=${encodeURIComponent(defaultCat)}`)
+          : null;
+
+        const [catRes, artRes] = await Promise.all([catPromise, artPromise]);
+
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          if (catData.categories?.length > 0) {
+            const categoryNames = catData.categories.map((c: { name: string }) => c.name);
             setCategories(categoryNames);
-            setCategoryTranslations(data.categories);
-            const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
-            setCategory(saved && categoryNames.includes(saved) ? saved : categoryNames[0] || '');
+            setCategoryTranslations(catData.categories);
+            const finalCat = (savedCat && categoryNames.includes(savedCat)) ? savedCat : categoryNames[0] || '';
+            setCategory(finalCat);
             try {
-              sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify(categoryNames));
+              sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify({ data: categoryNames, translations: catData.categories, timestamp: Date.now() }));
             } catch { /* ignore */ }
+
+            if (artRes?.ok) {
+              const artData: ArticleListResponse = await artRes.json();
+              articlesCacheRef.current.set(defaultCat, {
+                articles: artData.articles,
+                totalCount: artData.total,
+                hasMore: artData.hasMore,
+                timestamp: Date.now(),
+              });
+              if (defaultCat === finalCat) {
+                setArticles(artData.articles);
+                setHasMore(artData.hasMore);
+                setTotalCount(artData.total);
+                if (artData.articles.length > 0) setLastUpdated(artData.articles[0].crawled_at);
+                try {
+                  sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data: artData, timestamp: Date.now() }));
+                } catch { /* ignore */ }
+              }
+            }
           } else {
             setIsLoading(false);
           }
@@ -167,13 +223,13 @@ export default function MyFeed() {
           setIsLoading(false);
         }
       } catch (error) {
-        console.error('Error fetching categories:', error);
+        console.error('Error in revalidation:', error);
         setIsLoading(false);
       }
     }
 
-    revalidateCategories();
-  }, [user]);
+    revalidate();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!category || !user) return;
@@ -245,6 +301,7 @@ export default function MyFeed() {
 
     articlesCacheRef.current.clear();
     try { sessionStorage.removeItem(STORAGE_KEY.MY_ARTICLES); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.MY_CATEGORIES); } catch { /* ignore */ }
 
     pollingRef.current = setInterval(async () => {
       try {
@@ -449,6 +506,7 @@ export default function MyFeed() {
           language={language}
           isLoading={isLoading}
           hasMore={hasMore}
+          search={search}
           onLoadMore={handleLoadMore}
           onDelete={handleArticleDelete}
           onChatReference={isChatOpen ? handleChatReference : undefined}

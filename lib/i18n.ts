@@ -25,6 +25,8 @@ export const translations = {
     // ArticleGrid
     'article.noResults': '검색 결과가 없습니다',
     'article.noResultsHint': '다른 키워드로 검색하거나 필터를 변경해보세요.',
+    'article.emptyFeed': '콘텐츠가 아직 없어요.',
+    'article.emptyFeedHint': '링크를 저장하고 자료 불러오기를 해보세요.',
     'article.loadMore': '더 보기',
     'article.loading': '로딩 중...',
     'article.translating': 'Translating...',
@@ -217,6 +219,8 @@ export const translations = {
     // ArticleGrid
     'article.noResults': 'No results found',
     'article.noResultsHint': 'Try different keywords or change filters.',
+    'article.emptyFeed': 'No content yet.',
+    'article.emptyFeedHint': 'Save a link and try fetching content.',
     'article.loadMore': 'Load More',
     'article.loading': 'Loading...',
     'article.translating': 'Translating...',
@@ -409,6 +413,8 @@ export const translations = {
     // ArticleGrid
     'article.noResults': 'Không tìm thấy kết quả',
     'article.noResultsHint': 'Hãy thử từ khóa khác hoặc thay đổi bộ lọc.',
+    'article.emptyFeed': 'Chưa có nội dung.',
+    'article.emptyFeedHint': 'Lưu liên kết và thử tải nội dung.',
     'article.loadMore': 'Xem thêm',
     'article.loading': 'Đang tải...',
     'article.translating': 'Đang dịch...',
@@ -601,6 +607,8 @@ export const translations = {
     // ArticleGrid
     'article.noResults': '未找到结果',
     'article.noResultsHint': '尝试不同的关键词或更改筛选条件。',
+    'article.emptyFeed': '还没有内容。',
+    'article.emptyFeedHint': '保存链接并尝试获取内容。',
     'article.loadMore': '加载更多',
     'article.loading': '加载中...',
     'article.translating': '翻译中...',
@@ -793,6 +801,8 @@ export const translations = {
     // ArticleGrid
     'article.noResults': '検索結果がありません',
     'article.noResultsHint': '別のキーワードで検索するか、フィルタを変更してください。',
+    'article.emptyFeed': 'まだコンテンツがありません。',
+    'article.emptyFeedHint': 'リンクを保存してコンテンツを取得してみてください。',
     'article.loadMore': 'もっと見る',
     'article.loading': '読み込み中...',
     'article.translating': '翻訳中...',
