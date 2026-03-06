@@ -427,7 +427,7 @@ export default function HomeFeed({
           hasMore={hasMore}
           search={search}
           onLoadMore={handleLoadMore}
-          onDelete={isLoggedIn ? handleArticleDelete : undefined}
+          onDelete={isLoggedIn && !isNonMasterUser ? handleArticleDelete : undefined}
           onChatReference={isChatOpen ? handleChatReference : undefined}
           onCloseChat={isChatOpen ? () => setIsChatOpen(false) : undefined}
         />
