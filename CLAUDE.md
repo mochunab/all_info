@@ -41,9 +41,9 @@
      후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
 7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
-9. 사전 감지 (크롤링 시점) — STATIC 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차
+9. 사전 감지 (크롤링 시점) — STATIC/SPA 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차 (SPA는 Puppeteer HTML 사용)
 10. 자동 복구 — 품질 검증 실패 (0건/유효 부족)
-    → 1순위: LLM 직접 추출 (extract-articles Edge Fn) — 셀렉터 우회
+    → 1순위: LLM 직접 추출 (extract-articles Edge Fn) — 셀렉터 우회 (SPA는 Puppeteer HTML + SPA 전략으로 본문 추출)
     → 2순위: resolveStrategy 재실행 → 새 셀렉터로 재크롤링
     → 3순위: SPA 기본 셀렉터 최종 폴백
 ```
