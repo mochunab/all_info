@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Language } from '@/types';
 import { LANGUAGES } from '@/types';
+import { event as gaEvent } from '@/lib/gtag';
 
 type LanguageSwitcherProps = {
   currentLang: Language;
@@ -51,6 +52,7 @@ export default function LanguageSwitcher({
                 <button
                   key={lang}
                   onClick={() => {
+                    gaEvent({ action: 'language_change', category: 'settings', label: lang });
                     onLanguageChange(lang);
                     setIsOpen(false);
                   }}
