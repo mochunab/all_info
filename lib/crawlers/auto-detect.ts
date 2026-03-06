@@ -298,6 +298,9 @@ function detectRepeatingElements(
     classGroups.get(key)!.push($el);
   });
 
+  // 유틸리티 클래스 패턴 (Tailwind 등) — 너무 광범위한 셀렉터 감점용
+  const utilityClassPattern = /^(box-|flex|grid|block|inline|hidden|relative|absolute|fixed|sticky|overflow|p[xytblr]?-|m[xytblr]?-|w-|h-|min-|max-|gap-|space-|border|rounded|shadow|bg-|text-|font-|leading-|tracking-)/;
+
   for (const [key, elements] of classGroups) {
     if (elements.length < 3) continue;
 
@@ -318,6 +321,18 @@ function detectRepeatingElements(
     if (candidate) {
       candidate.container = parentSelector;
       candidate.item = itemSelector;
+
+      // 시맨틱 태그 가산점
+      if (tagName === 'article') {
+        candidate.score += 0.15;
+      }
+
+      // 유틸리티 클래스(Tailwind 등)로만 구성된 div는 감점
+      if (tagName === 'div' && firstClass && utilityClassPattern.test(firstClass)) {
+        candidate.score -= 0.2;
+      }
+
+      candidate.score = Math.min(Math.max(candidate.score, 0), 1.0);
       candidates.push(candidate);
     }
   }
@@ -517,7 +532,10 @@ function getUniqueSelector(
     }
   }
 
-  // 태그명만 반환
+  // 태그명만 반환 — 너무 일반적인 태그는 body 폴백 (querySelector 시 첫 번째만 매칭되어 오작동)
+  if (['div', 'section', 'span', 'main'].includes(el.name)) {
+    return 'body';
+  }
   return el.name;
 }
 
