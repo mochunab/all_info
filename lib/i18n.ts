@@ -83,6 +83,13 @@ export const translations = {
     'sources.recommendEmpty': '추천된 소스가 없습니다',
     'sources.maxLinksReached': '링크는 카테고리당 최대 {max}개까지 추가할 수 있습니다.',
     'sources.maxCategoriesReached': '카테고리는 최대 {max}개까지 추가할 수 있습니다.',
+    'sources.browseMasterCategories': '카테고리 추천',
+    'sources.browseMasterTitle': '추천 카테고리',
+    'sources.browseMasterDesc': '마음에 드는 카테고리를 선택하면 링크와 함께 추가됩니다.',
+    'sources.browseMasterLoading': '카테고리를 불러오는 중...',
+    'sources.browseMasterEmpty': '추천할 카테고리가 없습니다.',
+    'sources.browseMasterAdd': '선택한 카테고리 추가',
+    'sources.browseMasterAdded': '{count}개 카테고리가 추가되었습니다.',
     'sources.recommendLimitPartial': '남은 슬롯 {count}개만큼 추가되었습니다.',
 
     // Chat Insight
@@ -268,6 +275,13 @@ export const translations = {
     'sources.recommendEmpty': 'No sources recommended',
     'sources.maxLinksReached': 'You can add up to {max} links per category.',
     'sources.maxCategoriesReached': 'You can add up to {max} categories.',
+    'sources.browseMasterCategories': 'Browse categories',
+    'sources.browseMasterTitle': 'Recommended Categories',
+    'sources.browseMasterDesc': 'Select categories to import with their links.',
+    'sources.browseMasterLoading': 'Loading categories...',
+    'sources.browseMasterEmpty': 'No categories to recommend.',
+    'sources.browseMasterAdd': 'Add selected',
+    'sources.browseMasterAdded': '{count} categories added.',
     'sources.recommendLimitPartial': 'Only {count} remaining slots were filled.',
 
     // Chat Insight
@@ -453,6 +467,13 @@ export const translations = {
     'sources.recommendEmpty': 'Không có nguồn được gợi ý',
     'sources.maxLinksReached': 'Mỗi danh mục tối đa {max} liên kết.',
     'sources.maxCategoriesReached': 'Tối đa {max} danh mục.',
+    'sources.browseMasterCategories': 'Gợi ý danh mục',
+    'sources.browseMasterTitle': 'Danh mục gợi ý',
+    'sources.browseMasterDesc': 'Chọn danh mục để thêm cùng liên kết.',
+    'sources.browseMasterLoading': 'Đang tải danh mục...',
+    'sources.browseMasterEmpty': 'Không có danh mục gợi ý.',
+    'sources.browseMasterAdd': 'Thêm đã chọn',
+    'sources.browseMasterAdded': 'Đã thêm {count} danh mục.',
     'sources.recommendLimitPartial': 'Chỉ thêm được {count} vị trí còn lại.',
 
     // Chat Insight
@@ -638,6 +659,13 @@ export const translations = {
     'sources.recommendEmpty': '没有推荐的来源',
     'sources.maxLinksReached': '每个类别最多可添加{max}个链接。',
     'sources.maxCategoriesReached': '最多可添加{max}个类别。',
+    'sources.browseMasterCategories': '推荐类别',
+    'sources.browseMasterTitle': '推荐类别',
+    'sources.browseMasterDesc': '选择类别以连同链接一起导入。',
+    'sources.browseMasterLoading': '正在加载类别...',
+    'sources.browseMasterEmpty': '没有可推荐的类别。',
+    'sources.browseMasterAdd': '添加所选',
+    'sources.browseMasterAdded': '已添加{count}个类别。',
     'sources.recommendLimitPartial': '仅添加了剩余的{count}个名额。',
 
     // Chat Insight
@@ -823,6 +851,13 @@ export const translations = {
     'sources.recommendEmpty': '推薦されたソースがありません',
     'sources.maxLinksReached': 'カテゴリごとに最大{max}個のリンクを追加できます。',
     'sources.maxCategoriesReached': 'カテゴリは最大{max}個まで追加できます。',
+    'sources.browseMasterCategories': 'カテゴリ提案',
+    'sources.browseMasterTitle': 'おすすめカテゴリ',
+    'sources.browseMasterDesc': 'カテゴリを選択するとリンクと一緒に追加されます。',
+    'sources.browseMasterLoading': 'カテゴリを読み込み中...',
+    'sources.browseMasterEmpty': 'おすすめカテゴリがありません。',
+    'sources.browseMasterAdd': '選択を追加',
+    'sources.browseMasterAdded': '{count}カテゴリが追加されました。',
     'sources.recommendLimitPartial': '残り{count}スロット分のみ追加されました。',
 
     // Chat Insight

@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
 import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/language-context';
 import LandingHeader from './LandingHeader';
 import AnimatedSection, { AnimatedCard } from './AnimatedSection';
 
@@ -10,7 +13,7 @@ const MOCK_CARDS = [
 ] as const;
 
 export default function LandingContent() {
-  const lang = 'ko';
+  const { language: lang } = useLanguage();
 
   const painPoints = [
     { emoji: '\u23F0', title: t(lang, 'landing.pain1'), description: t(lang, 'landing.pain1d') },
@@ -97,7 +100,7 @@ export default function LandingContent() {
                   <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                     {t(lang, 'landing.briefing')}
                   </span>
-                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>2026.03.02</span>
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace(/\.$/, '')}</span>
                 </div>
                 {MOCK_CARDS.map((item, i) => (
                   <AnimatedCard key={item.tagKey} index={i} delay={0.6}>
