@@ -227,6 +227,15 @@ async function handleCrawlRun(request: NextRequest) {
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
     console.log(`✅ 캐시 무효화 완료`);
 
+    // IndexNow: 새 콘텐츠가 있으면 검색엔진에 알림
+    if (totalNew > 0) {
+      try {
+        const { submitToIndexNow } = await import('@/lib/indexnow');
+        const submitted = await submitToIndexNow(['/', '/landing']);
+        console.log(`🔔 IndexNow ${submitted ? '제출 완료' : '제출 실패 (키 미설정?)'}`);
+      } catch { /* IndexNow 실패는 무시 */ }
+    }
+
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(2);
     console.log(`\n${'='.repeat(80)}`);
     console.log(`🎉 전체 크롤링 완료! ${sourceId ? `(소스 ID: ${sourceId})` : ''}`);
