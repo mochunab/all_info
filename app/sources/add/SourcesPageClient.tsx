@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { event as gaEvent } from '@/lib/gtag';
 import { Toast, LoginPromptDialog } from '@/components';
 import type { Language } from '@/types';
@@ -15,6 +15,7 @@ import {
   useSensors,
   DragEndEvent,
 } from '@dnd-kit/core';
+import { restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
@@ -206,6 +207,7 @@ export default function SourcesPageClient({
   initialActiveCategory,
   readOnly = false,
 }: SourcesPageClientProps) {
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [activeCategory, setActiveCategory] = useState(initialActiveCategory);
   const [sourcesByCategory, setSourcesByCategory] = useState<Record<string, SourceLink[]>>(initialSourcesByCategory);
@@ -233,6 +235,13 @@ export default function SourcesPageClient({
   const [recommendProgress, setRecommendProgress] = useState(0);
   const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [pendingRenames, setPendingRenames] = useState<{ oldName: string; newName: string }[]>([]);
+  const [orderChanged, setOrderChanged] = useState(false);
+  const [showBrowseMaster, setShowBrowseMaster] = useState(false);
+  const [masterData, setMasterData] = useState<{ categories: Category[]; sourcesByCategory: Record<string, SourceLink[]> } | null>(null);
+  const [masterLoading, setMasterLoading] = useState(false);
+  const [selectedMasterCats, setSelectedMasterCats] = useState<Set<string>>(new Set());
+  const [expandedMasterCats, setExpandedMasterCats] = useState<Set<string>>(new Set());
   const { language, t, setCategoryTranslations } = useLanguage();
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
@@ -249,6 +258,75 @@ export default function SourcesPageClient({
   }, [isAddingCategory]);
 
   const currentSources = sourcesByCategory[activeCategory] || [];
+
+  const fetchMasterCategories = useCallback(async () => {
+    setMasterLoading(true);
+    try {
+      const [catRes, srcRes] = await Promise.all([
+        fetch('/api/categories'),
+        fetch('/api/sources'),
+      ]);
+      const catData = await catRes.json();
+      const srcData = await srcRes.json();
+      const cats: Category[] = catData.categories || [];
+      const grouped: Record<string, SourceLink[]> = {};
+      for (const cat of cats) {
+        grouped[cat.name] = [];
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const s of (srcData.sources || []) as any[]) {
+        const srcCat = s.config?.category || (cats[0]?.name || '');
+        if (grouped[srcCat]) {
+          grouped[srcCat].push({
+            id: s.id.toString(),
+            url: s.base_url,
+            name: s.name,
+            crawlerType: s.crawler_type || 'AUTO',
+            isExisting: true,
+          });
+        }
+      }
+      setMasterData({ categories: cats, sourcesByCategory: grouped });
+    } catch {
+      setMasterData({ categories: [], sourcesByCategory: {} });
+    } finally {
+      setMasterLoading(false);
+    }
+  }, []);
+
+  const handleOpenBrowseMaster = useCallback(() => {
+    setShowBrowseMaster(true);
+    setSelectedMasterCats(new Set());
+    setExpandedMasterCats(new Set());
+    fetchMasterCategories();
+  }, [fetchMasterCategories]);
+
+  const handleAddMasterCategories = useCallback(() => {
+    if (!masterData || selectedMasterCats.size === 0) return;
+    const newCats = [...categories];
+    const newGrouped = { ...sourcesByCategory };
+    let added = 0;
+    for (const catName of selectedMasterCats) {
+      if (categories.some((c) => c.name === catName)) continue;
+      if (newCats.length >= MAX_CATEGORIES) break;
+      const masterCat = masterData.categories.find((c) => c.name === catName);
+      newCats.push(masterCat || { id: Date.now() + added, name: catName, is_default: false });
+      newGrouped[catName] = (masterData.sourcesByCategory[catName] || []).map((s) => ({
+        ...s,
+        id: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        isExisting: false,
+      }));
+      added++;
+    }
+    setCategories(newCats);
+    setSourcesByCategory(newGrouped);
+    if (added > 0 && !activeCategory) {
+      setActiveCategory(newCats[0].name);
+    }
+    setShowBrowseMaster(false);
+    setToastMessage(t('sources.browseMasterAdded', { count: String(added) }));
+    setShowToast(true);
+  }, [masterData, selectedMasterCats, categories, sourcesByCategory, activeCategory, t]);
 
   const handleNewCategoryChange = (value: string) => {
     setNewCategory(value);
@@ -317,7 +395,7 @@ export default function SourcesPageClient({
     }
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (!over || active.id === over.id) {
@@ -333,22 +411,7 @@ export default function SourcesPageClient({
 
     const newCategories = arrayMove(categories, oldIndex, newIndex);
     setCategories(newCategories);
-
-    // API 호출하여 순서 저장
-    try {
-      await fetch('/api/categories', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          categories: newCategories.map((cat) => ({ id: cat.id, name: cat.name })),
-        }),
-      });
-    } catch (error) {
-      console.error('Error reordering categories:', error);
-      // 실패 시 원래 순서로 되돌림
-      const originalOrder = arrayMove(newCategories, newIndex, oldIndex);
-      setCategories(originalOrder);
-    }
+    setOrderChanged(true);
   };
 
   const handleCategoryKeyDown = (e: React.KeyboardEvent) => {
@@ -374,49 +437,38 @@ export default function SourcesPageClient({
     }
   };
 
-  const handleRenameCategory = async (oldName: string, newName: string) => {
-    try {
-      const response = await fetch('/api/categories', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldName, newName }),
-      });
-
-      if (response.ok) {
-        // 로컬 상태 업데이트
-        setCategories((prev) =>
-          prev.map((c) => (c.name === oldName ? { ...c, name: newName } : c))
-        );
-        setSourcesByCategory((prev) => {
-          const updated = { ...prev };
-          if (updated[oldName]) {
-            updated[newName] = updated[oldName];
-            delete updated[oldName];
-          }
-          return updated;
-        });
-        if (activeCategory === oldName) {
-          setActiveCategory(newName);
-        }
-        // 홈 화면 캐시 무효화
-        try {
-          sessionStorage.removeItem('ih:home:categories');
-          sessionStorage.removeItem('ih:home:articles');
-        } catch { /* 무시 */ }
-      } else if (response.status === 409) {
-        setToastMessage(t('sources.categoryExists', { name: newName }));
-        setShowToast(true);
-      } else {
-        const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-        setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
-        setShowToast(true);
-      }
-    } catch (err) {
-      console.error('Error renaming category:', err);
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setToastMessage(t('toast.networkError', { error: msg }));
+  const handleRenameCategory = (oldName: string, newName: string) => {
+    // 로컬 중복 체크
+    if (categories.some((c) => c.name === newName && c.name !== oldName)) {
+      setToastMessage(t('sources.categoryExists', { name: newName }));
       setShowToast(true);
+      return;
     }
+
+    // 로컬 상태만 업데이트, 저장 시 API 호출
+    setCategories((prev) =>
+      prev.map((c) => (c.name === oldName ? { ...c, name: newName } : c))
+    );
+    setSourcesByCategory((prev) => {
+      const updated = { ...prev };
+      if (updated[oldName]) {
+        updated[newName] = updated[oldName];
+        delete updated[oldName];
+      }
+      return updated;
+    });
+    if (activeCategory === oldName) {
+      setActiveCategory(newName);
+    }
+
+    // pending 목록에 추가 (이전 rename과 체이닝)
+    setPendingRenames((prev) => {
+      const existing = prev.find((r) => r.newName === oldName);
+      if (existing) {
+        return prev.map((r) => (r.newName === oldName ? { ...r, newName } : r));
+      }
+      return [...prev, { oldName, newName }];
+    });
   };
 
   const handleDeleteCategory = async () => {
@@ -444,10 +496,12 @@ export default function SourcesPageClient({
 
         setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
         setShowToast(true);
-        // 홈 화면 캐시 무효화
+        // 홈/마이피드 캐시 무효화
         try {
           sessionStorage.removeItem('ih:home:categories');
           sessionStorage.removeItem('ih:home:articles');
+          sessionStorage.removeItem('ih:my:categories');
+          sessionStorage.removeItem('ih:my:articles');
         } catch { /* 무시 */ }
       }
     } catch (error) {
@@ -690,6 +744,42 @@ export default function SourcesPageClient({
       setIsAddingCategory(false);
     }
 
+    // 카테고리 이름 변경 일괄 처리
+    for (const rename of pendingRenames) {
+      try {
+        const res = await fetch('/api/categories', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldName: rename.oldName, newName: rename.newName }),
+        });
+        if (!res.ok && res.status === 409) {
+          setToastMessage(t('sources.categoryExists', { name: rename.newName }));
+          setShowToast(true);
+          setIsSaving(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Error renaming category:', err);
+      }
+    }
+    if (pendingRenames.length > 0) setPendingRenames([]);
+
+    // 카테고리 순서 변경 저장
+    if (orderChanged) {
+      try {
+        await fetch('/api/categories', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            categories: categories.map((cat) => ({ id: cat.id, name: cat.name })),
+          }),
+        });
+      } catch (err) {
+        console.error('Error reordering categories:', err);
+      }
+      setOrderChanged(false);
+    }
+
     // Collect all valid sources from all categories
     const allSources: { url: string; name: string; category: string; crawlerType: string }[] = [];
     for (const [cat, sources] of Object.entries(sourcesByCategory)) {
@@ -705,7 +795,19 @@ export default function SourcesPageClient({
       }
     }
 
-    if (allSources.length === 0) return;
+    if (allSources.length === 0) {
+      // 소스 변경 없어도 rename/reorder 캐시 무효화
+      try {
+        sessionStorage.removeItem('ih:home:categories');
+        sessionStorage.removeItem('ih:home:articles');
+        sessionStorage.removeItem('ih:my:categories');
+        sessionStorage.removeItem('ih:my:articles');
+      } catch { /* 무시 */ }
+      setIsSaving(false);
+      setToastMessage(t('sources.saved'));
+      setShowToast(true);
+      return;
+    }
 
     // 신규 소스 또는 AUTO 타입이 있을 때만 분석 다이얼로그 표시
     const needsAnalysis = Object.values(sourcesByCategory).some((sources) =>
@@ -813,8 +915,8 @@ export default function SourcesPageClient({
       <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border)]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
-            <Link
-              href="/"
+            <button
+              onClick={() => router.back()}
               className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
               <svg
@@ -831,7 +933,7 @@ export default function SourcesPageClient({
                 />
               </svg>
               <span>{t('sources.back')}</span>
-            </Link>
+            </button>
 
           </div>
         </div>
@@ -846,11 +948,33 @@ export default function SourcesPageClient({
           {t('sources.subtitle')}
         </p>
 
+        {/* Browse Master Categories Button - shown when no categories */}
+        {categories.length === 0 && !readOnly && (
+          <div className="mb-6 flex flex-col items-center justify-center py-8 border border-dashed border-[var(--border)] rounded-xl">
+            <svg className="w-10 h-10 text-[var(--text-tertiary)] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <p className="text-sm text-[var(--text-tertiary)] mb-4">
+              {t('sources.subtitle')}
+            </p>
+            <button
+              onClick={handleOpenBrowseMaster}
+              className="px-5 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              {t('sources.browseMasterCategories')}
+            </button>
+          </div>
+        )}
+
         {/* Category Tabs (Chips) with Drag & Drop */}
         <div className="mb-6">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            modifiers={[restrictToParentElement]}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
@@ -1231,6 +1355,109 @@ export default function SourcesPageClient({
         onClose={() => setShowToast(false)}
         duration={2200}
       />
+
+      {/* Browse Master Categories Modal */}
+      {showBrowseMaster && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowBrowseMaster(false)}>
+          <div
+            className="bg-[var(--bg-primary)] rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-[var(--border)]">
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('sources.browseMasterTitle')}</h3>
+              <p className="text-sm text-[var(--text-tertiary)] mt-1">{t('sources.browseMasterDesc')}</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {masterLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full" />
+                  <span className="ml-3 text-sm text-[var(--text-secondary)]">{t('sources.browseMasterLoading')}</span>
+                </div>
+              ) : !masterData || masterData.categories.length === 0 ? (
+                <p className="text-center text-sm text-[var(--text-tertiary)] py-12">{t('sources.browseMasterEmpty')}</p>
+              ) : (
+                <div className="space-y-2">
+                  {masterData.categories.map((cat) => {
+                    const isSelected = selectedMasterCats.has(cat.name);
+                    const isExpanded = expandedMasterCats.has(cat.name);
+                    const sources = masterData.sourcesByCategory[cat.name] || [];
+                    return (
+                      <div key={cat.name} className="border border-[var(--border)] rounded-xl overflow-hidden">
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedMasterCats((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(cat.name)) next.delete(cat.name);
+                                else next.add(cat.name);
+                                return next;
+                              });
+                            }}
+                            className="w-4 h-4 rounded accent-[var(--accent)] shrink-0"
+                          />
+                          <button
+                            onClick={() => {
+                              setExpandedMasterCats((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(cat.name)) next.delete(cat.name);
+                                else next.add(cat.name);
+                                return next;
+                              });
+                            }}
+                            className="flex-1 flex items-center justify-between text-left"
+                          >
+                            <span className="text-sm font-medium text-[var(--text-primary)]">
+                              {cat.name}
+                              <span className="ml-2 text-xs text-[var(--text-tertiary)]">({sources.length})</span>
+                            </span>
+                            <svg
+                              className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        </div>
+                        {isExpanded && sources.length > 0 && (
+                          <div className="px-4 pb-3 border-t border-[var(--border)]">
+                            <ul className="mt-2 space-y-1.5">
+                              {sources.map((s) => (
+                                <li key={s.id} className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
+                                  <span className="truncate">{s.name || s.url}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[var(--border)] flex gap-3">
+              <button
+                onClick={() => setShowBrowseMaster(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-xl border border-[var(--border)] hover:bg-[var(--bg-tertiary)] transition-colors"
+              >
+                {t('sources.cancel')}
+              </button>
+              <button
+                onClick={handleAddMasterCategories}
+                disabled={selectedMasterCats.size === 0}
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('sources.browseMasterAdd')} {selectedMasterCats.size > 0 && `(${selectedMasterCats.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Login Prompt */}
       <LoginPromptDialog

@@ -3,11 +3,11 @@
   "crons": [
     {
       "path": "/api/crawl/run",
-      "schedule": "30 12 * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/summarize/batch",
-      "schedule": "35 12 * * *"
+      "schedule": "5 0 * * *"
     }
   ],
   "functions": {
