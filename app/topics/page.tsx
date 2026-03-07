@@ -60,6 +60,7 @@ export default async function TopicsPage() {
         <div className="flex gap-4">
           <Link href="/tags" className="text-sm text-[var(--accent)] hover:underline">태그별 탐색</Link>
           <Link href="/sources" className="text-sm text-[var(--accent)] hover:underline">소스별 탐색</Link>
+          <Link href="/authors" className="text-sm text-[var(--accent)] hover:underline">저자별 탐색</Link>
         </div>
       </nav>
     </main>

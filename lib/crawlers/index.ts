@@ -11,7 +11,9 @@ import { getStrategy, inferCrawlerType, closeBrowser, isValidCrawlerType } from 
 import { parseDateToISO } from './date-parser';
 import { generateSourceId } from '@/lib/utils';
 import { filterGarbageArticles, getQualityStats } from './quality-filter';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { checkRobotsTxt } from './robots-checker';
+import { generateArticleSlug } from '@/lib/article-slug';
 
 
 function computeUrlHash(urls: string[]): string {
@@ -269,7 +271,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         const { getRenderedHTML } = await import('./strategies/spa');
         html = await getRenderedHTML(source.base_url);
       } else {
-        html = await fetchPage(source.base_url);
+        html = (await fetchPage(source.base_url)).html;
       }
       if (html) {
         // 1차: AI 통합 감지 (Edge Function)
@@ -449,7 +451,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
               const { getRenderedHTML } = await import('./strategies/spa');
               llmHtml = await getRenderedHTML(llmTargetUrl);
             } else {
-              llmHtml = await fetchPage(llmTargetUrl);
+              llmHtml = (await fetchPage(llmTargetUrl)).html;
             }
             if (llmHtml) {
               const preprocessed = preprocessHtmlForExtraction(llmHtml);
@@ -786,6 +788,9 @@ export async function saveArticles(
       const safeName = article.source_name?.substring(0, 100);
       const safeAuthor = article.author?.substring(0, 100);
       const safeCategory = article.category?.substring(0, 50);
+      const slugTitle = article.title;
+      const tempId = crypto.randomUUID();
+      const slug = generateArticleSlug(slugTitle, tempId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).from('articles').insert({
         source_id: article.source_id,
@@ -797,6 +802,7 @@ export async function saveArticles(
         author: safeAuthor,
         published_at: article.published_at,
         category: safeCategory,
+        slug,
         ...(userId && { user_id: userId }),
       });
 
@@ -855,12 +861,12 @@ export async function runCrawler(
     if (options?.dryRun) console.log(`   🧪 모드: 테스트 (DB 저장 안함)`);
     console.log(`${'─'.repeat(80)}`);
 
-    // robots.txt 준수 체크
-    const isAllowed = await checkRobotsTxt(effectiveUrl);
-    if (!isAllowed) {
-      console.log(`🚫 robots.txt에 의해 크롤링 거부됨: ${effectiveUrl}`);
-      return result;
-    }
+    // robots.txt 체크 (비활성화 — 추후 재활성화 예정)
+    // const isAllowed = await checkRobotsTxt(effectiveUrl);
+    // if (!isAllowed) {
+    //   console.log(`🚫 robots.txt에 의해 크롤링 거부됨: ${effectiveUrl}`);
+    //   return result;
+    // }
 
     // 크롤러 선택 및 실행
     const crawler = getCrawler(effectiveSource);

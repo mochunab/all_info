@@ -124,6 +124,7 @@ export interface StrategyResolution {
   spaDetected: boolean;
   optimizedUrl?: string; // URL 최적화 결과 (원본과 다를 경우에만)
   apiConfig?: DetectedApiConfig; // API 타입일 때 감지된 엔드포인트 설정
+  botBlocked?: { status: number; reason: string };
 }
 
 // 본문 크롤링 결과

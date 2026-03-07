@@ -248,6 +248,13 @@ function parseApiConfig(parsed: Record<string, unknown>): DetectedApiConfig | nu
     return null;
   }
 
+  // 상대경로 엔드포인트 거부 — 외부 fetch 불가 (CSRF/세션 필요)
+  const ep = parsed.endpoint as string;
+  if (!ep.startsWith('http://') && !ep.startsWith('https://')) {
+    console.log(`[API-DETECT] ⚠️  상대경로 엔드포인트 거부: ${ep} → SPA 유지`);
+    return null;
+  }
+
   const urlTransform = parsed.urlTransform as Record<string, unknown> | undefined;
 
   const config: DetectedApiConfig = {

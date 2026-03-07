@@ -152,6 +152,7 @@ export async function POST(request: NextRequest) {
       crawlerType: string;
       spaDetected: boolean;
       rssUrl?: string;
+      botBlocked?: { status: number; reason: string };
     }[] = [];
 
     // 1단계: 기존 소스 일괄 조회 (N개 개별 SELECT → 1개 배치 SELECT)
@@ -346,6 +347,7 @@ export async function POST(request: NextRequest) {
             crawlerType: finalCrawlerType,
             spaDetected: resolution.spaDetected,
             ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
+            ...(resolution.botBlocked && { botBlocked: resolution.botBlocked }),
           });
         }
       } else {
@@ -370,6 +372,7 @@ export async function POST(request: NextRequest) {
             crawlerType,
             spaDetected: resolution.spaDetected,
             ...(resolution.rssUrl && { rssUrl: resolution.rssUrl }),
+            ...(resolution.botBlocked && { botBlocked: resolution.botBlocked }),
           });
         }
       }

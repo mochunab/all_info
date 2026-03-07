@@ -6,6 +6,7 @@ export const translations = {
     'header.logo': '아카인포',
     'header.home': '홈피드',
     'header.myFeed': '마이피드',
+    'header.blog': '블로그',
     'header.login': '로그인',
     'header.logout': '로그아웃',
     'header.refresh': '자료 불러오기',
@@ -17,7 +18,7 @@ export const translations = {
 
     // FilterBar
     'filter.search': '인사이트 검색...',
-    'filter.addSource': '링크 저장하기',
+    'filter.addSource': '링크 추가하기',
     'filter.totalCount': '총 {count}개의 인사이트',
     'filter.searchResult': '검색 결과: {count}개',
     'filter.allCategory': '전체',
@@ -71,6 +72,8 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' 카테고리가 삭제되었습니다.",
     'sources.categoryExists': "'{name}' 카테고리가 이미 존재합니다.",
     'sources.autoAnalysis': '{count}개 소스 저장 (자동분석: {methods})',
+    'sources.botBlocked': '⚠️ {sites} — 봇 차단 사이트로 크롤링이 불가합니다.',
+    'sources.botBlockedDialog': '정보 수집을 차단하는 사이트에요.\n다른 링크를 저장해주세요.',
 
     // Sources Recommend
     'sources.recommendLink': '콘텐츠 링크 추천받기',
@@ -200,6 +203,7 @@ export const translations = {
     'header.logo': 'ArcaInfo',
     'header.home': 'Home Feed',
     'header.myFeed': 'My Feed',
+    'header.blog': 'Blog',
     'header.login': 'Login',
     'header.logout': 'Logout',
     'header.refresh': 'Refresh Data',
@@ -265,6 +269,8 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' category has been deleted.",
     'sources.categoryExists': "Category '{name}' already exists.",
     'sources.autoAnalysis': '{count} sources saved (auto-analysis: {methods})',
+    'sources.botBlocked': '⚠️ {sites} — Bot-protected site, crawling unavailable.',
+    'sources.botBlockedDialog': 'This site blocks data collection.\nPlease save a different link.',
 
     // Sources Recommend
     'sources.recommendLink': 'Get link recommendations',
@@ -394,6 +400,7 @@ export const translations = {
     'header.logo': 'ArcaInfo',
     'header.home': 'Trang chủ',
     'header.myFeed': 'Bảng tin của tôi',
+    'header.blog': 'Blog',
     'header.login': 'Đăng nhập',
     'header.logout': 'Đăng xuất',
     'header.refresh': 'Tải dữ liệu',
@@ -459,6 +466,8 @@ export const translations = {
     'sources.categoryDeleted': "Đã xóa danh mục '{name}'.",
     'sources.categoryExists': "Danh mục '{name}' đã tồn tại.",
     'sources.autoAnalysis': '{count} nguồn đã lưu (phân tích tự động: {methods})',
+    'sources.botBlocked': '⚠️ {sites} — Trang web chặn bot, không thể thu thập.',
+    'sources.botBlockedDialog': 'Trang web này chặn thu thập dữ liệu.\nVui lòng lưu liên kết khác.',
 
     // Sources Recommend
     'sources.recommendLink': 'Gợi ý liên kết',
@@ -588,6 +597,7 @@ export const translations = {
     'header.logo': '信息归档',
     'header.home': '首页',
     'header.myFeed': '我的订阅',
+    'header.blog': '博客',
     'header.login': '登录',
     'header.logout': '退出登录',
     'header.refresh': '刷新数据',
@@ -653,6 +663,8 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' 类别已删除。",
     'sources.categoryExists': "类别 '{name}' 已存在。",
     'sources.autoAnalysis': '{count} 来源已保存（自动分析：{methods}）',
+    'sources.botBlocked': '⚠️ {sites} — 该网站阻止机器人访问，无法抓取。',
+    'sources.botBlockedDialog': '该网站阻止数据收集。\n请保存其他链接。',
 
     // Sources Recommend
     'sources.recommendLink': '获取链接推荐',
@@ -782,6 +794,7 @@ export const translations = {
     'header.logo': 'アカインフォ',
     'header.home': 'ホームフィード',
     'header.myFeed': 'マイフィード',
+    'header.blog': 'ブログ',
     'header.login': 'ログイン',
     'header.logout': 'ログアウト',
     'header.refresh': 'データ更新',
@@ -847,6 +860,8 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' カテゴリが削除されました。",
     'sources.categoryExists': "カテゴリ '{name}' は既に存在します。",
     'sources.autoAnalysis': '{count} ソース保存 (自動分析: {methods})',
+    'sources.botBlocked': '⚠️ {sites} — ボットをブロックするサイトのため、クロールできません。',
+    'sources.botBlockedDialog': 'データ収集をブロックするサイトです。\n別のリンクを保存してください。',
 
     // Sources Recommend
     'sources.recommendLink': 'リンクをおすすめ',

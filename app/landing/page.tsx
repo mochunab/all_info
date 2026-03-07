@@ -42,6 +42,62 @@ const jsonLd = [
           text: '모든 기능을 무료로 사용할 수 있습니다.',
         },
       },
+      {
+        '@type': 'Question',
+        name: '어떤 업계 정보를 볼 수 있나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '마케팅, 스타트업, IT, 유통 등 다양한 업계의 최신 브리핑을 매일 확인할 수 있습니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: '매일 업데이트되나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '네, 매일 자동으로 크롤링하고 AI가 핵심만 요약해 브리핑을 제공합니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'AI 면접 코칭은 어떻게 작동하나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '수집된 아티클을 기반으로 AI 채팅을 통해 면접 예상 질문과 답변을 생성해드립니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: '모바일에서도 사용할 수 있나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '반응형 웹으로 제작되어 PC, 태블릿, 스마트폰 등 모든 기기에서 사용 가능합니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: '회원가입이 필요한가요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '비로그인으로도 브리핑 열람이 가능하며, 마이피드 등 개인화 기능은 회원가입이 필요합니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: '내가 원하는 소스를 추가할 수 있나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '마이피드에서 원하는 웹사이트 URL을 등록하면 자동으로 크롤링되어 브리핑이 제공됩니다.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: '데이터는 얼마나 자주 갱신되나요?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: '매일 오전 9시(KST)에 자동 갱신되며, 마이피드에서는 수동 새로고침도 가능합니다.',
+        },
+      },
     ],
   },
   {

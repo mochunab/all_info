@@ -187,29 +187,29 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
             </div>
           </div>
 
-        {/* Title (with translation loading indicator) */}
+        {/* Hook Title (메인 타이틀 — 후킹 제목, 없으면 title_ko fallback) */}
         <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-3 group-hover:text-[var(--accent)] transition-colors">
           {isTranslating && language !== 'ko' ? (
             <span className="text-[var(--text-tertiary)] italic">{t(language, 'article.translating')}</span>
           ) : (
-            translatedTitle
+            headline || translatedTitle
           )}
         </h3>
 
-        {/* Summary Box (structured: headline + details) */}
+        {/* Summary Box (서브타이틀: title_ko + 상세 설명) */}
         {translatedSummary && (
           <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 mb-3">
             {isTranslating && language !== 'ko' ? (
               <p className="text-sm text-[var(--text-secondary)]">...</p>
             ) : (
               <>
-                {/* 헤드라인 (볼드, 강조) */}
+                {/* 원본 제목 (서브타이틀) */}
                 {headline && (
                   <p className="text-sm font-semibold text-[var(--text-primary)] mb-2 leading-relaxed">
-                    {headline}
+                    {translatedTitle}
                   </p>
                 )}
-                {/* 상세 설명 (2~3문장, 전체 표시) */}
+                {/* 상세 설명 (3~4문장, 전체 표시) */}
                 {details && (
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-line">
                     {details}

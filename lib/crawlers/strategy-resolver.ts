@@ -237,8 +237,16 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     console.log(`\n📥 [1단계/9단계] HTML 페이지 다운로드 시작...`);
     console.log(`   ⏱️  최대 대기시간: 15초`);
     const startFetch = Date.now();
-    const html = await fetchPage(url);
+    const fetchResult = await fetchPage(url);
     const fetchTime = Date.now() - startFetch;
+    const html = fetchResult.html;
+
+    if (fetchResult.botBlocked) {
+      console.warn(`   🚫 봇 차단 감지: ${fetchResult.botBlocked.reason} (${fetchTime}ms)`);
+      const fallback = fallbackToUrlPattern(url);
+      fallback.botBlocked = fetchResult.botBlocked;
+      return fallback;
+    }
 
     if (!html) {
       console.warn(`   ❌ HTML 다운로드 실패 (${fetchTime}ms)`);
@@ -1184,7 +1192,7 @@ export async function resolveStrategyV2(url: string): Promise<StrategyResolution
     // Step 1: HTML 페이지 가져오기
     console.log(`\n📥 [1/3단계] HTML 페이지 다운로드...`);
     const startFetch = Date.now();
-    const html = await fetchPage(url);
+    const html = (await fetchPage(url)).html;
     const fetchTime = Date.now() - startFetch;
 
     if (!html) {

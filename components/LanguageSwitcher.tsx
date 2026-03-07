@@ -27,20 +27,14 @@ export default function LanguageSwitcher({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const _currentLangData = LANGUAGES[currentLang]; // eslint-disable-line @typescript-eslint/no-unused-vars
-
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-center w-9 h-9 rounded-full text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+        className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-[var(--bg-secondary)] transition-colors"
         aria-label="언어 선택"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.6 9h16.8M3.6 15h16.8" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a15 15 0 0 1 4 9 15 15 0 0 1-4 9 15 15 0 0 1-4-9 15 15 0 0 1 4-9Z" />
-        </svg>
+        <span className="text-xl leading-none">{LANGUAGES[currentLang].flag}</span>
       </button>
 
       {isOpen && (
