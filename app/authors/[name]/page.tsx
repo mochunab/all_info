@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getActiveSources, getArticlesBySource, getPopularTags } from '@/lib/seo-queries';
+import { getActiveAuthors, getArticlesByAuthor, getPopularTags } from '@/lib/seo-queries';
 import SeoArticleList from '@/components/SeoArticleList';
 import SeoBreadcrumb from '@/components/SeoBreadcrumb';
 import { buildAlternateLanguages } from '@/lib/hreflang';
@@ -12,42 +12,46 @@ type Props = {
 };
 
 export async function generateStaticParams() {
-  const sources = await getActiveSources();
-  return sources.map((s) => ({ name: s.name }));
+  const authors = await getActiveAuthors(100);
+  return authors.map((a) => ({ name: a.name }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { name } = await params;
-  const sourceName = decodeURIComponent(name);
+  const authorName = decodeURIComponent(name);
   return {
-    title: `${sourceName} - 소스별 아티클`,
-    description: `${sourceName}에서 발행한 최신 비즈니스 인사이트 아티클을 확인하세요.`,
+    title: `${authorName} - 저자별 아티클`,
+    description: `${authorName} 저자의 최신 비즈니스 인사이트 아티클을 확인하세요.`,
     alternates: {
-      canonical: `/sources/${encodeURIComponent(sourceName)}`,
-      languages: buildAlternateLanguages(`/sources/${encodeURIComponent(sourceName)}`),
+      canonical: `/authors/${encodeURIComponent(authorName)}`,
+      languages: buildAlternateLanguages(`/authors/${encodeURIComponent(authorName)}`),
     },
     openGraph: {
-      title: `${sourceName} - 소스별 아티클 | 아카인포`,
-      description: `${sourceName}의 최신 아티클`,
+      title: `${authorName} - 저자별 아티클 | 아카인포`,
+      description: `${authorName}의 최신 아티클`,
       type: 'website',
     },
   };
 }
 
-export default async function SourcePage({ params }: Props) {
+export default async function AuthorPage({ params }: Props) {
   const { name } = await params;
-  const sourceName = decodeURIComponent(name);
+  const authorName = decodeURIComponent(name);
   const [articles, tags] = await Promise.all([
-    getArticlesBySource(sourceName),
+    getArticlesByAuthor(authorName),
     getPopularTags(15),
   ]);
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: `${sourceName} - 소스별 아티클`,
-    url: `https://aca-info.com/sources/${encodeURIComponent(sourceName)}`,
+    name: `${authorName} - 저자별 아티클`,
+    url: `https://aca-info.com/authors/${encodeURIComponent(authorName)}`,
     numberOfItems: articles.length,
+    author: {
+      '@type': 'Person',
+      name: authorName,
+    },
   };
 
   return (
@@ -56,9 +60,10 @@ export default async function SourcePage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '소스', href: '/sources' }, { label: sourceName }]} />
+      <SeoBreadcrumb items={[{ label: '저자', href: '/authors' }, { label: authorName }]} />
 
-      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">{sourceName}</h1>
+      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">{authorName}</h1>
+      <p className="text-sm text-[var(--text-secondary)] mb-6">{articles.length}편의 아티클</p>
 
       <div className="lg:grid lg:grid-cols-[1fr_240px] lg:gap-8">
         <SeoArticleList articles={articles} />
@@ -78,7 +83,7 @@ export default async function SourcePage({ params }: Props) {
               ))}
             </div>
             <div className="mt-6 pt-4 border-t border-[var(--border)]">
-              <Link href="/sources" className="text-sm text-[var(--accent)] hover:underline">← 전체 소스</Link>
+              <Link href="/authors" className="text-sm text-[var(--accent)] hover:underline">&larr; 전체 저자</Link>
             </div>
           </div>
         </aside>

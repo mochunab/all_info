@@ -36,14 +36,15 @@ export default function HomeFeed({
   const [articles, setArticles] = useState<Article[]>(initialArticles);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<string>(() => {
-    if (typeof window === 'undefined') return defaultCategory;
+  const [category, setCategory] = useState<string>(defaultCategory);
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY.CATEGORY);
-      if (saved && initialCategories.includes(saved)) return saved;
+      if (saved && initialCategories.includes(saved) && saved !== defaultCategory) {
+        setCategory(saved);
+      }
     } catch { /* ignore */ }
-    return defaultCategory;
-  });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [categories, setCategories] = useState<string[]>(initialCategories);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -403,7 +404,7 @@ export default function HomeFeed({
         onLanguageChange={setLanguage}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 transition-all duration-300 ${isChatOpen ? 'lg:pr-[460px]' : ''}`}>
         <div className="mb-6 sm:mb-8">
           <FilterBar
             search={search}
@@ -426,6 +427,7 @@ export default function HomeFeed({
           isLoading={isLoading}
           hasMore={hasMore}
           search={search}
+          isChatOpen={isChatOpen}
           onLoadMore={handleLoadMore}
           onDelete={isLoggedIn && !isNonMasterUser ? handleArticleDelete : undefined}
           onChatReference={isChatOpen ? handleChatReference : undefined}

@@ -39,7 +39,7 @@
 [Stage 6 제거 — v1.5.1]
 7+8. 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function 호출 (Cheerio 전처리: aside/nav/sidebar 제거)
      후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
-7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출
+7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출 (상대경로 엔드포인트는 거부 → SPA 유지)
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
 9. 사전 감지 (크롤링 시점) — STATIC/SPA 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차 (SPA는 Puppeteer HTML 사용)
 10. 자동 복구 — 품질 검증 실패 (0건/유효 부족)
@@ -110,6 +110,7 @@
 | AI 셀렉터 오탐 | `infer-type.ts` 프롬프트 고도화 |
 | 시맨틱 감지 오작동 | `trySemanticDetection` 조건 강화 |
 | 크롤러 타입 오탐 | `strategy-resolver.ts` 파이프라인 개선 |
+| API 감지 오탐 (상대경로) | `api-detector.ts` — 절대 URL만 허용 |
 | URL 최적화 오탐 | `url-optimizer.ts` 필터/검증 강화 |
 | 특정 패턴 일관 실패 | 해당 패턴의 **범용** 감지 규칙 추가 |
 | fetch redirect loop | `fetchWithTimeout` bot UA 재시도 (base.ts) |
@@ -145,7 +146,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 - Hook 순서: `useState` → `useCallback` → `useEffect` → `return`
 
 ### 크롤러 개발
-- robots.txt 준수: `runCrawler()` 진입 시 `checkRobotsTxt()` 자동 체크 (`robots-checker.ts`, 1시간 캐시, fail-open)
+- robots.txt: `checkRobotsTxt()` 존재하나 **현재 비활성화** (v1.8.6, 추후 재활성화 예정)
 - `DEFAULT_HEADERS`의 UA는 `BOT_USER_AGENT` (`InsightHub/1.0`) — 봇 신원 정직 표시
 - `fetchWithTimeout(url, {}, 15000)` — 15초 타임아웃 필수, redirect loop 시 bot UA 자동 재시도
 - `isWithinDays(date, MAX_ARTICLE_AGE_DAYS)` — 최근 30일 필터 (`date-parser.ts` 상수)
@@ -275,7 +276,7 @@ app/api/
   image-proxy/route.ts      GET 이미지 프록시
 
 lib/crawlers/
-  index.ts              오케스트레이터 (runCrawler, robots.txt 체크 포함)
+  index.ts              오케스트레이터 (runCrawler)
   robots-checker.ts     robots.txt 파싱/캐싱 (1시간 TTL, fail-open)
   strategy-resolver.ts  AUTO 9단계 감지 파이프라인
   infer-type.ts         URL 패턴 기반 크롤러 타입 추론
@@ -303,6 +304,7 @@ components/LoginPromptDialog.tsx  비로그인 마이피드 접근 시 안내
 lib/user.ts             getMasterUserId() 헬퍼 (서버 전용, 인메모리 캐시)
 lib/auth.ts             verifyCronAuth, verifySameOrigin
 lib/i18n.ts             5개 언어 번역 (ko, en, vi, zh, ja)
+lib/language-context.tsx 언어 Provider (hydration-safe: 초기값 'ko', useEffect로 감지)
 middleware.ts           Rate Limit, CORS, Security Headers
 ```
 

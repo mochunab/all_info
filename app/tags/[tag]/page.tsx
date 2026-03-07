@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getPopularTags, getArticlesByTag, getCategories } from '@/lib/seo-queries';
 import SeoArticleList from '@/components/SeoArticleList';
 import SeoBreadcrumb from '@/components/SeoBreadcrumb';
+import { buildAlternateLanguages } from '@/lib/hreflang';
 
 export const revalidate = 3600;
 
@@ -21,7 +22,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `#${name} - 태그별 아티클`,
     description: `'${name}' 태그가 달린 최신 비즈니스 인사이트 아티클을 확인하세요.`,
-    alternates: { canonical: `/tags/${encodeURIComponent(name)}` },
+    alternates: {
+      canonical: `/tags/${encodeURIComponent(name)}`,
+      languages: buildAlternateLanguages(`/tags/${encodeURIComponent(name)}`),
+    },
     openGraph: {
       title: `#${name} - 태그별 아티클 | 아카인포`,
       description: `'${name}' 태그의 최신 아티클`,

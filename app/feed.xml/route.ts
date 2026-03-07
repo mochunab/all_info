@@ -15,13 +15,23 @@ export async function GET() {
   const supabase = createServiceClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: articles } = await (supabase as any)
-    .from('articles')
-    .select('id, title_ko, source_url, summary, published_at, crawled_at, category')
-    .eq('is_active', true)
-    .eq('user_id', masterUserId)
-    .order('crawled_at', { ascending: false })
-    .limit(20);
+  const [{ data: articles }, { data: blogPosts }] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('articles')
+      .select('id, title_ko, source_url, summary, published_at, crawled_at, category')
+      .eq('is_active', true)
+      .eq('user_id', masterUserId)
+      .order('crawled_at', { ascending: false })
+      .limit(20),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('blog_posts')
+      .select('slug, title, description, published_at')
+      .eq('published', true)
+      .order('published_at', { ascending: false })
+      .limit(10),
+  ]);
 
   type RssArticle = {
     id: string;
@@ -33,7 +43,14 @@ export async function GET() {
     category: string | null;
   };
 
-  const items = ((articles || []) as RssArticle[]).map((a) => {
+  type RssBlogPost = {
+    slug: string;
+    title: string;
+    description: string;
+    published_at: string | null;
+  };
+
+  const articleItems = ((articles || []) as RssArticle[]).map((a) => {
     const title = a.title_ko || 'Untitled';
     const pubDate = a.published_at
       ? new Date(a.published_at).toUTCString()
@@ -49,6 +66,23 @@ export async function GET() {
     </item>`;
   });
 
+  const blogItems = ((blogPosts || []) as RssBlogPost[]).map((p) => {
+    const pubDate = p.published_at
+      ? new Date(p.published_at).toUTCString()
+      : new Date().toUTCString();
+
+    return `    <item>
+      <title>${escapeXml(p.title)}</title>
+      <link>https://aca-info.com/blog/${escapeXml(p.slug)}</link>
+      <guid isPermaLink="true">https://aca-info.com/blog/${escapeXml(p.slug)}</guid>
+      <pubDate>${pubDate}</pubDate>
+      <description>${escapeXml(p.description)}</description>
+      <category>블로그</category>
+    </item>`;
+  });
+
+  const allItems = [...blogItems, ...articleItems];
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
@@ -57,7 +91,7 @@ export async function GET() {
     <description>면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!</description>
     <language>ko</language>
     <atom:link href="https://aca-info.com/feed.xml" rel="self" type="application/rss+xml"/>
-${items.join('\n')}
+${allItems.join('\n')}
   </channel>
 </rss>`;
 

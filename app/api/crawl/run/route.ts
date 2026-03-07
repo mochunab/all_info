@@ -237,10 +237,25 @@ async function handleCrawlRun(request: NextRequest) {
     if (totalNew > 0) {
       try {
         const { submitToIndexNow } = await import('@/lib/indexnow');
-        const indexNowUrls = ['/', '/topics', '/tags', '/sources'];
+        const indexNowUrls = ['/', '/topics', '/tags', '/sources', '/authors', '/blog'];
         const sourcesWithNew = results.filter(r => r.success && (r.new || 0) > 0);
         for (const r of sourcesWithNew) {
           indexNowUrls.push(`/sources/${encodeURIComponent(r.source)}`);
+        }
+        // 새 아티클 slug도 IndexNow 제출
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: recentSlugs } = await (supabase as any)
+          .from('articles')
+          .select('slug')
+          .eq('is_active', true)
+          .eq('user_id', masterUserId)
+          .not('slug', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(totalNew);
+        if (recentSlugs) {
+          for (const s of recentSlugs) {
+            if (s.slug) indexNowUrls.push(`/articles/${s.slug}`);
+          }
         }
         const submitted = await submitToIndexNow(indexNowUrls);
         console.log(`🔔 IndexNow ${submitted ? `제출 완료 (${indexNowUrls.length}개 URL)` : '제출 실패 (키 미설정?)'}`);

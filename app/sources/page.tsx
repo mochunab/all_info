@@ -3,13 +3,14 @@ import Link from 'next/link';
 import { getActiveSources } from '@/lib/seo-queries';
 import { SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
 import SeoBreadcrumb from '@/components/SeoBreadcrumb';
+import { buildAlternateLanguages } from '@/lib/hreflang';
 
 export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: '소스 - 콘텐츠 출처',
   description: '아카인포가 큐레이션하는 비즈니스 콘텐츠 소스 목록입니다. 다양한 출처의 인사이트를 확인하세요.',
-  alternates: { canonical: '/sources' },
+  alternates: { canonical: '/sources', languages: buildAlternateLanguages('/sources') },
   openGraph: {
     title: '소스 - 콘텐츠 출처 | 아카인포',
     description: '아카인포가 큐레이션하는 콘텐츠 소스 목록',
@@ -69,6 +70,7 @@ export default async function SourcesIndexPage() {
         <div className="flex gap-4">
           <Link href="/topics" className="text-sm text-[var(--accent)] hover:underline">카테고리별 탐색</Link>
           <Link href="/tags" className="text-sm text-[var(--accent)] hover:underline">태그별 탐색</Link>
+          <Link href="/authors" className="text-sm text-[var(--accent)] hover:underline">저자별 탐색</Link>
         </div>
       </nav>
     </main>

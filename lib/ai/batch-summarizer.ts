@@ -92,6 +92,7 @@ async function generateAISummaryViaEdgeFunction(
     if (result.success) {
       return {
         title_ko: result.title_ko || null,
+        hook_title: result.hook_title || null,
         summary_tags: result.summary_tags || [],
         detailed_summary: result.detailed_summary || '',
         success: true,
@@ -99,6 +100,7 @@ async function generateAISummaryViaEdgeFunction(
     } else {
       return {
         title_ko: null,
+        hook_title: null,
         summary_tags: [],
         detailed_summary: '',
         success: false,
@@ -109,6 +111,7 @@ async function generateAISummaryViaEdgeFunction(
     console.error('[Edge Function] Request failed:', error);
     return {
       title_ko: null,
+      hook_title: null,
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -198,6 +201,11 @@ export async function processPendingSummaries(
             return res;
           }, article.title.substring(0, 40));
 
+          // hook_title + detailed_summary → summary 컬럼에 합쳐서 저장
+          const combinedSummary = aiResult.hook_title
+            ? `${aiResult.hook_title}\n\n${aiResult.detailed_summary}`
+            : aiResult.detailed_summary || null;
+
           // DB 업데이트
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: updateError } = await (supabase as any)
@@ -205,7 +213,7 @@ export async function processPendingSummaries(
             .update({
               title_ko: aiResult.title_ko || null,
               summary_tags: aiResult.summary_tags.length > 0 ? aiResult.summary_tags : [],
-              summary: aiResult.detailed_summary || null,
+              summary: combinedSummary,
               updated_at: new Date().toISOString(),
             })
             .eq('id', article.id);
@@ -310,6 +318,11 @@ export async function processArticleSummary(
       return { success: false, error: aiResult.error };
     }
 
+    // hook_title + detailed_summary → summary 컬럼에 합쳐서 저장
+    const combinedSummary = aiResult.hook_title
+      ? `${aiResult.hook_title}\n\n${aiResult.detailed_summary}`
+      : aiResult.detailed_summary || null;
+
     // Update article
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: updateError } = await (supabase as any)
@@ -317,7 +330,7 @@ export async function processArticleSummary(
       .update({
         title_ko: aiResult.title_ko || null,
         summary_tags: aiResult.summary_tags,
-        summary: aiResult.detailed_summary || null,
+        summary: combinedSummary,
         updated_at: new Date().toISOString(),
       })
       .eq('id', articleId);

@@ -231,7 +231,7 @@ async function optimizeByPath(url: string): Promise<UrlOptimizationResult | null
  * 3단계: HTML 분석하여 링크 발견
  */
 async function discoverFromHtml(url: string): Promise<UrlOptimizationResult | null> {
-  const html = await fetchPage(url);
+  const html = (await fetchPage(url)).html;
   if (!html) {
     return null;
   }

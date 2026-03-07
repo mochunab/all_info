@@ -235,6 +235,7 @@ export default function SourcesPageClient({
   const [recommendProgress, setRecommendProgress] = useState(0);
   const recommendTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [showBotBlockedDialog, setShowBotBlockedDialog] = useState(false);
   const [pendingRenames, setPendingRenames] = useState<{ oldName: string; newName: string }[]>([]);
   const [orderChanged, setOrderChanged] = useState(false);
   const [showBrowseMaster, setShowBrowseMaster] = useState(false);
@@ -901,6 +902,24 @@ export default function SourcesPageClient({
           return updated;
         });
 
+        // 봇 차단 소스 → 다이얼로그 안내 + 링크 제거
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const blockedSources = data.analysis?.filter((a: any) => a.botBlocked) || [];
+        if (blockedSources.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const blockedUrls = blockedSources.map((a: any) => a.url) as string[];
+          setSourcesByCategory((prev) => {
+            const updated = { ...prev };
+            for (const [cat, sources] of Object.entries(updated)) {
+              updated[cat] = (sources as SourceLink[]).filter(
+                (s) => !blockedUrls.includes(s.url.trim())
+              );
+            }
+            return updated;
+          });
+          setShowBotBlockedDialog(true);
+        }
+
         setPendingDeleteIds([]);
         setToastMessage(message);
         setShowToast(true);
@@ -1256,6 +1275,32 @@ export default function SourcesPageClient({
                 className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
               >
                 {isDeleting ? t('sources.deleting') : t('sources.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bot Blocked Dialog */}
+      {showBotBlockedDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                {t('sources.botBlockedDialog')}
+              </p>
+            </div>
+            <div className="border-t border-[var(--border)]">
+              <button
+                onClick={() => setShowBotBlockedDialog(false)}
+                className="w-full py-3.5 text-sm font-medium text-[var(--accent)] hover:bg-[var(--bg-secondary)] transition-colors"
+              >
+                {t('dialog.confirm')}
               </button>
             </div>
           </div>

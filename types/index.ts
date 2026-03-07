@@ -15,6 +15,7 @@ export interface Article {
   priority: number;
   category: string | null;
   is_active: boolean;
+  slug: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -166,4 +167,18 @@ export type ChatResponse = {
   success: boolean;
   reply?: string;
   error?: string;
+};
+
+export type BlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  content: string;
+  cover_image: string | null;
+  tags: string[];
+  published: boolean;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
