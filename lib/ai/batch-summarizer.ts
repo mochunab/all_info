@@ -58,6 +58,7 @@ async function generateAISummaryViaEdgeFunction(
   if (!EDGE_FUNCTION_URL) {
     return {
       title_ko: null,
+      hook_title: null,
       summary_tags: [],
       detailed_summary: '',
       success: false,
@@ -80,6 +81,7 @@ async function generateAISummaryViaEdgeFunction(
       console.error('[Edge Function] Error:', response.status, errorText);
       return {
         title_ko: null,
+        hook_title: null,
         summary_tags: [],
         detailed_summary: '',
         success: false,
