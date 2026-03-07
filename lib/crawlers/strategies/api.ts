@@ -49,8 +49,13 @@ export class APIStrategy implements CrawlStrategy {
     const config = parseConfig(source);
     const apiConfig = (config.crawl_config as unknown as APIConfig) || {};
 
-    // API 엔드포인트 결정 (endpoint 설정이 있으면 사용, 없으면 base_url)
-    const apiUrl = apiConfig.endpoint || source.base_url;
+    // API 엔드포인트 결정 (상대경로면 base_url origin 기준 절대 URL 변환)
+    let apiUrl = source.base_url;
+    if (apiConfig.endpoint) {
+      apiUrl = apiConfig.endpoint.startsWith('http')
+        ? apiConfig.endpoint
+        : `${new URL(source.base_url).origin}${apiConfig.endpoint}`;
+    }
 
     console.log(`[API] Fetching: ${apiUrl}`);
     if (apiConfig.endpoint) {

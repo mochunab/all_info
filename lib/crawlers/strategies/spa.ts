@@ -177,6 +177,12 @@ export class SPAStrategy implements CrawlStrategy {
 
       if (cachedHtml) {
         await page.setContent(cachedHtml, { waitUntil: 'load' });
+        // setContent은 page.url()을 about:blank으로 설정하므로 URL 해석용 baseUrl 보정
+        if (!config.link_processing) {
+          config.link_processing = { baseUrl: new URL(source.base_url).origin };
+        } else if (!config.link_processing.baseUrl) {
+          config.link_processing.baseUrl = new URL(source.base_url).origin;
+        }
         console.log(`[SPA] Used cached HTML (skipped navigation)`);
       } else {
         await page.goto(source.base_url, {
