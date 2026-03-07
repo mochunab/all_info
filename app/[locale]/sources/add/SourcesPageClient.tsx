@@ -528,7 +528,7 @@ export default function SourcesPageClient({
         // 기존 소스의 URL 변경 시 → 기존 소스는 삭제 대상에 추가, 새 소스로 전환
         if (field === 'url' && s.isExisting) {
           setPendingDeleteIds((prev) => [...prev, parseInt(s.id, 10)]);
-          return { ...s, [field]: value, isExisting: false, id: `new-${Date.now()}` };
+          return { ...s, url: value, name: '', crawlerType: 'AUTO', isExisting: false, id: `new-${Date.now()}` };
         }
         return { ...s, [field]: value };
       }),
@@ -949,7 +949,7 @@ export default function SourcesPageClient({
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <button
-              onClick={() => router.back()}
+              onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
               className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
               <svg

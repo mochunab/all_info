@@ -17,21 +17,18 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     const supabase = createServiceClient();
 
-    // 완전 삭제: DB에서 row 제거
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
+    const { error, count } = await (supabase as any)
       .from('articles')
-      .delete()
-      .eq('id', id)
-      .select('id')
-      .single();
+      .delete({ count: 'exact' })
+      .eq('id', id);
 
     if (error) {
       console.error('[DELETE] Article delete error:', error);
-      return NextResponse.json({ error: 'Failed to delete article' }, { status: 500 });
+      return NextResponse.json({ error: `Failed to delete article: ${error.message}` }, { status: 500 });
     }
 
-    if (!data) {
+    if (count === 0) {
       console.error('[DELETE] Article not found:', id);
       return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }

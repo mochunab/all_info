@@ -438,3 +438,185 @@ const SOURCE_COLORS: Record<string, string> = {
 - getCrawler() 우선순위 수정 (레거시 최우선)
 - API 엔드포인트 자동 감지 (Step 7.5)
 - 크롤링 윈도우 14일 확장 (→ v1.6.6에서 30일로 재확장)
+
+---
+
+## 📂 기능별 빠른 참조 (Quick Reference by Feature)
+
+### 홈피드 (메인 페이지)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/page.tsx` | 홈피드 페이지 (master 콘텐츠) |
+| `components/HomeFeed.tsx` | 홈피드 클라이언트 컴포넌트 |
+| `components/ArticleGrid.tsx` | 아티클 그리드 레이아웃 |
+| `components/ArticleCard.tsx` | 아티클 카드 (삭제, 핀 기능) |
+| `components/FilterBar.tsx` | 카테고리/소스/태그 필터 |
+| `components/Header.tsx` | 글로벌 헤더 (네비게이션) |
+| `components/Footer.tsx` | 글로벌 푸터 (이용약관 링크) |
+
+### 마이피드 (개인 피드)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/my-feed/page.tsx` | 마이피드 페이지 (user_id 스코핑) |
+| `components/LoginPromptDialog.tsx` | 비로그인 접근 시 안내 다이얼로그 |
+
+### 소스 관리 (추가/편집)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/sources/add/page.tsx` | 소스 추가 페이지 (서버) |
+| `app/[locale]/sources/add/SourcesPageClient.tsx` | 소스 관리 클라이언트 (카테고리, 링크 CRUD) |
+| `app/api/sources/route.ts` | 소스 CRUD API + auto-detect |
+| `app/api/sources/recommend/route.ts` | AI 소스 추천 API |
+
+### 크롤링
+| 파일 | 역할 |
+|------|------|
+| `app/api/crawl/run/route.ts` | 크롤링 실행 (Bearer, 300s) |
+| `app/api/crawl/trigger/route.ts` | 프론트엔드 프록시 (rate limit 30s) |
+| `app/api/crawl/status/route.ts` | 크롤링 상태 조회 |
+| `lib/crawlers/index.ts` | 오케스트레이터 (`runCrawler`) |
+| `lib/crawlers/strategy-resolver.ts` | AUTO 9단계 감지 파이프라인 |
+| `lib/crawlers/infer-type.ts` | URL 패턴 기반 크롤러 타입 추론 |
+| `lib/crawlers/url-optimizer.ts` | URL 최적화 (검색→API/RSS 변환) |
+| `lib/crawlers/auto-detect.ts` | Rule-based 셀렉터 감지 |
+| `lib/crawlers/api-detector.ts` | API 엔드포인트 감지 |
+| `lib/crawlers/base.ts` | 공통 유틸 (`fetchWithTimeout`, UA) |
+| `lib/crawlers/types.ts` | 크롤러 타입 정의 |
+| `lib/crawlers/content-extractor.ts` | 본문 추출 (Readability 등) |
+| `lib/crawlers/date-parser.ts` | 날짜 파싱 + `MAX_ARTICLE_AGE_DAYS` |
+| `lib/crawlers/html-preprocessor.ts` | HTML 전처리 (LLM 추출용) |
+| `lib/crawlers/quality-filter.ts` | 크롤링 품질 검증 |
+| `lib/crawlers/title-cleaner.ts` | 제목 HTML 태그/엔티티 정제 |
+| `lib/crawlers/robots-checker.ts` | robots.txt 파싱/캐싱 (현재 비활성화) |
+
+### 크롤러 전략 (9종)
+| 파일 | 전략 |
+|------|------|
+| `lib/crawlers/strategies/index.ts` | 전략 레지스트리 |
+| `lib/crawlers/strategies/static.ts` | STATIC (Cheerio) |
+| `lib/crawlers/strategies/spa.ts` | SPA (Puppeteer) |
+| `lib/crawlers/strategies/rss.ts` | RSS (rss-parser) |
+| `lib/crawlers/strategies/sitemap.ts` | SITEMAP (fetch + Cheerio) |
+| `lib/crawlers/strategies/naver.ts` | PLATFORM_NAVER |
+| `lib/crawlers/strategies/kakao.ts` | PLATFORM_KAKAO |
+| `lib/crawlers/strategies/newsletter.ts` | NEWSLETTER |
+| `lib/crawlers/strategies/api.ts` | API (fetch JSON) |
+| `lib/crawlers/strategies/firecrawl.ts` | Firecrawl (외부 서비스) |
+
+### AI 요약 & 추출
+| 파일 | 역할 |
+|------|------|
+| `app/api/summarize/batch/route.ts` | 배치 요약 API (Bearer, 300s) |
+| `app/api/summarize/route.ts` | 단일 요약 API |
+| `lib/ai/batch-summarizer.ts` | 배치 요약 (Edge Fn → 로컬 fallback) |
+| `lib/ai/summarizer.ts` | 로컬 OpenAI (gpt-4.1-mini) |
+| `lib/ai/article-extractor.ts` | LLM 아티클 직접 추출 (auto-recovery용) |
+| `supabase/functions/summarize-article/index.ts` | AI 요약 Edge Fn (Gemini) |
+| `supabase/functions/extract-articles/index.ts` | LLM 추출 Edge Fn (Gemini) |
+
+### AI 채팅
+| 파일 | 역할 |
+|------|------|
+| `app/api/chat/route.ts` | 채팅 프록시 API |
+| `components/InsightChat.tsx` | 채팅 UI 컴포넌트 |
+| `supabase/functions/chat-insight/index.ts` | 채팅 Edge Fn (Gemini) |
+
+### AI 감지 (크롤러 타입/API)
+| 파일 | 역할 |
+|------|------|
+| `supabase/functions/detect-crawler-type/index.ts` | 크롤러 타입+셀렉터 감지 (Gemini) |
+| `supabase/functions/detect-api-endpoint/index.ts` | API 엔드포인트 감지 (Gemini) |
+| `supabase/functions/recommend-sources/index.ts` | AI 소스 추천 (Gemini + google_search) |
+
+### 아티클 API
+| 파일 | 역할 |
+|------|------|
+| `app/api/articles/route.ts` | 아티클 목록 GET |
+| `app/api/articles/[id]/route.ts` | 아티클 삭제 DELETE |
+| `app/api/articles/[id]/content/route.ts` | content_preview 조회 GET |
+| `app/api/articles/sources/route.ts` | 소스별 아티클 조회 |
+| `app/api/categories/route.ts` | 카테고리 CRUD |
+
+### SEO & 퍼블릭 페이지
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/articles/[slug]/page.tsx` | 아티클 상세 페이지 |
+| `app/[locale]/topics/page.tsx` | 토픽 목록 |
+| `app/[locale]/topics/[category]/page.tsx` | 토픽별 아티클 |
+| `app/[locale]/tags/page.tsx` | 태그 목록 |
+| `app/[locale]/tags/[tag]/page.tsx` | 태그별 아티클 |
+| `app/[locale]/sources/page.tsx` | 소스 목록 |
+| `app/[locale]/sources/[name]/page.tsx` | 소스별 아티클 |
+| `app/[locale]/authors/page.tsx` | 저자 목록 |
+| `app/[locale]/authors/[name]/page.tsx` | 저자별 아티클 |
+| `app/[locale]/blog/page.tsx` | 블로그 목록 |
+| `app/[locale]/blog/[slug]/page.tsx` | 블로그 상세 |
+| `app/sitemap.ts` | 사이트맵 생성 |
+| `app/robots.ts` | robots.txt 생성 |
+| `app/feed.xml/route.ts` | RSS 피드 생성 |
+| `app/api/og/route.tsx` | OG 이미지 생성 |
+| `components/SeoBreadcrumb.tsx` | 구조화 데이터 (빵크럼) |
+| `components/SeoArticleList.tsx` | 구조화 데이터 (아티클 리스트) |
+| `lib/seo-queries.ts` | SEO 관련 DB 쿼리 |
+| `lib/article-slug.ts` | 슬러그 생성 유틸 |
+| `lib/hreflang.ts` | hreflang 태그 생성 |
+
+### 랜딩 페이지
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/landing/page.tsx` | 랜딩 페이지 |
+| `app/[locale]/landing/LandingContent.tsx` | 랜딩 콘텐츠 |
+| `app/[locale]/landing/LandingHeader.tsx` | 랜딩 헤더 |
+| `app/[locale]/landing/AnimatedSection.tsx` | 애니메이션 섹션 |
+
+### 인증 & 사용자
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/login/page.tsx` | 로그인 페이지 |
+| `app/[locale]/signup/page.tsx` | 회원가입 페이지 |
+| `app/auth/callback/route.ts` | OAuth 콜백 |
+| `lib/auth.ts` | `verifyCronAuth`, `verifySameOrigin` |
+| `lib/user.ts` | `getMasterUserId()` 헬퍼 |
+
+### i18n & 언어
+| 파일 | 역할 |
+|------|------|
+| `lib/i18n.ts` | 5개 언어 번역 (`t(language, 'key')`) |
+| `lib/language-context.tsx` | 언어 Provider + `translateCat()` |
+| `lib/locale-config.ts` | 로케일 설정 |
+| `lib/locale-path.ts` | 로케일 경로 유틸 |
+| `components/LanguageSwitcher.tsx` | 언어 전환 UI |
+| `lib/translation.ts` | DeepL 번역 유틸 |
+| `app/api/translate/route.ts` | 번역 API |
+
+### 인프라 & 공통
+| 파일 | 역할 |
+|------|------|
+| `app/layout.tsx` | 루트 레이아웃 |
+| `app/[locale]/layout.tsx` | 로케일 레이아웃 |
+| `app/providers.tsx` | 글로벌 Provider |
+| `middleware.ts` | Rate Limit, CORS, Security Headers, 로케일 리다이렉트 |
+| `lib/supabase/client.ts` | Supabase 브라우저 클라이언트 |
+| `lib/supabase/server.ts` | Supabase 서버/서비스 클라이언트 |
+| `lib/cache.ts` | 인메모리 캐시 유틸 |
+| `lib/utils.ts` | 공통 유틸리티 |
+| `lib/gtag.ts` | Google Analytics |
+| `lib/indexnow.ts` | IndexNow 검색엔진 알림 |
+| `lib/blog.ts` | 블로그 헬퍼 |
+| `components/Skeleton.tsx` | 로딩 스켈레톤 |
+| `components/ConfirmDialog.tsx` | 확인 다이얼로그 |
+| `components/Toast.tsx` | 토스트 알림 |
+| `components/GTagPageView.tsx` | GA 페이지뷰 트래킹 |
+| `components/LocaleLink.tsx` | 로케일 링크 컴포넌트 |
+| `app/api/image-proxy/route.ts` | 이미지 프록시 (CORS 우회) |
+
+### Edge Functions (Supabase)
+| 파일 | 역할 |
+|------|------|
+| `supabase/functions/summarize-article/index.ts` | AI 요약 (Gemini 2.5 Flash Lite) |
+| `supabase/functions/detect-crawler-type/index.ts` | 크롤러 타입+셀렉터 감지 |
+| `supabase/functions/detect-api-endpoint/index.ts` | API 엔드포인트 감지 |
+| `supabase/functions/extract-articles/index.ts` | LLM 아티클 직접 추출 |
+| `supabase/functions/recommend-sources/index.ts` | AI 소스 추천 |
+| `supabase/functions/chat-insight/index.ts` | AI 채팅 인사이트 |
+| `supabase/functions/translate-blog/index.ts` | 블로그 번역 |
