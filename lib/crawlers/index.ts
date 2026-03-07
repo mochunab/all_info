@@ -370,15 +370,21 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
       console.log(`   ✅ 전략 로드 완료`);
 
       // 타임아웃 설정 (30초)
-      const timeoutPromise = new Promise<RawContentItem[]>((_, reject) =>
-        setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000)
-      );
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<RawContentItem[]>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000);
+      });
 
       const crawlPromise = strategy.crawlList(source);
 
       console.log(`   🔍 콘텐츠 목록 크롤링 중... (최대 30초)`);
       // 목록 크롤링 (타임아웃 적용)
-      const rawItemsAll = await Promise.race([crawlPromise, timeoutPromise]);
+      let rawItemsAll: RawContentItem[];
+      try {
+        rawItemsAll = await Promise.race([crawlPromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutId!);
+      }
 
       // 최신 5개만 유지 (사이트 당 제한)
       const rawItems = rawItemsAll.slice(0, 5);
@@ -416,14 +422,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
           console.warn(`   📊 통계: 전체 ${validation.stats.total}개, 유효 ${validation.stats.valid}개, 쓰레기 비율 ${(validation.stats.garbageRatio * 100).toFixed(1)}%`);
         }
 
-        // Cheerio(정적 HTML) 기반 전략은 0건이어도 SPA fallback 허용 (JS 렌더링 필요 가능)
-        // RSS/SPA/API 등 비HTML 전략은 0건 = 최신 콘텐츠 없음 → fallback 불필요
-        // 단, 마지막 전략이면 auto-recovery(AI 셀렉터 감지) 시도를 위해 계속 진행
-        const cheerioBasedStrategies = ['STATIC', 'PLATFORM_KAKAO', 'PLATFORM_NAVER', 'NEWSLETTER'];
-        if (validation.reason === 'No items found' && !cheerioBasedStrategies.includes(strategyType) && i < strategyChain.length - 1) {
-          console.log(`   ℹ️  ${strategyType} 정상 실행 — 최신 콘텐츠 없음 (fallback 생략)`);
-          return [];
-        }
+        // 0건이면 fallback 전략 시도 허용 (RSS URL 무효화 시 STATIC 폴백 가능)
 
         // 마지막 전략이면 자동 복구 시도 (하이브리드 전략)
         if (i === strategyChain.length - 1 && (

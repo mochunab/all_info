@@ -1,57 +1,39 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Header, FilterBar, ArticleGrid, Toast, Footer } from '@/components';
+import { Header, FilterBar, ArticleGrid, Toast, Footer, LoginPromptDialog } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import { event as gaEvent } from '@/lib/gtag';
 import { useAuth } from '@/lib/auth-context';
-import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/language-context';
 
 const InsightChat = dynamic(() => import('@/components/InsightChat'), { ssr: false });
 
 const STORAGE_KEY = {
-  HOME_ARTICLES: 'ih:home:articles',
-  HOME_CATEGORIES: 'ih:home:categories',
-  CATEGORY: 'ih:category',
+  MY_ARTICLES: 'ih:my:articles',
+  MY_CATEGORIES: 'ih:my:categories',
+  MY_CATEGORY: 'ih:my:category',
 } as const;
 
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 
-type HomeFeedProps = {
-  initialArticles: Article[];
-  initialCategories: string[];
-  initialTotal: number;
-  initialHasMore: boolean;
-};
+export default function MyFeed() {
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+  const authChecked = !authLoading;
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
 
-export default function HomeFeed({
-  initialArticles,
-  initialCategories,
-  initialTotal,
-  initialHasMore,
-}: HomeFeedProps) {
-  const defaultCategory = initialCategories[0] || '';
-  const [articles, setArticles] = useState<Article[]>(initialArticles);
-  const [isLoading, setIsLoading] = useState(false);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<string>(defaultCategory);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY.CATEGORY);
-      if (saved && initialCategories.includes(saved) && saved !== defaultCategory) {
-        setCategory(saved);
-      }
-    } catch { /* ignore */ }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [categories, setCategories] = useState<string[]>(initialCategories);
+  const [category, setCategory] = useState<string>('');
+  const [categories, setCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(initialHasMore);
-  const [totalCount, setTotalCount] = useState(initialTotal);
-  const [lastUpdated, setLastUpdated] = useState<string | undefined>(
-    initialArticles[0]?.crawled_at
-  );
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<string | undefined>();
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
@@ -59,20 +41,7 @@ export default function HomeFeed({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const { language, setLanguage, t, setCategoryTranslations } = useLanguage();
-  const { user: authUser } = useAuth();
-  const isLoggedIn = !!authUser;
-  const [isNonMasterUser, setIsNonMasterUser] = useState(false);
-  useEffect(() => {
-    if (!authUser) { setIsNonMasterUser(false); return; }
-    const supabase = createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).from('users').select('role').eq('id', authUser.id).single()
-      .then(({ data }: { data: { role: string } | null }) => {
-        if (data && data.role !== 'master') setIsNonMasterUser(true);
-      });
-  }, [authUser]);
-
-  const initialLoadDone = useRef(true);
+  const initialLoadDone = useRef(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchRef = useRef(search);
   const categoryRef = useRef(category);
@@ -80,10 +49,15 @@ export default function HomeFeed({
   const crawlAbortRef = useRef<AbortController | null>(null);
   const articlesCacheRef = useRef<Map<string, { articles: Article[]; totalCount: number; hasMore: boolean; timestamp: number }>>(new Map());
   const fetchAbortRef = useRef<AbortController | null>(null);
-  const isInitialRender = useRef(true);
+
+  useEffect(() => {
+    if (authChecked && !user) setShowLoginDialog(true);
+  }, [authChecked, user]);
 
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false, options?: { signal?: AbortSignal; silent?: boolean }) => {
+      if (!user) return;
+
       const showLoader = !(pageNum === 1 && !append && articles.length > 0 && !initialLoadDone.current);
       if (!options?.silent && showLoader) setIsLoading(true);
 
@@ -91,6 +65,7 @@ export default function HomeFeed({
         const params = new URLSearchParams();
         params.set('page', pageNum.toString());
         params.set('limit', '12');
+        params.set('user_id', user.id);
 
         if (search) params.set('search', search);
         if (category) params.set('category', category);
@@ -99,9 +74,7 @@ export default function HomeFeed({
           signal: options?.signal,
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch articles');
-        }
+        if (!response.ok) throw new Error('Failed to fetch articles');
 
         const data: ArticleListResponse = await response.json();
 
@@ -111,8 +84,8 @@ export default function HomeFeed({
           setArticles(data.articles);
           if (pageNum === 1 && !search && category === categories[0]) {
             try {
-              sessionStorage.setItem(STORAGE_KEY.HOME_ARTICLES, JSON.stringify({ data, timestamp: Date.now() }));
-            } catch { /* quota exceeded */ }
+              sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data, timestamp: Date.now() }));
+            } catch { /* quota */ }
           }
         }
 
@@ -139,55 +112,129 @@ export default function HomeFeed({
         initialLoadDone.current = true;
       }
     },
-    [search, category, lastUpdated, articles.length]
+    [user, search, category, lastUpdated, articles.length, categories]
   );
 
   useEffect(() => {
+    if (!user) return;
+
+    let articlesFresh = false;
+    let categoriesFresh = false;
+    let resolvedCategory = '';
+
+    // 1. categories stale data (load first to resolve category for cache key)
     try {
-      const cached = sessionStorage.getItem(STORAGE_KEY.HOME_CATEGORIES);
+      const cachedCats = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
+      if (cachedCats) {
+        const raw = JSON.parse(cachedCats);
+        const names: string[] = raw.timestamp ? raw.data : raw;
+        const translations = raw.translations;
+        const timestamp = raw.timestamp || 0;
+        if (names.length > 0) {
+          setCategories(names);
+          if (translations) setCategoryTranslations(translations);
+          const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+          resolvedCategory = (saved && names.includes(saved)) ? saved : names[0];
+          setCategory(resolvedCategory);
+        }
+        if (timestamp && Date.now() - timestamp < CLIENT_CACHE_TTL) categoriesFresh = true;
+      }
+    } catch { /* ignore */ }
+
+    // 2. articles stale data
+    try {
+      const cached = sessionStorage.getItem(STORAGE_KEY.MY_ARTICLES);
       if (cached) {
         const raw = JSON.parse(cached);
-        if (raw.timestamp && Date.now() - raw.timestamp < CLIENT_CACHE_TTL) {
-          if (raw.translations) setCategoryTranslations(raw.translations);
-          return;
+        const data: ArticleListResponse = raw.timestamp ? raw.data : raw;
+        const timestamp = raw.timestamp || 0;
+        setArticles(data.articles);
+        setHasMore(data.hasMore);
+        setTotalCount(data.total);
+        if (data.articles.length > 0) setLastUpdated(data.articles[0].crawled_at);
+        setIsLoading(false);
+        if (timestamp && Date.now() - timestamp < CLIENT_CACHE_TTL) {
+          articlesFresh = true;
+          if (resolvedCategory) {
+            articlesCacheRef.current.set(resolvedCategory, {
+              articles: data.articles,
+              totalCount: data.total,
+              hasMore: data.hasMore,
+              timestamp,
+            });
+          }
         }
       }
     } catch { /* ignore */ }
 
-    async function revalidateCategories() {
-      try {
-        const response = await fetch('/api/categories');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.categories && data.categories.length > 0) {
-            const categoryNames = data.categories.map(
-              (c: { name: string }) => c.name
-            );
-            setCategories(categoryNames);
-            setCategoryTranslations(data.categories);
-            try {
-              sessionStorage.setItem(STORAGE_KEY.HOME_CATEGORIES, JSON.stringify({ data: categoryNames, translations: data.categories, timestamp: Date.now() }));
-            } catch { /* ignore */ }
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching categories:', error);
-      }
-    }
-    revalidateCategories();
-  }, []);
-
-  useEffect(() => {
-    if (!category) return;
-
-    // Skip fetch on initial render if showing default category with server data
-    if (isInitialRender.current && category === defaultCategory && !search) {
-      isInitialRender.current = false;
+    // 3. Both fresh → skip API calls
+    if (articlesFresh && categoriesFresh) {
+      initialLoadDone.current = true;
       return;
     }
-    isInitialRender.current = false;
 
+    // 4. Parallel revalidate (categories + articles)
+    async function revalidate() {
+      try {
+        const savedCat = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+        const defaultCat = resolvedCategory;
+
+        const catPromise = fetch(`/api/categories?user_id=${user!.id}`);
+        const artPromise = defaultCat
+          ? fetch(`/api/articles?page=1&limit=12&user_id=${user!.id}&category=${encodeURIComponent(defaultCat)}`)
+          : null;
+
+        const [catRes, artRes] = await Promise.all([catPromise, artPromise]);
+
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          if (catData.categories?.length > 0) {
+            const categoryNames = catData.categories.map((c: { name: string }) => c.name);
+            setCategories(categoryNames);
+            setCategoryTranslations(catData.categories);
+            const finalCat = (savedCat && categoryNames.includes(savedCat)) ? savedCat : categoryNames[0] || '';
+            setCategory(finalCat);
+            try {
+              sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify({ data: categoryNames, translations: catData.categories, timestamp: Date.now() }));
+            } catch { /* ignore */ }
+
+            if (artRes?.ok) {
+              const artData: ArticleListResponse = await artRes.json();
+              articlesCacheRef.current.set(defaultCat, {
+                articles: artData.articles,
+                totalCount: artData.total,
+                hasMore: artData.hasMore,
+                timestamp: Date.now(),
+              });
+              if (defaultCat === finalCat) {
+                setArticles(artData.articles);
+                setHasMore(artData.hasMore);
+                setTotalCount(artData.total);
+                if (artData.articles.length > 0) setLastUpdated(artData.articles[0].crawled_at);
+                try {
+                  sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data: artData, timestamp: Date.now() }));
+                } catch { /* ignore */ }
+              }
+            }
+          } else {
+            setIsLoading(false);
+          }
+        } else {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error in revalidation:', error);
+        setIsLoading(false);
+      }
+    }
+
+    revalidate();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!category || !user) return;
     setPage(1);
+
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
@@ -206,10 +253,10 @@ export default function HomeFeed({
     }
 
     return () => controller.abort();
-  }, [search, category]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, category, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadMore = () => {
-    gaEvent({ action: 'load_more', category: 'navigation', label: `page_${page + 1}` });
+    gaEvent({ action: 'load_more', category: 'navigation', label: `my_feed_page_${page + 1}` });
     const nextPage = page + 1;
     setPage(nextPage);
     fetchArticles(nextPage, true);
@@ -223,7 +270,7 @@ export default function HomeFeed({
   const handleCategoryChange = useCallback((value: string) => {
     gaEvent({ action: 'filter_category', category: 'filter', label: value || 'all' });
     setCategory(value);
-    try { localStorage.setItem(STORAGE_KEY.CATEGORY, value); } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY.MY_CATEGORY, value); } catch { /* ignore */ }
   }, []);
 
   const stopPolling = useCallback(() => {
@@ -240,19 +287,21 @@ export default function HomeFeed({
 
   useEffect(() => { searchRef.current = search; }, [search]);
   useEffect(() => { categoryRef.current = category; }, [category]);
+
   useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
 
   const handleRefresh = () => {
-    if (isCrawling) return;
-    gaEvent({ action: 'crawl_trigger', category: 'crawling', label: 'home' });
+    if (isCrawling || !user) return;
+    gaEvent({ action: 'crawl_trigger', category: 'crawling', label: 'my_feed' });
+
     setIsCrawling(true);
-    setCrawlProgress('\uD06C\uB864\uB9C1 \uC2DC\uC791...');
+    setCrawlProgress('크롤링 시작...');
 
     articlesCacheRef.current.clear();
-    try { sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES); } catch { /* ignore */ }
-    try { sessionStorage.removeItem(STORAGE_KEY.HOME_CATEGORIES); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.MY_ARTICLES); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.MY_CATEGORIES); } catch { /* ignore */ }
 
     pollingRef.current = setInterval(async () => {
       try {
@@ -261,10 +310,11 @@ export default function HomeFeed({
           const status: CrawlStatus = await statusRes.json();
           if (status.isRunning) {
             crawlSeenRunning.current = true;
-            const progress = status.newArticles > 0
-              ? `${status.newArticles}개 콘텐츠 가져오는 중...`
-              : '콘텐츠 검색 중...';
-            setCrawlProgress(progress);
+            setCrawlProgress(
+              status.newArticles > 0
+                ? `${status.newArticles}개 콘텐츠 가져오는 중...`
+                : '콘텐츠 검색 중...'
+            );
           } else if (crawlSeenRunning.current) {
             setCrawlProgress('AI 요약 생성 중...');
           }
@@ -275,6 +325,7 @@ export default function HomeFeed({
         const params = new URLSearchParams();
         params.set('page', '1');
         params.set('limit', '12');
+        params.set('user_id', user.id);
         if (searchRef.current) params.set('search', searchRef.current);
         if (categoryRef.current) params.set('category', categoryRef.current);
 
@@ -325,10 +376,10 @@ export default function HomeFeed({
         setShowToast(true);
 
         setPage(1);
-        setLastUpdated(new Date().toISOString());
         const params = new URLSearchParams();
         params.set('page', '1');
         params.set('limit', '12');
+        params.set('user_id', user.id);
         if (searchRef.current) params.set('search', searchRef.current);
         if (categoryRef.current) params.set('category', categoryRef.current);
         params.set('nocache', '1');
@@ -343,14 +394,12 @@ export default function HomeFeed({
             }
           })
           .catch(() => {});
+        setLastUpdated(new Date().toISOString());
       })
       .catch((error) => {
         clearTimeout(timeoutId);
         if ((error as Error).name === 'AbortError') {
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
           crawlSeenRunning.current = false;
           setIsCrawling(false);
           setCrawlProgress('');
@@ -358,6 +407,7 @@ export default function HomeFeed({
           const abortParams = new URLSearchParams();
           abortParams.set('page', '1');
           abortParams.set('limit', '12');
+          abortParams.set('user_id', user.id);
           if (searchRef.current) abortParams.set('search', searchRef.current);
           if (categoryRef.current) abortParams.set('category', categoryRef.current);
           abortParams.set('nocache', '1');
@@ -392,10 +442,40 @@ export default function HomeFeed({
     setShowToast(true);
 
     if (category) articlesCacheRef.current.delete(category);
-    try {
-      sessionStorage.removeItem(STORAGE_KEY.HOME_ARTICLES);
-    } catch { /* ignore */ }
+    try { sessionStorage.removeItem(STORAGE_KEY.MY_ARTICLES); } catch { /* ignore */ }
   }, [language, category]);
+
+  // Show login dialog for unauthenticated users
+  if (authChecked && !user) {
+    return (
+      <div className="min-h-screen">
+        <Header language={language} onLanguageChange={setLanguage} />
+        <LoginPromptDialog
+          isOpen={showLoginDialog}
+          onClose={() => router.push('/')}
+        />
+      </div>
+    );
+  }
+
+  // Loading auth state
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen">
+        <Header language={language} onLanguageChange={setLanguage} />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-[var(--bg-secondary)] rounded w-1/3" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-48 bg-[var(--bg-secondary)] rounded-xl" />
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -417,7 +497,7 @@ export default function HomeFeed({
             onRefresh={handleRefresh}
             isCrawling={isCrawling}
             crawlProgress={crawlProgress}
-            hideAddSource={isNonMasterUser}
+            userId={user?.id}
           />
         </div>
 
@@ -429,7 +509,7 @@ export default function HomeFeed({
           search={search}
           isChatOpen={isChatOpen}
           onLoadMore={handleLoadMore}
-          onDelete={isLoggedIn && !isNonMasterUser ? handleArticleDelete : undefined}
+          onDelete={handleArticleDelete}
           onChatReference={isChatOpen ? handleChatReference : undefined}
           onCloseChat={isChatOpen ? () => setIsChatOpen(false) : undefined}
         />
@@ -459,7 +539,7 @@ export default function HomeFeed({
         language={language}
         pinnedArticle={pinnedArticle}
         onClearPinned={() => setPinnedArticle(null)}
-        isLoggedIn={isLoggedIn}
+        isLoggedIn={true}
       />
 
       <Toast

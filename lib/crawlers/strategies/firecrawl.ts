@@ -7,8 +7,7 @@
 import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem } from '../types';
 import { scrapeAndExtract } from '../firecrawl-client';
-import { extractContent } from '../content-extractor';
-import { isWithinDays } from '../base';
+import { isWithinDays } from '../date-parser';
 import { MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 
 const ARTICLE_LIST_SCHEMA = {
@@ -128,9 +127,8 @@ export const firecrawlStrategy: CrawlStrategy = {
     console.log(`[FIRECRAWL] Extracting content (using FREE method): ${url}`);
 
     try {
-      // ✅ Firecrawl 대신 기존 무료 방식 사용
-      const result = await extractContent('', url, config);
-      return result || '';
+      const { staticStrategy } = await import('./static');
+      return await staticStrategy.crawlContent(url, config);
     } catch (error) {
       console.error('[FIRECRAWL] crawlContent failed:', error);
       throw error;

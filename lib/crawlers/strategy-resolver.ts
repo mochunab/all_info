@@ -1041,12 +1041,6 @@ async function validateRSSFeed(rssUrl: string): Promise<boolean> {
       return false;
     }
 
-    // Content-Type 확인
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('xml') && !contentType.includes('rss') && !contentType.includes('atom')) {
-      return false;
-    }
-
     // 첫 2KB만 읽기
     const reader = response.body?.getReader();
     if (!reader) return false;
@@ -1058,7 +1052,7 @@ async function validateRSSFeed(rssUrl: string): Promise<boolean> {
 
     const text = new TextDecoder().decode(value.slice(0, 2048));
 
-    // RSS/Atom 태그 존재 확인
+    // RSS/Atom 태그 존재 확인 (Content-Type이 text/html이어도 body 기반 판단)
     return /<rss|<feed|<channel/i.test(text);
   } catch {
     return false;
