@@ -37,8 +37,9 @@ export class StaticStrategy implements CrawlStrategy {
     console.log(`[STATIC] Crawling: ${source.base_url}`);
 
     try {
-      // 메인 페이지 크롤링
-      const mainPageItems = await this.crawlPage(source.base_url, config, source.name);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cachedHtml = (source as any)._cachedHtml as string | undefined;
+      const mainPageItems = await this.crawlPage(source.base_url, config, source.name, cachedHtml);
       items.push(...mainPageItems);
 
       // 페이지네이션 처리
@@ -82,12 +83,13 @@ export class StaticStrategy implements CrawlStrategy {
     url: string,
     config: CrawlConfig,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    sourceName: string
+    sourceName: string,
+    cachedHtml?: string
   ): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
 
     try {
-      const html = await this.fetchPage(url);
+      const html = cachedHtml || await this.fetchPage(url);
       const $ = cheerio.load(html);
 
       const selectors = { ...DEFAULT_SELECTORS, ...config.selectors };

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Language } from '@/types';
 import { t } from '@/lib/i18n';
@@ -9,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { event as gaEvent } from '@/lib/gtag';
 import { useAuth } from '@/lib/auth-context';
 import LanguageSwitcher from './LanguageSwitcher';
+import LocaleLink from './LocaleLink';
 
 type HeaderProps = {
   language?: Language;
@@ -49,7 +49,7 @@ export default function Header({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           <div className="flex items-center gap-8">
-            <Link href={logoHref} className="flex items-center gap-3">
+            <LocaleLink href={logoHref} className="flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--accent)] text-white">
                 <svg
                   width="24"
@@ -69,13 +69,13 @@ export default function Header({
               <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">
                 {t(language, 'header.logo')}
               </h1>
-            </Link>
+            </LocaleLink>
 
             <nav className="hidden md:flex items-center gap-6">
               {NAV_ITEMS.map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = pathname.endsWith(item.href) || (item.href === '/' && pathname.match(/^\/[a-z]{2}\/?$/));
                 return (
-                  <Link
+                  <LocaleLink
                     key={item.href}
                     href={item.href}
                     className={`text-base font-medium transition-colors ${
@@ -85,7 +85,7 @@ export default function Header({
                     }`}
                   >
                     {item.label}
-                  </Link>
+                  </LocaleLink>
                 );
               })}
             </nav>
@@ -105,12 +105,12 @@ export default function Header({
                 </button>
               </div>
             ) : (
-              <Link
+              <LocaleLink
                 href="/login"
                 className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
               >
                 {t(language, 'header.login')}
-              </Link>
+              </LocaleLink>
             )}
 
             {onLanguageChange && (
@@ -143,9 +143,9 @@ export default function Header({
         <div className="md:hidden border-t border-[var(--border)] bg-[var(--bg-primary)]">
           <div className="px-4 py-3 space-y-1">
             {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname.endsWith(item.href) || (item.href === '/' && pathname.match(/^\/[a-z]{2}\/?$/));
               return (
-                <Link
+                <LocaleLink
                   key={item.href}
                   href={item.href}
                   className={`block px-3 py-2.5 rounded-lg text-base font-medium transition-colors ${
@@ -155,7 +155,7 @@ export default function Header({
                   }`}
                 >
                   {item.label}
-                </Link>
+                </LocaleLink>
               );
             })}
 

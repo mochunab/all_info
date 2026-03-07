@@ -1,15 +1,27 @@
 import type { MetadataRoute } from "next";
 import { getCategories, getPopularTags, getActiveSources, getActiveAuthors, getArticleSlugs } from "@/lib/seo-queries";
 import { getBlogSlugs } from "@/lib/blog";
-
-const SUPPORTED_LOCALES = ['ko', 'en', 'vi', 'zh', 'ja'] as const;
+import { LOCALES } from "@/lib/locale-config";
 
 function buildSitemapAlternates(path: string) {
   const languages: Record<string, string> = {};
-  for (const locale of SUPPORTED_LOCALES) {
-    languages[locale] = `https://aca-info.com${path}?lang=${locale}`;
+  for (const locale of LOCALES) {
+    languages[locale] = `https://aca-info.com/${locale}${path}`;
   }
   return { languages };
+}
+
+function localeEntries(
+  path: string,
+  opts: { changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"]; priority: number },
+): MetadataRoute.Sitemap {
+  return LOCALES.map((locale) => ({
+    url: `https://aca-info.com/${locale}${path}`,
+    lastModified: new Date(),
+    changeFrequency: opts.changeFrequency,
+    priority: opts.priority,
+    alternates: buildSitemapAlternates(path),
+  }));
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -22,112 +34,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     getArticleSlugs(),
   ]);
 
-  const staticPages: MetadataRoute.Sitemap = [
-    {
-      url: "https://aca-info.com",
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 1.0,
-      alternates: buildSitemapAlternates("/"),
-    },
-    {
-      url: "https://aca-info.com/landing",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.9,
-      alternates: buildSitemapAlternates("/landing"),
-    },
-    {
-      url: "https://aca-info.com/topics",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-      alternates: buildSitemapAlternates("/topics"),
-    },
-    {
-      url: "https://aca-info.com/tags",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.7,
-      alternates: buildSitemapAlternates("/tags"),
-    },
-    {
-      url: "https://aca-info.com/sources",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.7,
-      alternates: buildSitemapAlternates("/sources"),
-    },
-    {
-      url: "https://aca-info.com/blog",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-      alternates: buildSitemapAlternates("/blog"),
-    },
-    {
-      url: "https://aca-info.com/authors",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.7,
-      alternates: buildSitemapAlternates("/authors"),
-    },
-    {
-      url: "https://aca-info.com/terms",
-      lastModified: new Date(),
-      changeFrequency: "yearly",
-      priority: 0.3,
-      alternates: buildSitemapAlternates("/terms"),
-    },
+  const staticPages = [
+    ...localeEntries("", { changeFrequency: "daily", priority: 1.0 }),
+    ...localeEntries("/landing", { changeFrequency: "monthly", priority: 0.9 }),
+    ...localeEntries("/topics", { changeFrequency: "weekly", priority: 0.8 }),
+    ...localeEntries("/tags", { changeFrequency: "weekly", priority: 0.7 }),
+    ...localeEntries("/sources", { changeFrequency: "weekly", priority: 0.7 }),
+    ...localeEntries("/blog", { changeFrequency: "weekly", priority: 0.8 }),
+    ...localeEntries("/authors", { changeFrequency: "weekly", priority: 0.7 }),
+    ...localeEntries("/terms", { changeFrequency: "yearly", priority: 0.3 }),
   ];
 
-  const categoryPages: MetadataRoute.Sitemap = categories.map((c) => ({
-    url: `https://aca-info.com/topics/${encodeURIComponent(c.name)}`,
-    lastModified: new Date(),
-    changeFrequency: "daily" as const,
-    priority: 0.7,
-    alternates: buildSitemapAlternates(`/topics/${encodeURIComponent(c.name)}`),
-  }));
+  const dynamicPages = [
+    ...categories.flatMap((c) =>
+      localeEntries(`/topics/${encodeURIComponent(c.name)}`, { changeFrequency: "daily", priority: 0.7 }),
+    ),
+    ...tags.flatMap((t) =>
+      localeEntries(`/tags/${encodeURIComponent(t.tag)}`, { changeFrequency: "daily", priority: 0.6 }),
+    ),
+    ...sources.flatMap((s) =>
+      localeEntries(`/sources/${encodeURIComponent(s.name)}`, { changeFrequency: "weekly", priority: 0.6 }),
+    ),
+    ...authors.flatMap((a) =>
+      localeEntries(`/authors/${encodeURIComponent(a.name)}`, { changeFrequency: "daily", priority: 0.6 }),
+    ),
+    ...blogSlugs.flatMap((s) =>
+      localeEntries(`/blog/${s.slug}`, { changeFrequency: "weekly", priority: 0.7 }),
+    ),
+    ...articleSlugs.flatMap((s) =>
+      localeEntries(`/articles/${s.slug}`, { changeFrequency: "daily", priority: 0.6 }),
+    ),
+  ];
 
-  const tagPages: MetadataRoute.Sitemap = tags.map((t) => ({
-    url: `https://aca-info.com/tags/${encodeURIComponent(t.tag)}`,
-    lastModified: new Date(),
-    changeFrequency: "daily" as const,
-    priority: 0.6,
-    alternates: buildSitemapAlternates(`/tags/${encodeURIComponent(t.tag)}`),
-  }));
-
-  const sourcePages: MetadataRoute.Sitemap = sources.map((s) => ({
-    url: `https://aca-info.com/sources/${encodeURIComponent(s.name)}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: 0.6,
-    alternates: buildSitemapAlternates(`/sources/${encodeURIComponent(s.name)}`),
-  }));
-
-  const authorPages: MetadataRoute.Sitemap = authors.map((a) => ({
-    url: `https://aca-info.com/authors/${encodeURIComponent(a.name)}`,
-    lastModified: new Date(),
-    changeFrequency: "daily" as const,
-    priority: 0.6,
-    alternates: buildSitemapAlternates(`/authors/${encodeURIComponent(a.name)}`),
-  }));
-
-  const blogPages: MetadataRoute.Sitemap = blogSlugs.map((s) => ({
-    url: `https://aca-info.com/blog/${s.slug}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: 0.7,
-    alternates: buildSitemapAlternates(`/blog/${s.slug}`),
-  }));
-
-  const articlePages: MetadataRoute.Sitemap = articleSlugs.map((s) => ({
-    url: `https://aca-info.com/articles/${s.slug}`,
-    lastModified: new Date(),
-    changeFrequency: "daily" as const,
-    priority: 0.6,
-    alternates: buildSitemapAlternates(`/articles/${s.slug}`),
-  }));
-
-  return [...staticPages, ...categoryPages, ...tagPages, ...sourcePages, ...authorPages, ...blogPages, ...articlePages];
+  return [...staticPages, ...dynamicPages];
 }

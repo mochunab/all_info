@@ -1,7 +1,7 @@
 # 아카인포 SEO 전략
 
 > 최초 작성: 2026-03-02
-> 최종 업데이트: 2026-03-07
+> 최종 업데이트: 2026-03-08
 > 도메인: `https://aca-info.com`
 
 ---
@@ -17,7 +17,7 @@ AI 기반 멀티소스 모니터링 & 브리핑 서비스 (RSS, YouTube, Slack, 
 | **Sitemap URL 수** | **500+** | 50+ (topics/tags/sources/blog/articles 동적) | 개선됨 |
 | **블로그/콘텐츠 마케팅** | 30+ SEO 블로그 포스트 | 9편 SEO 블로그 + 아티클 상세 페이지 | 개선됨 |
 | **프로그래매틱 페이지** | 소스별·템플릿별 랜딩 20+ | 없음 | 열세 |
-| **다국어 hreflang** | ko/en/ja (URL 분리) | i18n 5개 + hreflang `?lang=` 쿼리 적용 | 개선됨 |
+| **다국어 hreflang** | ko/en/ja (URL 분리) | i18n 5개 + hreflang 서브디렉토리 (`/ko/`, `/en/`, `/vi/`, `/zh/`, `/ja/`) | **동등** |
 | **FAQ** | 8개 Q&A | 10개 Q&A | 우세 |
 | **JSON-LD** | Organization + SoftwareApplication | Organization + WebSite + FAQ + SoftwareApp | 동등 |
 | **OG/Twitter 카드** | 완비 (언어별 이미지) | 완비 | 동등 |
@@ -88,7 +88,7 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 | Phase 7 | RSS 2.0 피드 | ✅ 완료 | 2026-03-06 |
 | Phase 8 | IndexNow (크롤링 후 자동 제출) | ✅ 완료 | 2026-03-06 |
 | Phase 9 | 프로그래매틱 SEO 페이지 (topics, tags, sources) | ✅ 완료 | 2026-03-06 |
-| Phase 10 | hreflang 다국어 (`?lang=` 쿼리 + `alternates.languages`) | ✅ 완료 | 2026-03-06 |
+| Phase 10 | hreflang 다국어 (서브디렉토리 방식으로 Phase 15에서 업그레이드) | ✅ 완료 | 2026-03-06 |
 | Phase 11 | 블로그 섹션 (DB 기반, `/blog`, `/blog/[slug]`) | ✅ 완료 | 2026-03-07 |
 
 ### 완료 (Phase 12)
@@ -109,6 +109,12 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 |-------|------|------|--------|
 | Phase 14 | 저자 프로그래매틱 페이지 + 동적 OG 이미지 | ✅ 완료 | 2026-03-07 |
 
+### 완료 (Phase 15)
+
+| Phase | 내용 | 상태 | 배포일 |
+|-------|------|------|--------|
+| Phase 15 | 서브디렉토리 i18n 마이그레이션 + 블로그 번역 인프라 + Baidu SEO | ✅ 완료 | 2026-03-08 |
+
 ### Phase 9: 프로그래매틱 SEO 페이지 (완료)
 
 **구현 완료**: `/topics/[category]`, `/tags/[tag]`, `/sources/[source]` 자동 생성 페이지
@@ -117,12 +123,11 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 - sitemap URL 50+ 자동 생성
 - 내부 링크 네트워크 (카테고리 ↔ 태그 ↔ 소스 상호 링크)
 
-### Phase 10: hreflang 다국어 (완료)
+### Phase 10: hreflang 다국어 (완료 → Phase 15에서 서브디렉토리로 업그레이드)
 
-**구현 완료**: `?lang=` 쿼리 파라미터 방식
-- `lib/hreflang.ts` — `buildAlternateLanguages(path)` → 5개 언어 + `x-default`
-- `alternates.languages` 적용: topics, tags, sources, blog 전체
-- sitemap `buildSitemapAlternates()` — 모든 URL에 hreflang 포함
+**초기 구현**: `?lang=` 쿼리 파라미터 방식
+- Phase 15에서 서브디렉토리 방식(`/ko/`, `/en/`, `/vi/`, `/zh/`, `/ja/`)으로 전환 완료
+- 상세 내용은 Phase 15 참조
 
 ### Phase 11: 블로그 섹션 (완료)
 
@@ -167,10 +172,9 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 | `app/layout.tsx` | `metadataBase`, title template, OG/Twitter 카드, canonical, JSON-LD (Organization + WebSite) |
 | `public/og-image.png` | OG 이미지 (1200x630) |
 
-**글로벌 메타데이터** (`app/layout.tsx`):
-- title: `아카인포 - 나만의 면접 치트키`
-- description: `면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!`
-- keywords: `AI 면접 코칭`, `업계 브리핑`, `비즈니스 인사이트`, `마케팅 트렌드`, `스타트업`, `아카인포`
+**글로벌 메타데이터** (`app/[locale]/layout.tsx`, Phase 15에서 이동):
+- 로케일별 title/description/keywords (ko/en/vi/zh/ja)
+- ko 기본: `아카인포 - 나만의 면접 치트키` / `면접 광탈은 이제 그만, 남다른 답변으로 취뽀하자!`
 
 ### Phase 2: SSR 전환
 
@@ -311,6 +315,13 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 15. `/sitemap.xml`에 author URL 포함 확인
 16. `/api/og?title=테스트&type=article` 동적 OG 이미지 생성 확인
 17. 아티클 상세 페이지에서 저자 이름 클릭 → `/authors/[name]` 이동 확인
+18. `/ko/`, `/en/`, `/ja/`, `/zh/`, `/vi/` 접속 시 로케일별 메타데이터 확인
+19. `/` 접속 시 `Accept-Language` 기반 302 리다이렉트 확인
+20. `/?lang=en` → `/en/` 301 리다이렉트 확인
+21. 페이지 소스에서 hreflang이 서브디렉토리 형식(`/ko/path`, `/en/path`)인지 확인
+22. LanguageSwitcher 전환 시 URL 경로 변경 확인 (쿼리 아닌 서브디렉토리)
+23. `/sitemap.xml`에 서브디렉토리 URL + 5개 로케일 엔트리 확인
+24. `<html lang="ko">` 등 동적 lang 속성 확인
 
 ### Phase 13: 아티클 상세 페이지 SEO (완료)
 
@@ -354,3 +365,63 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 - type별 accent color 분기 (article: Indigo, blog: Purple, author: Cyan)
 - 아티클 상세, 블로그 상세 페이지에 동적 OG 적용
 - 기존 정적 `og-image.png`는 홈/랜딩 등 범용 페이지용으로 유지
+
+### Phase 15: 서브디렉토리 i18n 마이그레이션 (완료)
+
+**목적**: `?lang=ko` 쿼리 파라미터 → `/ko/`, `/en/`, `/vi/`, `/zh/`, `/ja/` 서브디렉토리 전환 (Google hreflang 정식 방식)
+
+**1. 라우팅 구조 변경**:
+- 모든 public 페이지를 `app/[locale]/` 하위로 이동
+- `app/layout.tsx` → 최소 셸 (html/body, 폰트, GA, `<html lang>` 설정)
+- `app/[locale]/layout.tsx` → 로케일별 메타데이터, JSON-LD, Providers
+- `generateStaticParams`로 5개 로케일 × 모든 페이지 조합 정적 생성
+
+**2. middleware.ts i18n 로직**:
+- URL 첫 세그먼트가 유효 로케일 → `x-locale` 헤더 설정 후 통과
+- `?lang=` 쿼리 → `/{locale}/path` 301 리다이렉트 (레거시 호환)
+- 로케일 없는 URL → `Accept-Language` 감지 → `/{detected}/path` 302 리다이렉트
+
+**3. 로케일 인식 링크**:
+- `components/LocaleLink.tsx` (client) — `usePathname()`에서 로케일 추출, 자동 prefix
+- `lib/locale-path.ts` (server) — `localePath(locale, path)` 유틸
+- Header, Footer, SeoBreadcrumb, SeoArticleList 등 14개 파일 내부 링크 전환
+
+**4. hreflang 서브디렉토리 전환**:
+- `lib/hreflang.ts` — `?lang=` → `/{locale}{path}` 형식
+- `x-default` → `https://aca-info.com/ko{path}`
+
+**5. sitemap 업데이트**:
+- 모든 URL을 `/{locale}/path` 형식으로 변경
+- 각 페이지마다 5개 로케일 엔트리 생성 (빌드 시 1873 페이지)
+
+**6. 블로그 번역 인프라**:
+- DB: `blog_posts`에 `language`, `translation_group_id` 컬럼 추가 (migration 016)
+- `lib/blog.ts` — `getBlogPosts(language)`, `getBlogPost(slug, language)` language 필터
+- `supabase/functions/translate-blog/` — Gemini 2.5 Flash 번역 Edge Function
+
+**7. Baidu SEO**:
+- `app/robots.ts` — Baiduspider 규칙 추가 (`allow: ["/zh/"]`, `crawlDelay: 1`)
+- Baidu 인증은 중국 전화번호 필요로 보류
+
+| 파일 | 작업 |
+|------|------|
+| `lib/locale-config.ts` | (신규) LOCALES, Locale 타입, OG_LOCALES |
+| `lib/locale-path.ts` | (신규) 서버용 `localePath()` |
+| `components/LocaleLink.tsx` | (신규) 클라이언트용 로케일 링크 래퍼 |
+| `app/layout.tsx` | 최소 셸로 축소, `<html lang>` 동적 설정 |
+| `app/[locale]/layout.tsx` | (신규) 로케일별 메타데이터 + JSON-LD |
+| `app/[locale]/**/*.tsx` | 모든 페이지 `[locale]` 하위로 이동, params에 locale 추가 |
+| `app/providers.tsx` | locale prop 수신 |
+| `middleware.ts` | i18n 라우팅 (301/302 리다이렉트, Accept-Language 감지) |
+| `lib/hreflang.ts` | 서브디렉토리 형식 전환 |
+| `lib/language-context.tsx` | `locale` prop 기반으로 전환, `?lang=` 감지 제거 |
+| `app/sitemap.ts` | 5개 로케일 × 모든 URL 생성 |
+| `app/robots.ts` | 로케일 경로 + Baiduspider 규칙 |
+| `components/Header.tsx` | LocaleLink 적용 |
+| `components/Footer.tsx` | LocaleLink 적용 |
+| `components/SeoBreadcrumb.tsx` | locale prop + localePath 적용 |
+| `components/SeoArticleList.tsx` | locale prop + localePath 적용 |
+| `types/index.ts` | BlogPost에 `language`, `translation_group_id` 추가 |
+| `lib/blog.ts` | language 필터 파라미터 추가 |
+| `supabase/migrations/016_blog_posts_i18n.sql` | (신규) language + translation_group_id 컬럼 |
+| `supabase/functions/translate-blog/` | (신규) Gemini 블로그 번역 Edge Function |

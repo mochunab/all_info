@@ -1,28 +1,16 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import type { Language } from '@/types';
 import { translations, t as rawT, translateCategory } from '@/lib/i18n';
+import { LOCALES } from '@/lib/locale-config';
 
-const STORAGE_KEY = 'ih:language';
 const VALID_LANGUAGES = Object.keys(translations) as Language[];
+const LOCALE_SET = new Set<string>(LOCALES);
 
 function isValidLanguage(lang: string): lang is Language {
   return VALID_LANGUAGES.includes(lang as Language);
-}
-
-function detectLanguage(): Language {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const urlLang = params.get('lang');
-    if (urlLang && isValidLanguage(urlLang)) {
-      localStorage.setItem(STORAGE_KEY, urlLang);
-      return urlLang;
-    }
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && isValidLanguage(saved)) return saved;
-  } catch { /* ignore */ }
-  return 'ko';
 }
 
 type CategoryWithTranslations = {
@@ -40,23 +28,30 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('ko');
+export function LanguageProvider({
+  children,
+  locale = 'ko',
+}: {
+  children: React.ReactNode;
+  locale?: string;
+}) {
+  const initialLang: Language = isValidLanguage(locale) ? locale : 'ko';
+  const [language, setLanguageState] = useState<Language>(initialLang);
   const catTransMapRef = useRef<Record<string, Record<string, string>>>({});
-  useEffect(() => {
-    const detected = detectLanguage();
-    if (detected !== 'ko') setLanguageState(detected);
-  }, []);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
-    try {
-      localStorage.setItem(STORAGE_KEY, lang);
-      const url = new URL(window.location.href);
-      url.searchParams.set('lang', lang);
-      window.history.replaceState(null, '', url.toString());
-    } catch { /* ignore */ }
-  }, []);
+    // Navigate to the new locale path
+    const segments = pathname.split('/');
+    if (segments.length > 1 && LOCALE_SET.has(segments[1])) {
+      segments[1] = lang;
+    } else {
+      segments.splice(1, 0, lang);
+    }
+    router.push(segments.join('/') || '/');
+  }, [router, pathname]);
 
   const t = useCallback(
     (key: string, params?: Record<string, string | number>) => rawT(language, key, params),
@@ -78,10 +73,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     const dbTrans = catTransMapRef.current[name]?.[language];
     if (dbTrans) return dbTrans;
     return translateCategory(name, language);
-  }, [language]);
-
-  useEffect(() => {
-    document.documentElement.lang = language;
   }, [language]);
 
   return (
