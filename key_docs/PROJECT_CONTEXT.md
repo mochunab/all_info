@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - 데이터 플로우 & 런타임 동작 가이드
 
 > 이 문서의 핵심: **데이터가 시스템을 어떻게 흐르는가**
-> 최종 업데이트: 2026-03-02 (v1.8.2)
+> 최종 업데이트: 2026-03-07 (v1.8.6)
 >
 > **다른 문서 참조**:
 > - 개발 규칙, API Routes, 파일 구조, 환경변수, 디버깅 → [CLAUDE.md](../CLAUDE.md)
@@ -305,6 +305,14 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.6 (2026-03-07)
+- robots.txt 체크 비활성화 (`lib/crawlers/index.ts`, 추후 재활성화 예정)
+- API 감지 상대경로 거부: `api-detector.ts`에서 절대 URL이 아닌 엔드포인트 거부 → SPA 유지
+  - CSRF/세션 보호 SPA 사이트(예: surfit.io)가 잘못된 API 타입으로 감지되는 문제 방지
+- Hydration error 수정: `language-context.tsx` 초기값을 `'ko'`로 고정, `useEffect`에서 감지
+  - 서버(`'ko'`) vs 클라이언트(localStorage) 불일치로 전체 CSS 깨지는 문제 해결
+- UI: LanguageSwitcher 지구본 아이콘 → 현재 언어 국기 이모지로 변경
 
 ### v1.8.5 (2026-03-06)
 - SPA 소스 사전 감지 + auto-recovery Puppeteer HTML 지원

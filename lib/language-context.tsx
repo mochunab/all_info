@@ -11,8 +11,7 @@ function isValidLanguage(lang: string): lang is Language {
   return VALID_LANGUAGES.includes(lang as Language);
 }
 
-function getInitialLanguage(): Language {
-  if (typeof window === 'undefined') return 'ko';
+function detectLanguage(): Language {
   try {
     const params = new URLSearchParams(window.location.search);
     const urlLang = params.get('lang');
@@ -42,8 +41,12 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [language, setLanguageState] = useState<Language>('ko');
   const catTransMapRef = useRef<Record<string, Record<string, string>>>({});
+  useEffect(() => {
+    const detected = detectLanguage();
+    if (detected !== 'ko') setLanguageState(detected);
+  }, []);
 
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);

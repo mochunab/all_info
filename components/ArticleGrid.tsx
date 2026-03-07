@@ -5,17 +5,18 @@ import { t } from '@/lib/i18n';
 import ArticleCard from './ArticleCard';
 import Skeleton from './Skeleton';
 
-interface ArticleGridProps {
+type ArticleGridProps = {
   articles: Article[];
   language: Language;
   isLoading?: boolean;
   hasMore?: boolean;
   search?: string;
+  isChatOpen?: boolean;
   onLoadMore?: () => void;
   onDelete?: (articleId: string) => void;
   onChatReference?: (article: Article) => void;
   onCloseChat?: () => void;
-}
+};
 
 export default function ArticleGrid({
   articles,
@@ -23,6 +24,7 @@ export default function ArticleGrid({
   isLoading = false,
   hasMore = false,
   search = '',
+  isChatOpen = false,
   onLoadMore,
   onDelete,
   onChatReference,
@@ -70,7 +72,7 @@ export default function ArticleGrid({
   return (
     <div>
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isChatOpen ? '' : 'lg:grid-cols-3'} gap-5 sm:gap-6 transition-all duration-300`}>
         {articles.map((article) => (
           <ArticleCard
             key={article.id}

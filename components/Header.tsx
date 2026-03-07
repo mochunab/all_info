@@ -41,6 +41,7 @@ export default function Header({
   const NAV_ITEMS = [
     { label: t(language, 'header.home'), href: '/' },
     { label: t(language, 'header.myFeed'), href: '/my-feed' },
+    { label: t(language, 'header.blog'), href: '/blog' },
   ];
 
   return (

@@ -35,11 +35,12 @@ export class RSSStrategy implements CrawlStrategy {
     const config = parseConfig(source);
 
     // RSS URL 결정 (config에서 지정하거나 base_url 사용)
-    const rssUrl = config.crawl_config?.rssUrl || source.base_url;
+    const explicitRssUrl = config.crawl_config?.rssUrl;
+    const rssUrl = explicitRssUrl || source.base_url;
 
-    // rssUrl이 base_url과 다르면 스코프 호환성 체크
-    // 불일치 시 에러 throw → 폴백 체인이 STATIC으로 전환
-    if (rssUrl !== source.base_url && !this.checkScopeCompatibility(source.base_url, rssUrl)) {
+    // 스코프 체크: config에 명시된 rssUrl은 시스템이 설정한 것이므로 신뢰
+    // 자동 발견된 rssUrl만 스코프 호환성 검증
+    if (!explicitRssUrl && rssUrl !== source.base_url && !this.checkScopeCompatibility(source.base_url, rssUrl)) {
       console.log(`[RSS] 스코프 불일치 — base: ${source.base_url}`);
       console.log(`[RSS]                  rss:  ${rssUrl}`);
       throw new Error(`RSS scope mismatch: feed covers broader scope than base_url`);

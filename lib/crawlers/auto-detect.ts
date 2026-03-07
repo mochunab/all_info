@@ -29,7 +29,14 @@ type SelectorCandidate = {
  * HTML fetch (15초 타임아웃)
  * @public strategy-resolver에서 재사용
  */
-export async function fetchPage(url: string): Promise<string | null> {
+export async function fetchPage(url: string): Promise<{ html: string | null; botBlocked?: { status: number; reason: string } }> {
+  const BOT_BLOCK_KEYWORDS = [
+    'security checkpoint', 'bot detection', 'access denied', 'captcha',
+    'challenge-platform', 'cf-browser-verification', 'just a moment',
+    'are you a human', 'verify you are human', 'ddos protection',
+    'blocked', 'ray id', 'attention required',
+  ];
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -39,14 +46,30 @@ export async function fetchPage(url: string): Promise<string | null> {
       signal: controller.signal,
     });
 
-    if (!response.ok) {
-      console.error(`[AUTO-DETECT] HTTP ${response.status} for ${url}`);
-      return null;
+    if (response.status === 429 || response.status === 403) {
+      const body = await response.text();
+      const bodyLower = body.toLowerCase();
+      const matched = BOT_BLOCK_KEYWORDS.some(kw => bodyLower.includes(kw));
+      const wafHeader = response.headers.get('x-vercel-mitigated')
+        || response.headers.get('cf-mitigated')
+        || response.headers.get('x-amzn-waf-action');
+
+      if (matched || wafHeader) {
+        const reason = wafHeader
+          ? `WAF (${wafHeader})`
+          : `HTTP ${response.status} + bot detection keywords`;
+        console.warn(`[AUTO-DETECT] Bot blocked: ${url} — ${reason}`);
+        return { html: null, botBlocked: { status: response.status, reason } };
+      }
     }
 
-    return await response.text();
+    if (!response.ok) {
+      console.error(`[AUTO-DETECT] HTTP ${response.status} for ${url}`);
+      return { html: null };
+    }
+
+    return { html: await response.text() };
   } catch (error) {
-    // redirect loop → retry with bot UA
     if (error instanceof TypeError && (error.cause as Error)?.message?.includes('redirect count exceeded')) {
       console.log(`[AUTO-DETECT] Redirect loop, retrying with bot UA: ${url}`);
       clearTimeout(timeoutId);
@@ -57,16 +80,16 @@ export async function fetchPage(url: string): Promise<string | null> {
           headers: { ...DEFAULT_HEADERS, 'User-Agent': BOT_USER_AGENT },
           signal: controller2.signal,
         });
-        if (!response.ok) return null;
-        return await response.text();
+        if (!response.ok) return { html: null };
+        return { html: await response.text() };
       } catch {
-        return null;
+        return { html: null };
       } finally {
         clearTimeout(timeoutId2);
       }
     }
     console.error(`[AUTO-DETECT] Fetch error for ${url}:`, error);
-    return null;
+    return { html: null };
   } finally {
     clearTimeout(timeoutId);
   }
