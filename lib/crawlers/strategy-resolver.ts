@@ -150,7 +150,7 @@ export async function detectByUnifiedAI(
  * - 소스 저장 시 1회 실행
  * - URL 최적화 → RSS 자동 발견 → CMS 감지 → URL 패턴 → SPA → 셀렉터 분석 순서
  */
-export async function resolveStrategy(url: string): Promise<StrategyResolution> {
+export async function resolveStrategy(url: string, options?: { cachedHtml?: string }): Promise<StrategyResolution> {
   console.log(`\n${'='.repeat(80)}`);
   console.log(`🔍 [전략 해석기] 크롤링 타입 자동 감지 시작`);
   console.log(`${'='.repeat(80)}`);
@@ -234,30 +234,36 @@ export async function resolveStrategy(url: string): Promise<StrategyResolution> 
     }
 
     // 1. HTML 페이지 가져오기 (15초 타임아웃)
-    console.log(`\n📥 [1단계/9단계] HTML 페이지 다운로드 시작...`);
-    console.log(`   ⏱️  최대 대기시간: 15초`);
-    const startFetch = Date.now();
-    const fetchResult = await fetchPage(url);
-    const fetchTime = Date.now() - startFetch;
-    const html = fetchResult.html;
+    let html: string | null = options?.cachedHtml || null;
 
-    if (fetchResult.botBlocked) {
-      console.warn(`   🚫 봇 차단 감지: ${fetchResult.botBlocked.reason} (${fetchTime}ms)`);
-      const fallback = fallbackToUrlPattern(url);
-      fallback.botBlocked = fetchResult.botBlocked;
-      return fallback;
+    if (html) {
+      console.log(`\n📥 [1단계/9단계] 캐시된 HTML 사용 (${(html.length / 1024).toFixed(1)}KB)`);
+    } else {
+      console.log(`\n📥 [1단계/9단계] HTML 페이지 다운로드 시작...`);
+      console.log(`   ⏱️  최대 대기시간: 15초`);
+      const startFetch = Date.now();
+      const fetchResult = await fetchPage(url);
+      const fetchTime = Date.now() - startFetch;
+      html = fetchResult.html;
+
+      if (fetchResult.botBlocked) {
+        console.warn(`   🚫 봇 차단 감지: ${fetchResult.botBlocked.reason} (${fetchTime}ms)`);
+        const fallback = fallbackToUrlPattern(url);
+        fallback.botBlocked = fetchResult.botBlocked;
+        return fallback;
+      }
+
+      if (!html) {
+        console.warn(`   ❌ HTML 다운로드 실패 (${fetchTime}ms)`);
+        console.warn(`   🔄 URL 패턴 기반 분석으로 폴백`);
+        return fallbackToUrlPattern(url);
+      }
+
+      const sizeKB = (html.length / 1024).toFixed(1);
+      console.log(`   ✅ HTML 다운로드 완료`);
+      console.log(`   📊 크기: ${sizeKB}KB (${html.length.toLocaleString()} bytes)`);
+      console.log(`   ⏱️  소요시간: ${fetchTime}ms`);
     }
-
-    if (!html) {
-      console.warn(`   ❌ HTML 다운로드 실패 (${fetchTime}ms)`);
-      console.warn(`   🔄 URL 패턴 기반 분석으로 폴백`);
-      return fallbackToUrlPattern(url);
-    }
-
-    const sizeKB = (html.length / 1024).toFixed(1);
-    console.log(`   ✅ HTML 다운로드 완료`);
-    console.log(`   📊 크기: ${sizeKB}KB (${html.length.toLocaleString()} bytes)`);
-    console.log(`   ⏱️  소요시간: ${fetchTime}ms`);
 
     const $ = cheerio.load(html);
 

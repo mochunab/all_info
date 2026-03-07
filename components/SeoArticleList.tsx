@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import type { Article } from '@/types';
 import { SOURCE_COLORS, DEFAULT_SOURCE_COLOR } from '@/types';
+import { localePath } from '@/lib/locale-path';
 
 type SeoArticleListProps = {
   articles: Article[];
+  locale?: string;
 };
 
 function formatDate(dateString: string | null): string {
@@ -12,7 +14,9 @@ function formatDate(dateString: string | null): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export default function SeoArticleList({ articles }: SeoArticleListProps) {
+export default function SeoArticleList({ articles, locale = 'ko' }: SeoArticleListProps) {
+  const lp = (path: string) => localePath(locale, path);
+
   if (articles.length === 0) {
     return <p className="text-[var(--text-tertiary)] text-center py-12">아티클이 없습니다.</p>;
   }
@@ -29,7 +33,7 @@ export default function SeoArticleList({ articles }: SeoArticleListProps) {
           <article key={article.id} className="card p-4 sm:p-5">
             <div className="flex items-center gap-2 mb-2">
               <Link
-                href={`/sources/${encodeURIComponent(article.source_name)}`}
+                href={lp(`/sources/${encodeURIComponent(article.source_name)}`)}
                 className="px-2 py-0.5 rounded text-white text-xs font-medium hover:opacity-80 transition-opacity"
                 style={{ backgroundColor: sourceColor }}
               >
@@ -37,7 +41,7 @@ export default function SeoArticleList({ articles }: SeoArticleListProps) {
               </Link>
               {article.category && (
                 <Link
-                  href={`/topics/${encodeURIComponent(article.category)}`}
+                  href={lp(`/topics/${encodeURIComponent(article.category)}`)}
                   className="text-xs text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
                 >
                   {article.category}
@@ -68,7 +72,7 @@ export default function SeoArticleList({ articles }: SeoArticleListProps) {
                 {tags.map((tag, i) => (
                   <Link
                     key={i}
-                    href={`/tags/${encodeURIComponent(tag)}`}
+                    href={lp(`/tags/${encodeURIComponent(tag)}`)}
                     className="px-2 py-0.5 text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded hover:text-[var(--accent)] transition-colors"
                   >
                     #{tag}

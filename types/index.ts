@@ -181,4 +181,6 @@ export type BlogPost = {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  language: Language;
+  translation_group_id: string | null;
 };

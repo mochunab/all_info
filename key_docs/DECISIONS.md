@@ -716,7 +716,7 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 - **핵심 설계**:
   - `crawlList()`에서 title + thumbnail + content를 1회 fetch로 동시 추출 (이중 fetch 방지)
   - `item.content` 설정 시 오케스트레이터가 `crawlContent()` 재호출 생략
-  - 최대 15개 URL fetch (오케스트레이터는 상위 5개만 사용, 실패 대비 버퍼)
+  - 최대 15개 URL fetch (오케스트레이터는 상위 3개만 사용, 실패 대비 버퍼)
   - 5개씩 병렬 fetch (배치 처리)
   - Sitemap Index 재귀 지원 (depth ≤ 1, 최대 3개 서브 sitemap)
 - **자동 감지**: 파이프라인 Step 2.5에서 `/sitemap.xml` 자동 탐색, 성공 시 `SITEMAP` 타입 결정

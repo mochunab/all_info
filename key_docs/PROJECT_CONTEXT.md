@@ -104,8 +104,8 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    │   │
    │   └─ [저장] saveArticles() — source_id UNIQUE로 중복 방지
    │
-   ├─ crawl_logs 업데이트 (completed/failed)
-   └─ crawl_sources.last_crawled_at 업데이트
+   ├─ crawl_logs 업데이트 (errors 있으면 failed + error_message, 없으면 completed)
+   └─ crawl_sources.last_crawled_at 업데이트 (skipped가 아닐 때만)
 
 4. AI 요약 배치 실행
    └─ processPendingSummaries(batchSize=30)
