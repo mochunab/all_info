@@ -443,32 +443,100 @@ const SOURCE_COLORS: Record<string, string> = {
 
 ## 📂 기능별 빠른 참조 (Quick Reference by Feature)
 
-### 홈피드 (메인 페이지)
+> 사용자 메뉴(페이지) 기준으로 분류. 각 기능 수정 시 관련 파일을 빠르게 찾기 위한 참조.
+
+---
+
+### 🏠 홈피드 (`/`)
 | 파일 | 역할 |
 |------|------|
-| `app/[locale]/page.tsx` | 홈피드 페이지 (master 콘텐츠) |
+| `app/[locale]/page.tsx` | 홈피드 서버 페이지 (master 콘텐츠) |
 | `components/HomeFeed.tsx` | 홈피드 클라이언트 컴포넌트 |
 | `components/ArticleGrid.tsx` | 아티클 그리드 레이아웃 |
 | `components/ArticleCard.tsx` | 아티클 카드 (삭제, 핀 기능) |
 | `components/FilterBar.tsx` | 카테고리/소스/태그 필터 |
-| `components/Header.tsx` | 글로벌 헤더 (네비게이션) |
-| `components/Footer.tsx` | 글로벌 푸터 (이용약관 링크) |
+| `components/InsightChat.tsx` | AI 채팅 UI (아티클 핀 참조) |
+| `app/api/articles/route.ts` | 아티클 목록 GET |
+| `app/api/articles/[id]/route.ts` | 아티클 삭제 DELETE |
+| `app/api/articles/[id]/content/route.ts` | content_preview 조회 GET |
+| `app/api/articles/sources/route.ts` | 소스별 아티클 조회 |
+| `app/api/categories/route.ts` | 카테고리 CRUD |
+| `app/api/chat/route.ts` | 채팅 프록시 API → chat-insight Edge Fn |
+| `app/api/crawl/trigger/route.ts` | "자료 불러오기" 버튼 프록시 (rate limit 30s) |
+| `app/api/image-proxy/route.ts` | 이미지 프록시 (CORS 우회) |
 
-### 마이피드 (개인 피드)
+### 📌 마이피드 (`/my-feed`)
 | 파일 | 역할 |
 |------|------|
 | `app/[locale]/my-feed/page.tsx` | 마이피드 페이지 (user_id 스코핑) |
 | `components/LoginPromptDialog.tsx` | 비로그인 접근 시 안내 다이얼로그 |
+| _홈피드와 동일한 컴포넌트 공유_ | HomeFeed, ArticleGrid, ArticleCard, FilterBar 등 |
 
-### 소스 관리 (추가/편집)
+### ⚙️ 소스 관리 (`/sources/add`)
 | 파일 | 역할 |
 |------|------|
 | `app/[locale]/sources/add/page.tsx` | 소스 추가 페이지 (서버) |
-| `app/[locale]/sources/add/SourcesPageClient.tsx` | 소스 관리 클라이언트 (카테고리, 링크 CRUD) |
-| `app/api/sources/route.ts` | 소스 CRUD API + auto-detect |
-| `app/api/sources/recommend/route.ts` | AI 소스 추천 API |
+| `app/[locale]/sources/add/SourcesPageClient.tsx` | 소스 관리 클라이언트 (카테고리, 링크 CRUD, 뒤로가기) |
+| `app/api/sources/route.ts` | 소스 CRUD API + auto-detect (`resolveStrategy`) |
+| `app/api/sources/recommend/route.ts` | AI 콘텐츠 링크 추천 API |
+| `supabase/functions/recommend-sources/index.ts` | AI 소스 추천 Edge Fn (Gemini + google_search + 6단계 URL 검증) |
 
-### 크롤링
+### ✍️ 블로그 (`/blog`)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/blog/page.tsx` | 블로그 목록 페이지 |
+| `app/[locale]/blog/[slug]/page.tsx` | 블로그 상세 페이지 |
+| `lib/blog.ts` | 블로그 DB 쿼리 헬퍼 |
+| `supabase/functions/translate-blog/index.ts` | 블로그 번역 Edge Fn |
+| `app/api/translate/route.ts` | 번역 API |
+
+### 🚀 랜딩 페이지 (`/landing`)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/landing/page.tsx` | 랜딩 페이지 |
+| `app/[locale]/landing/LandingContent.tsx` | 랜딩 콘텐츠 |
+| `app/[locale]/landing/LandingHeader.tsx` | 랜딩 헤더 |
+| `app/[locale]/landing/AnimatedSection.tsx` | 애니메이션 섹션 |
+
+### 🔐 로그인/회원가입 (`/login`, `/signup`)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/login/page.tsx` | 로그인 페이지 |
+| `app/[locale]/signup/page.tsx` | 회원가입 페이지 |
+| `app/auth/callback/route.ts` | OAuth 콜백 |
+| `lib/auth.ts` | `verifyCronAuth`, `verifySameOrigin` |
+| `lib/user.ts` | `getMasterUserId()` 헬퍼 |
+
+### 📄 이용약관 (`/terms`)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/terms/page.tsx` | 이용약관 페이지 (opt-out 안내, 저작권 고지) |
+
+### 🔍 SEO 페이지 (토픽/태그/소스/저자/아티클 상세)
+| 파일 | 역할 |
+|------|------|
+| `app/[locale]/articles/[slug]/page.tsx` | 아티클 상세 |
+| `app/[locale]/topics/page.tsx` | 토픽 목록 |
+| `app/[locale]/topics/[category]/page.tsx` | 토픽별 아티클 |
+| `app/[locale]/tags/page.tsx` | 태그 목록 |
+| `app/[locale]/tags/[tag]/page.tsx` | 태그별 아티클 |
+| `app/[locale]/sources/page.tsx` | 소스 목록 |
+| `app/[locale]/sources/[name]/page.tsx` | 소스별 아티클 |
+| `app/[locale]/authors/page.tsx` | 저자 목록 |
+| `app/[locale]/authors/[name]/page.tsx` | 저자별 아티클 |
+| `lib/seo-queries.ts` | SEO 관련 DB 쿼리 |
+| `lib/article-slug.ts` | 슬러그 생성 유틸 |
+| `lib/hreflang.ts` | hreflang 태그 생성 |
+| `components/SeoBreadcrumb.tsx` | 구조화 데이터 (빵크럼) |
+| `components/SeoArticleList.tsx` | 구조화 데이터 (아티클 리스트) |
+| `app/sitemap.ts` | 사이트맵 생성 |
+| `app/robots.ts` | robots.txt 생성 |
+| `app/feed.xml/route.ts` | RSS 피드 생성 |
+| `app/api/og/route.tsx` | OG 이미지 생성 |
+
+---
+
+### 🤖 크롤링 엔진 (백엔드)
 | 파일 | 역할 |
 |------|------|
 | `app/api/crawl/run/route.ts` | 크롤링 실행 (Bearer, 300s) |
@@ -489,7 +557,7 @@ const SOURCE_COLORS: Record<string, string> = {
 | `lib/crawlers/title-cleaner.ts` | 제목 HTML 태그/엔티티 정제 |
 | `lib/crawlers/robots-checker.ts` | robots.txt 파싱/캐싱 (현재 비활성화) |
 
-### 크롤러 전략 (9종)
+### 🔌 크롤러 전략 (9종)
 | 파일 | 전략 |
 |------|------|
 | `lib/crawlers/strategies/index.ts` | 전략 레지스트리 |
@@ -503,7 +571,7 @@ const SOURCE_COLORS: Record<string, string> = {
 | `lib/crawlers/strategies/api.ts` | API (fetch JSON) |
 | `lib/crawlers/strategies/firecrawl.ts` | Firecrawl (외부 서비스) |
 
-### AI 요약 & 추출
+### 🧠 AI 요약 & 추출 (백엔드)
 | 파일 | 역할 |
 |------|------|
 | `app/api/summarize/batch/route.ts` | 배치 요약 API (Bearer, 300s) |
@@ -511,106 +579,8 @@ const SOURCE_COLORS: Record<string, string> = {
 | `lib/ai/batch-summarizer.ts` | 배치 요약 (Edge Fn → 로컬 fallback) |
 | `lib/ai/summarizer.ts` | 로컬 OpenAI (gpt-4.1-mini) |
 | `lib/ai/article-extractor.ts` | LLM 아티클 직접 추출 (auto-recovery용) |
-| `supabase/functions/summarize-article/index.ts` | AI 요약 Edge Fn (Gemini) |
-| `supabase/functions/extract-articles/index.ts` | LLM 추출 Edge Fn (Gemini) |
 
-### AI 채팅
-| 파일 | 역할 |
-|------|------|
-| `app/api/chat/route.ts` | 채팅 프록시 API |
-| `components/InsightChat.tsx` | 채팅 UI 컴포넌트 |
-| `supabase/functions/chat-insight/index.ts` | 채팅 Edge Fn (Gemini) |
-
-### AI 감지 (크롤러 타입/API)
-| 파일 | 역할 |
-|------|------|
-| `supabase/functions/detect-crawler-type/index.ts` | 크롤러 타입+셀렉터 감지 (Gemini) |
-| `supabase/functions/detect-api-endpoint/index.ts` | API 엔드포인트 감지 (Gemini) |
-| `supabase/functions/recommend-sources/index.ts` | AI 소스 추천 (Gemini + google_search) |
-
-### 아티클 API
-| 파일 | 역할 |
-|------|------|
-| `app/api/articles/route.ts` | 아티클 목록 GET |
-| `app/api/articles/[id]/route.ts` | 아티클 삭제 DELETE |
-| `app/api/articles/[id]/content/route.ts` | content_preview 조회 GET |
-| `app/api/articles/sources/route.ts` | 소스별 아티클 조회 |
-| `app/api/categories/route.ts` | 카테고리 CRUD |
-
-### SEO & 퍼블릭 페이지
-| 파일 | 역할 |
-|------|------|
-| `app/[locale]/articles/[slug]/page.tsx` | 아티클 상세 페이지 |
-| `app/[locale]/topics/page.tsx` | 토픽 목록 |
-| `app/[locale]/topics/[category]/page.tsx` | 토픽별 아티클 |
-| `app/[locale]/tags/page.tsx` | 태그 목록 |
-| `app/[locale]/tags/[tag]/page.tsx` | 태그별 아티클 |
-| `app/[locale]/sources/page.tsx` | 소스 목록 |
-| `app/[locale]/sources/[name]/page.tsx` | 소스별 아티클 |
-| `app/[locale]/authors/page.tsx` | 저자 목록 |
-| `app/[locale]/authors/[name]/page.tsx` | 저자별 아티클 |
-| `app/[locale]/blog/page.tsx` | 블로그 목록 |
-| `app/[locale]/blog/[slug]/page.tsx` | 블로그 상세 |
-| `app/sitemap.ts` | 사이트맵 생성 |
-| `app/robots.ts` | robots.txt 생성 |
-| `app/feed.xml/route.ts` | RSS 피드 생성 |
-| `app/api/og/route.tsx` | OG 이미지 생성 |
-| `components/SeoBreadcrumb.tsx` | 구조화 데이터 (빵크럼) |
-| `components/SeoArticleList.tsx` | 구조화 데이터 (아티클 리스트) |
-| `lib/seo-queries.ts` | SEO 관련 DB 쿼리 |
-| `lib/article-slug.ts` | 슬러그 생성 유틸 |
-| `lib/hreflang.ts` | hreflang 태그 생성 |
-
-### 랜딩 페이지
-| 파일 | 역할 |
-|------|------|
-| `app/[locale]/landing/page.tsx` | 랜딩 페이지 |
-| `app/[locale]/landing/LandingContent.tsx` | 랜딩 콘텐츠 |
-| `app/[locale]/landing/LandingHeader.tsx` | 랜딩 헤더 |
-| `app/[locale]/landing/AnimatedSection.tsx` | 애니메이션 섹션 |
-
-### 인증 & 사용자
-| 파일 | 역할 |
-|------|------|
-| `app/[locale]/login/page.tsx` | 로그인 페이지 |
-| `app/[locale]/signup/page.tsx` | 회원가입 페이지 |
-| `app/auth/callback/route.ts` | OAuth 콜백 |
-| `lib/auth.ts` | `verifyCronAuth`, `verifySameOrigin` |
-| `lib/user.ts` | `getMasterUserId()` 헬퍼 |
-
-### i18n & 언어
-| 파일 | 역할 |
-|------|------|
-| `lib/i18n.ts` | 5개 언어 번역 (`t(language, 'key')`) |
-| `lib/language-context.tsx` | 언어 Provider + `translateCat()` |
-| `lib/locale-config.ts` | 로케일 설정 |
-| `lib/locale-path.ts` | 로케일 경로 유틸 |
-| `components/LanguageSwitcher.tsx` | 언어 전환 UI |
-| `lib/translation.ts` | DeepL 번역 유틸 |
-| `app/api/translate/route.ts` | 번역 API |
-
-### 인프라 & 공통
-| 파일 | 역할 |
-|------|------|
-| `app/layout.tsx` | 루트 레이아웃 |
-| `app/[locale]/layout.tsx` | 로케일 레이아웃 |
-| `app/providers.tsx` | 글로벌 Provider |
-| `middleware.ts` | Rate Limit, CORS, Security Headers, 로케일 리다이렉트 |
-| `lib/supabase/client.ts` | Supabase 브라우저 클라이언트 |
-| `lib/supabase/server.ts` | Supabase 서버/서비스 클라이언트 |
-| `lib/cache.ts` | 인메모리 캐시 유틸 |
-| `lib/utils.ts` | 공통 유틸리티 |
-| `lib/gtag.ts` | Google Analytics |
-| `lib/indexnow.ts` | IndexNow 검색엔진 알림 |
-| `lib/blog.ts` | 블로그 헬퍼 |
-| `components/Skeleton.tsx` | 로딩 스켈레톤 |
-| `components/ConfirmDialog.tsx` | 확인 다이얼로그 |
-| `components/Toast.tsx` | 토스트 알림 |
-| `components/GTagPageView.tsx` | GA 페이지뷰 트래킹 |
-| `components/LocaleLink.tsx` | 로케일 링크 컴포넌트 |
-| `app/api/image-proxy/route.ts` | 이미지 프록시 (CORS 우회) |
-
-### Edge Functions (Supabase)
+### ☁️ Edge Functions (Supabase)
 | 파일 | 역할 |
 |------|------|
 | `supabase/functions/summarize-article/index.ts` | AI 요약 (Gemini 2.5 Flash Lite) |
@@ -620,3 +590,34 @@ const SOURCE_COLORS: Record<string, string> = {
 | `supabase/functions/recommend-sources/index.ts` | AI 소스 추천 |
 | `supabase/functions/chat-insight/index.ts` | AI 채팅 인사이트 |
 | `supabase/functions/translate-blog/index.ts` | 블로그 번역 |
+
+### 🌐 i18n & 언어
+| 파일 | 역할 |
+|------|------|
+| `lib/i18n.ts` | 5개 언어 번역 (`t(language, 'key')`) |
+| `lib/language-context.tsx` | 언어 Provider + `translateCat()` |
+| `lib/locale-config.ts` | 로케일 설정 |
+| `lib/locale-path.ts` | 로케일 경로 유틸 |
+| `components/LanguageSwitcher.tsx` | 언어 전환 UI |
+| `lib/translation.ts` | DeepL 번역 유틸 |
+
+### 🏗️ 공통 레이아웃 & 인프라
+| 파일 | 역할 |
+|------|------|
+| `app/layout.tsx` | 루트 레이아웃 |
+| `app/[locale]/layout.tsx` | 로케일 레이아웃 |
+| `app/providers.tsx` | 글로벌 Provider |
+| `middleware.ts` | Rate Limit, CORS, Security Headers, 로케일 리다이렉트 |
+| `components/Header.tsx` | 글로벌 헤더 (네비게이션) |
+| `components/Footer.tsx` | 글로벌 푸터 (이용약관 링크) |
+| `lib/supabase/client.ts` | Supabase 브라우저 클라이언트 |
+| `lib/supabase/server.ts` | Supabase 서버/서비스 클라이언트 |
+| `lib/cache.ts` | 인메모리 캐시 유틸 |
+| `lib/utils.ts` | 공통 유틸리티 |
+| `lib/gtag.ts` | Google Analytics |
+| `lib/indexnow.ts` | IndexNow 검색엔진 알림 |
+| `components/Skeleton.tsx` | 로딩 스켈레톤 |
+| `components/ConfirmDialog.tsx` | 확인 다이얼로그 |
+| `components/Toast.tsx` | 토스트 알림 |
+| `components/GTagPageView.tsx` | GA 페이지뷰 트래킹 |
+| `components/LocaleLink.tsx` | 로케일 링크 컴포넌트 |
