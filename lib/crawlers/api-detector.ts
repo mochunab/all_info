@@ -315,6 +315,23 @@ async function analyzeWithEdgeFunction(
         const result = await response.json();
         if (result.success && result.config) {
           const config = result.config as DetectedApiConfig;
+
+          // 상대경로 엔드포인트 → 캡처된 요청에서 전체 URL 복원
+          if (!config.endpoint.startsWith('http')) {
+            const match = requests.find(r =>
+              new URL(r.url).pathname === config.endpoint ||
+              r.url.endsWith(config.endpoint)
+            );
+            if (match) {
+              const fullUrl = new URL(match.url);
+              config.endpoint = `${fullUrl.origin}${fullUrl.pathname}`;
+              console.log(`[API-DETECT] 🔗 상대경로 → 전체 URL 복원: ${config.endpoint}`);
+            } else {
+              console.log(`[API-DETECT] ⚠️  상대경로 엔드포인트 거부: ${config.endpoint} → SPA 유지`);
+              return null;
+            }
+          }
+
           console.log(`[API-DETECT] ✅ API 감지 성공! (Edge Function)`);
           console.log(`[API-DETECT]    endpoint: ${config.endpoint}`);
           console.log(`[API-DETECT]    method: ${config.method}`);
