@@ -5,8 +5,13 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/landing", "/terms", "/topics", "/tags", "/sources", "/authors", "/articles", "/blog"],
-        disallow: ["/api/", "/my-feed", "/sources/add", "/login", "/signup", "/auth/"],
+        allow: ["/"],
+        disallow: ["/api/", "/*/my-feed", "/*/sources/add", "/*/login", "/*/signup", "/auth/"],
+      },
+      {
+        userAgent: "Baiduspider",
+        allow: ["/zh/"],
+        crawlDelay: 1,
       },
       {
         userAgent: ["GPTBot", "ClaudeBot", "CCBot", "Google-Extended"],

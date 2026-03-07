@@ -170,18 +170,24 @@ export class SPAStrategy implements CrawlStrategy {
         }
       });
 
-      // 페이지 로드 (networkidle2는 폴링/WebSocket 사이트에서 30초 타임아웃 발생 → load 사용)
-      await page.goto(source.base_url, {
-        waitUntil: 'load',
-        timeout: 30000,
-      });
-
-      // 추가 대기 시간 (JavaScript 실행 완료 대기)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cachedHtml = (source as any)._cachedHtml as string | undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const crawlConfig = config.crawl_config as any;
-      const additionalWait = crawlConfig?.additionalWait || 5000;
-      await this.delay(additionalWait);
-      console.log(`[SPA] Waited ${additionalWait}ms for JS execution`);
+
+      if (cachedHtml) {
+        await page.setContent(cachedHtml, { waitUntil: 'load' });
+        console.log(`[SPA] Used cached HTML (skipped navigation)`);
+      } else {
+        await page.goto(source.base_url, {
+          waitUntil: 'load',
+          timeout: 30000,
+        });
+
+        const additionalWait = crawlConfig?.additionalWait || 5000;
+        await this.delay(additionalWait);
+        console.log(`[SPA] Waited ${additionalWait}ms for JS execution`);
+      }
 
       // 특정 셀렉터 대기 (설정된 경우)
       if (crawlConfig?.waitForSelector) {
@@ -215,7 +221,7 @@ export class SPAStrategy implements CrawlStrategy {
     }
   }
 
-  async crawlContent(url: string, config?: CrawlConfig['content_selectors']): Promise<ContentResult> {
+  async crawlContent(url: string, config?: CrawlConfig['content_selectors'] & { additionalWait?: number }): Promise<ContentResult> {
     const browser = await getBrowser();
     let page: Page | null = null;
 
@@ -231,7 +237,7 @@ export class SPAStrategy implements CrawlStrategy {
         waitUntil: 'load',
         timeout: 30000,
       });
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, config?.additionalWait ?? 2000));
 
       // HTML 가져오기
       const html = await page.content();

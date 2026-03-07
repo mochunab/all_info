@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { LOCALES, DEFAULT_LOCALE } from '@/lib/locale-config';
+import type { Locale } from '@/lib/locale-config';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -9,11 +11,24 @@ const ALLOWED_ORIGINS = [
 let lastTriggerTime = 0;
 const TRIGGER_COOLDOWN_MS = 30_000;
 
+const LOCALE_SET = new Set<string>(LOCALES);
+
+function detectLocaleFromHeader(request: NextRequest): Locale {
+  const accept = request.headers.get('accept-language') || '';
+  const preferred = accept.split(',').map((s) => s.split(';')[0].trim().toLowerCase());
+  for (const lang of preferred) {
+    const short = lang.substring(0, 2);
+    if (LOCALE_SET.has(short)) return short as Locale;
+  }
+  return DEFAULT_LOCALE;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const origin = request.headers.get('origin') || '';
   const isAllowedOrigin = ALLOWED_ORIGINS.includes(origin);
 
+  // Rate limit for crawl trigger
   if (pathname === '/api/crawl/trigger' && request.method === 'POST') {
     const now = Date.now();
     if (now - lastTriggerTime < TRIGGER_COOLDOWN_MS) {
@@ -25,27 +40,45 @@ export async function middleware(request: NextRequest) {
     lastTriggerTime = now;
   }
 
+  // CORS preflight
   if (request.method === 'OPTIONS') {
     const preflightHeaders: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400',
     };
-
     if (isAllowedOrigin) {
       preflightHeaders['Access-Control-Allow-Origin'] = origin;
     }
-
-    return new NextResponse(null, {
-      status: 204,
-      headers: preflightHeaders,
-    });
+    return new NextResponse(null, { status: 204, headers: preflightHeaders });
   }
 
+  // --- i18n routing ---
+  const firstSegment = pathname.split('/')[1];
+
+  // Legacy ?lang= redirect (301)
+  const langParam = request.nextUrl.searchParams.get('lang');
+  if (langParam && LOCALE_SET.has(langParam) && !LOCALE_SET.has(firstSegment)) {
+    const url = request.nextUrl.clone();
+    url.searchParams.delete('lang');
+    url.pathname = `/${langParam}${pathname === '/' ? '' : pathname}`;
+    return NextResponse.redirect(url, 301);
+  }
+
+  // No locale prefix → detect and redirect (302)
+  if (!LOCALE_SET.has(firstSegment)) {
+    const detected = detectLocaleFromHeader(request);
+    const url = request.nextUrl.clone();
+    url.pathname = `/${detected}${pathname === '/' ? '' : pathname}`;
+    return NextResponse.redirect(url, 302);
+  }
+
+  // Valid locale prefix → continue
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
 
+  // Supabase auth
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -75,11 +108,7 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Access-Control-Allow-Origin', origin);
   }
 
-  const langParam = request.nextUrl.searchParams.get('lang');
-  if (langParam && ['ko', 'en', 'vi', 'zh', 'ja'].includes(langParam)) {
-    response.headers.set('x-locale', langParam);
-  }
-
+  response.headers.set('x-locale', firstSegment);
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -93,6 +122,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|feed\\.xml|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

@@ -16,6 +16,31 @@ import { checkRobotsTxt } from './robots-checker';
 import { generateArticleSlug } from '@/lib/article-slug';
 
 
+async function fetchContentParallel(
+  items: RawContentItem[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  strategy: { crawlContent?: (url: string, config?: any) => Promise<string> },
+  contentSelectors?: unknown,
+  delay = 500,
+): Promise<void> {
+  if (!strategy.crawlContent) return;
+  const CONCURRENCY = 2;
+  for (let i = 0; i < items.length; i += CONCURRENCY) {
+    const chunk = items.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async (item) => {
+      if (item.content) return;
+      try {
+        item.content = await strategy.crawlContent!(item.link, contentSelectors);
+      } catch (error) {
+        console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
+      }
+    }));
+    if (i + CONCURRENCY < items.length) {
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 function computeUrlHash(urls: string[]): string {
   const sorted = [...urls].sort();
   return createHash('sha256').update(sorted.join('|')).digest('hex').substring(0, 16);
@@ -250,6 +275,7 @@ function getDefaultFallbacks(primaryType: CrawlerType): CrawlerType[] {
  */
 async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]> {
   const config = parseConfig(source);
+  const htmlCache = new Map<string, string>();
 
   // 1. Primary 전략 결정
   const inferred = inferCrawlerType(source.base_url);
@@ -274,6 +300,7 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         html = (await fetchPage(source.base_url)).html;
       }
       if (html) {
+        htmlCache.set(source.base_url, html);
         // 1차: AI 통합 감지 (Edge Function)
         console.log(`   🤖 [1차] AI 통합 감지 시도...`);
         const aiResult = await detectByUnifiedAI(html, source.base_url);
@@ -375,6 +402,13 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         timeoutId = setTimeout(() => reject(new Error('전략 타임아웃 (30초)')), 30000);
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cachedHtml = htmlCache.get(source.base_url);
+      if (cachedHtml) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (source as any)._cachedHtml = cachedHtml;
+      }
+
       const crawlPromise = strategy.crawlList(source);
 
       console.log(`   🔍 콘텐츠 목록 크롤링 중... (최대 30초)`);
@@ -386,8 +420,8 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         clearTimeout(timeoutId!);
       }
 
-      // 최신 5개만 유지 (사이트 당 제한)
-      const rawItems = rawItemsAll.slice(0, 5);
+      // 최신 3개만 유지 (사이트 당 제한)
+      const rawItems = rawItemsAll.slice(0, 3);
 
       console.log(`   ✅ 크롤링 완료: ${rawItemsAll.length}개 발견 → 최신 ${rawItems.length}개 선택`);
 
@@ -430,78 +464,19 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
           validation.reason === 'No items found' ||
           validation.reason?.startsWith('Insufficient valid items')
         )) {
-          // [1순위] LLM 직접 추출 시도 (셀렉터 우회)
-          try {
-            // crawl_url과 원본 base_url이 다르면 원본 URL도 시도 (crawl_url에 콘텐츠 없을 수 있음)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const originalBaseUrl = (source.config as any)?._original_base_url as string | undefined;
-            const llmTargetUrl = (originalBaseUrl && originalBaseUrl !== source.base_url) ? originalBaseUrl : source.base_url;
-
-            console.log(`\n🤖 [LLM 추출] 셀렉터 우회 — LLM 직접 아티클 추출 시도...`);
-            if (llmTargetUrl !== source.base_url) {
-              console.log(`   📍 원본 URL 사용: ${llmTargetUrl} (crawl_url: ${source.base_url})`);
-            }
-            const { fetchPage } = await import('./auto-detect');
-            const { preprocessHtmlForExtraction } = await import('./html-preprocessor');
-            const { extractArticlesViaLLM } = await import('@/lib/ai/article-extractor');
-
-            let llmHtml: string | null = null;
-            if (primaryType === 'SPA') {
-              const { getRenderedHTML } = await import('./strategies/spa');
-              llmHtml = await getRenderedHTML(llmTargetUrl);
-            } else {
-              llmHtml = (await fetchPage(llmTargetUrl)).html;
-            }
-            if (llmHtml) {
-              const preprocessed = preprocessHtmlForExtraction(llmHtml);
-              const origin = new URL(llmTargetUrl).origin;
-              const llmItems = await extractArticlesViaLLM(preprocessed, origin);
-
-              if (llmItems.length >= 2) {
-                console.log(`   ✅ LLM 추출 성공: ${llmItems.length}건 — 본문 추출 진행...`);
-
-                const llmArticles: CrawledArticle[] = [];
-                const llmStrategy = getStrategy(primaryType === 'SPA' ? 'SPA' : 'STATIC');
-                for (let idx = 0; idx < Math.min(llmItems.length, 5); idx++) {
-                  const item = llmItems[idx];
-                  if (!item.content && llmStrategy.crawlContent) {
-                    try {
-                      item.content = await llmStrategy.crawlContent(item.link, config.content_selectors);
-                    } catch (error) {
-                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
-                  }
-                  llmArticles.push(convertToArticle(item, source, config.category));
-                }
-
-                const llmFiltered = filterGarbageArticles(llmArticles, source.name);
-                if (llmFiltered.length >= 2) {
-                  console.log(`   ✅ LLM 추출 최종 결과: ${llmFiltered.length}개 아티클`);
-                  return llmFiltered;
-                }
-                console.warn(`   ⚠️  LLM 추출 후 품질 필터링 결과 부족: ${llmFiltered.length}건`);
-              } else {
-                console.warn(`   ⚠️  LLM 추출 결과 부족: ${llmItems.length}건`);
-              }
-            }
-          } catch (llmError) {
-            console.warn(`   ⚠️  LLM 추출 오류:`, llmError instanceof Error ? llmError.message : llmError);
-          }
-
-          // [2순위] 기존 resolveStrategy 파이프라인 재분석
-          console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 8단계 파이프라인 재분석 시도...`);
+          // [1순위] resolveStrategy 파이프라인 재분석 (저렴: rule-based)
+          console.log(`\n🔄 [자동 복구] 품질 검증 실패 - 파이프라인 재분석 시도...`);
 
           try {
             const { resolveStrategy } = await import('./strategy-resolver');
-            const newStrategy = await resolveStrategy(source.base_url);
+            const newStrategy = await resolveStrategy(source.base_url, {
+              cachedHtml: htmlCache.get(source.base_url),
+            });
 
-            // 새 전략이 더 높은 신뢰도면 적용
             if (newStrategy.confidence > 0.6) {
               console.log(`   ✅ 새 전략 발견: ${newStrategy.primaryStrategy} (confidence: ${(newStrategy.confidence * 100).toFixed(0)}%)`);
               console.log(`   💾 Config 업데이트 중...`);
 
-              // Config 업데이트
               await updateSourceConfig(source.id, {
                 crawlerType: newStrategy.primaryStrategy,
                 selectors: (newStrategy.selectors as unknown) as Record<string, unknown> | undefined,
@@ -510,7 +485,6 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
                 detectionMethod: newStrategy.detectionMethod,
               });
 
-              // 새 전략으로 재크롤링
               console.log(`   🔄 새 전략으로 재크롤링 시도...`);
               const recoveryStrategy = getStrategy(newStrategy.primaryStrategy);
 
@@ -530,26 +504,14 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
               };
 
               const recoveryItems = await recoveryStrategy.crawlList(updatedSource);
-              const recoveryValidation = validateCrawlResults(recoveryItems.slice(0, 5));
+              const recoveryValidation = validateCrawlResults(recoveryItems.slice(0, 3));
 
               if (recoveryValidation.passed) {
                 console.log(`   ✅ 자동 복구 성공! (${recoveryItems.length}개 발견)`);
 
-                // 본문 크롤링 (기존 로직과 동일)
-                const articles: CrawledArticle[] = [];
-                for (let idx = 0; idx < Math.min(recoveryItems.length, 5); idx++) {
-                  const item = recoveryItems[idx];
-                  if (!item.content && recoveryStrategy.crawlContent) {
-                    try {
-                      item.content = await recoveryStrategy.crawlContent(item.link, config.content_selectors);
-                    } catch (error) {
-                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
-                  }
-                  articles.push(convertToArticle(item, source, config.category));
-                }
-
+                const recoverySlice = recoveryItems.slice(0, 3);
+                await fetchContentParallel(recoverySlice, recoveryStrategy, config.content_selectors, config.crawl_config?.delay || 500);
+                const articles = recoverySlice.map(item => convertToArticle(item, source, config.category));
                 const filtered = filterGarbageArticles(articles, source.name);
                 console.log(`   ✅ 자동 복구 최종 결과: ${filtered.length}개 아티클`);
                 return filtered;
@@ -560,10 +522,10 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
               console.warn(`   ⚠️  자동 복구 실패: 낮은 신뢰도 (${(newStrategy.confidence * 100).toFixed(0)}%)`);
             }
 
-            // Cheerio 기반 재감지가 실패 → JS 렌더링 페이지일 수 있음 → SPA 기본 셀렉터로 최종 시도
+            // Cheerio 기반 재감지 실패 → SPA 기본 셀렉터로 시도
             const cheerioTypes = ['STATIC', 'PLATFORM_KAKAO', 'PLATFORM_NAVER', 'NEWSLETTER', 'SITEMAP'];
             if (cheerioTypes.includes(newStrategy.primaryStrategy)) {
-              console.log(`\n🔄 [SPA 폴백] Cheerio 전략 복구 실패 → SPA 기본 셀렉터로 최종 시도...`);
+              console.log(`\n🔄 [SPA 폴백] Cheerio 전략 복구 실패 → SPA 기본 셀렉터로 시도...`);
               const spaRecovery = getStrategy('SPA');
               const spaSource: CrawlSource = {
                 ...source,
@@ -581,20 +543,9 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
                   detectionMethod: 'spa-fallback-recovery',
                 });
 
-                const articles: CrawledArticle[] = [];
-                for (let idx = 0; idx < Math.min(spaItems.length, 5); idx++) {
-                  const item = spaItems[idx];
-                  if (!item.content && spaRecovery.crawlContent) {
-                    try {
-                      item.content = await spaRecovery.crawlContent(item.link, config.content_selectors);
-                    } catch (error) {
-                      console.error(`   ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
-                  }
-                  articles.push(convertToArticle(item, source, config.category));
-                }
-
+                const spaSlice = spaItems.slice(0, 3);
+                await fetchContentParallel(spaSlice, spaRecovery, config.content_selectors, config.crawl_config?.delay || 500);
+                const articles = spaSlice.map(item => convertToArticle(item, source, config.category));
                 const filtered = filterGarbageArticles(articles, source.name);
                 console.log(`   ✅ SPA 폴백 최종 결과: ${filtered.length}개 아티클`);
                 return filtered;
@@ -604,6 +555,64 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
             }
           } catch (error) {
             console.error(`   ❌ 자동 복구 오류:`, error instanceof Error ? error.message : error);
+          }
+
+          // [2순위] LLM 직접 추출 (비쌈: Gemini API, 최후 수단)
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const originalBaseUrl = (source.config as any)?._original_base_url as string | undefined;
+            const llmTargetUrl = (originalBaseUrl && originalBaseUrl !== source.base_url) ? originalBaseUrl : source.base_url;
+
+            console.log(`\n🤖 [LLM 추출] 셀렉터 우회 — LLM 직접 아티클 추출 시도...`);
+            if (llmTargetUrl !== source.base_url) {
+              console.log(`   📍 원본 URL 사용: ${llmTargetUrl} (crawl_url: ${source.base_url})`);
+            }
+            const { fetchPage } = await import('./auto-detect');
+            const { preprocessHtmlForExtraction } = await import('./html-preprocessor');
+            const { extractArticlesViaLLM } = await import('@/lib/ai/article-extractor');
+
+            let llmHtml: string | null = htmlCache.get(llmTargetUrl) || null;
+            if (!llmHtml) {
+              if (primaryType === 'SPA') {
+                const { getRenderedHTML } = await import('./strategies/spa');
+                llmHtml = await getRenderedHTML(llmTargetUrl);
+              } else {
+                llmHtml = (await fetchPage(llmTargetUrl)).html;
+              }
+              if (llmHtml) htmlCache.set(llmTargetUrl, llmHtml);
+            }
+            if (llmHtml) {
+              const preprocessed = preprocessHtmlForExtraction(llmHtml);
+              const origin = new URL(llmTargetUrl).origin;
+              const llmItems = await extractArticlesViaLLM(preprocessed, origin);
+
+              if (llmItems.length >= 2) {
+                console.log(`   ✅ LLM 추출 성공: ${llmItems.length}건 — 본문 추출 진행...`);
+
+                const llmStrategy = getStrategy(primaryType === 'SPA' ? 'SPA' : 'STATIC');
+                const llmSlice = llmItems.slice(0, 3);
+                await fetchContentParallel(llmSlice, llmStrategy, config.content_selectors, config.crawl_config?.delay || 500);
+                const llmArticles = llmSlice.map(item => convertToArticle(item, source, config.category));
+
+                const llmFiltered = filterGarbageArticles(llmArticles, source.name);
+                if (llmFiltered.length >= 2) {
+                  console.log(`   ✅ LLM 추출 최종 결과: ${llmFiltered.length}개 아티클`);
+
+                  await updateSourceConfig(source.id, {
+                    crawlerType: primaryType,
+                    confidence: 0.4,
+                    detectionMethod: 'llm-extraction-fallback',
+                  });
+
+                  return llmFiltered;
+                }
+                console.warn(`   ⚠️  LLM 추출 후 품질 필터링 결과 부족: ${llmFiltered.length}건`);
+              } else {
+                console.warn(`   ⚠️  LLM 추출 결과 부족: ${llmItems.length}건`);
+              }
+            }
+          } catch (llmError) {
+            console.warn(`   ⚠️  LLM 추출 오류:`, llmError instanceof Error ? llmError.message : llmError);
           }
         }
 
@@ -641,28 +650,10 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         console.log(`   ⚡ 사전 중복 제거: ${rawItems.length}개 → ${newItems.length}개만 본문 추출`);
       }
 
-      console.log(`\n   📄 본문 추출 시작... (${newItems.length}개)`);
-      const articles: CrawledArticle[] = [];
-      let contentFetchCount = 0;
-
-      for (let idx = 0; idx < newItems.length; idx++) {
-        const item = newItems[idx];
-        if (!item.content && strategy.crawlContent) {
-          try {
-            console.log(`      [${idx + 1}/${newItems.length}] "${item.title.substring(0, 40)}..." 본문 추출 중...`);
-            item.content = await strategy.crawlContent(item.link, config.content_selectors);
-            contentFetchCount++;
-            console.log(`      ✅ 본문 추출 완료 (${item.content.length}자)`);
-          } catch (error) {
-            console.error(`      ❌ 본문 추출 실패: ${item.link}`, error instanceof Error ? error.message : error);
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, config.crawl_config?.delay || 500));
-        }
-
-        articles.push(convertToArticle(item, source, config.category));
-      }
-
+      console.log(`\n   📄 본문 추출 시작... (${newItems.length}개, 병렬 2)`);
+      await fetchContentParallel(newItems, strategy, config.content_selectors, config.crawl_config?.delay || 500);
+      const contentFetchCount = newItems.filter(item => item.content).length;
+      const articles = newItems.map(item => convertToArticle(item, source, config.category));
       console.log(`   ✅ 본문 추출 완료: ${contentFetchCount}/${newItems.length}개 성공`);
 
       // 6. 쓰레기 필터 적용
@@ -736,16 +727,26 @@ export async function saveArticles(
   let skipped = 0;
   let updated = 0;
 
-  for (let idx = 0; idx < articles.length; idx++) {
-    const article = articles[idx];
-    try {
-      // source_id 기준 중복 확인 (동일 URL)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: existing } = await (supabase as any)
-        .from('articles')
-        .select('id, category')
-        .eq('source_id', article.source_id)
-        .single();
+  try {
+    // 1단계: 배치 source_id 중복 체크
+    const sourceIds = articles.map(a => a.source_id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existingBySource } = await (supabase as any)
+      .from('articles')
+      .select('id, category, source_id')
+      .in('source_id', sourceIds);
+
+    type ExistingArticle = { id: string; category: string; source_id: string };
+    const existingMap = new Map<string, ExistingArticle>(
+      (existingBySource || []).map((e: ExistingArticle) => [e.source_id, e])
+    );
+
+    // 2단계: 기존 아티클 카테고리 업데이트 + 신규 아티클 필터링
+    const newArticles: CrawledArticle[] = [];
+
+    for (let idx = 0; idx < articles.length; idx++) {
+      const article = articles[idx];
+      const existing = existingMap.get(article.source_id);
 
       if (existing) {
         const safeCategory = article.category?.substring(0, 50);
@@ -764,7 +765,7 @@ export async function saveArticles(
         continue;
       }
 
-      // 교차 소스 제목 중복 확인 (다른 URL, 같은 기사)
+      // 교차 소스 제목 중복 확인 (source_id 중복이 아닌 경우만)
       const normalized = normalizeTitle(article.title);
       if (normalized.length >= 10) {
         const prefix = escapeLikePattern(normalized.substring(0, Math.min(normalized.length, 40)));
@@ -782,38 +783,43 @@ export async function saveArticles(
         }
       }
 
-      // 새 아티클 저장
-      // varchar 길이 제한 방어 (source_name: 100, author: 100, category: 50)
-      const safeName = article.source_name?.substring(0, 100);
-      const safeAuthor = article.author?.substring(0, 100);
-      const safeCategory = article.category?.substring(0, 50);
-      const slugTitle = article.title;
-      const tempId = crypto.randomUUID();
-      const slug = generateArticleSlug(slugTitle, tempId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from('articles').insert({
-        source_id: article.source_id,
-        source_name: safeName,
-        source_url: article.source_url,
-        title: article.title,
-        content_preview: article.content_preview,
-        summary: article.summary,
-        author: safeAuthor,
-        published_at: article.published_at,
-        category: safeCategory,
-        slug,
-        ...(userId && { user_id: userId }),
+      newArticles.push(article);
+    }
+
+    // 3단계: 신규 아티클 배치 INSERT
+    if (newArticles.length > 0) {
+      const insertData = newArticles.map(article => {
+        const tempId = crypto.randomUUID();
+        const slug = generateArticleSlug(article.title, tempId);
+        return {
+          source_id: article.source_id,
+          source_name: article.source_name?.substring(0, 100),
+          source_url: article.source_url,
+          title: article.title,
+          content_preview: article.content_preview,
+          summary: article.summary,
+          author: article.author?.substring(0, 100),
+          published_at: article.published_at,
+          category: article.category?.substring(0, 50),
+          slug,
+          ...(userId && { user_id: userId }),
+        };
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from('articles').insert(insertData);
+
       if (error) {
-        console.error(`   ❌ [${idx + 1}/${articles.length}] 저장 실패: ${article.title}`, error);
+        console.error(`   ❌ 배치 저장 실패:`, error);
       } else {
-        saved++;
-        console.log(`   ✅ [${idx + 1}/${articles.length}] 저장 완료: "${article.title.substring(0, 40)}..."`);
+        saved = newArticles.length;
+        for (const article of newArticles) {
+          console.log(`   ✅ 저장 완료: "${article.title.substring(0, 40)}..."`);
+        }
       }
-    } catch (error) {
-      console.error(`   ❌ [${idx + 1}/${articles.length}] 오류:`, error);
     }
+  } catch (error) {
+    console.error(`   ❌ saveArticles 오류:`, error);
   }
 
   return { saved, skipped, updated };
@@ -890,8 +896,8 @@ export async function runCrawler(
     console.log(`🔍 아티클 수집 중...`);
     const articlesAll = await crawler(effectiveSource);
 
-    // 최신 5개만 유지 (사이트 당 제한)
-    const articles = articlesAll.slice(0, 5);
+    // 최신 3개만 유지 (사이트 당 제한)
+    const articles = articlesAll.slice(0, 3);
 
     result.found = articles.length;
     console.log(`\n📊 수집 결과: ${articlesAll.length}개 발견 → 최신 ${articles.length}개 선택`);
@@ -906,81 +912,62 @@ export async function runCrawler(
       } else {
         console.log(`⚠️  아티클을 찾을 수 없습니다 - ${source.name}`);
       }
-      // URL 해시 저장 (스킵된 경우에도)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const computedHash = (effectiveSource.config as any)?._computed_url_hash;
-      if (computedHash && !options?.dryRun) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: current } = await (supabase as any)
-          .from('crawl_sources')
-          .select('config')
-          .eq('id', source.id)
-          .single();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
-          .from('crawl_sources')
-          .update({
-            config: { ...(current?.config || {}), _last_url_hash: computedHash }
-          })
-          .eq('id', source.id);
+    } else {
+      // Puppeteer 브라우저 정리
+      await closeBrowser();
+
+      // DB 저장 (dry-run이 아닌 경우)
+      if (!options?.dryRun) {
+        console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
+        const { saved, skipped, updated } = await saveArticles(articles, supabase, sourceUserId);
+        result.new = saved;
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`✅ 크롤링 완료: ${source.name}`);
+        console.log(`${'='.repeat(80)}`);
+        console.log(`⏱️  소요시간: ${duration}초`);
+        console.log(`📊 발견: ${result.found}개`);
+        console.log(`💾 저장: ${result.new}개`);
+        if (updated > 0) console.log(`🔄 카테고리 업데이트: ${updated}개`);
+        console.log(`⏭️  건너뜀: ${skipped - updated}개 (중복)`);
+        console.log(`${'='.repeat(80)}\n`);
+      } else {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`🧪 테스트 완료: ${source.name}`);
+        console.log(`${'='.repeat(80)}`);
+        console.log(`⏱️  소요시간: ${duration}초`);
+        console.log(`📊 저장 예정: ${result.found}개`);
+        if (options?.verbose) {
+          console.log('\n📰 아티클 목록:');
+          articles.forEach((a, i) => {
+            console.log(`  ${i + 1}. ${a.title}`);
+            console.log(`     🔗 URL: ${a.source_url}`);
+            console.log(`     📅 날짜: ${a.published_at || 'N/A'}`);
+          });
+        }
+        console.log(`${'='.repeat(80)}\n`);
       }
-      return result;
     }
 
-    // Puppeteer 브라우저 정리
-    await closeBrowser();
-
-    // DB 저장 (dry-run이 아닌 경우)
-    if (!options?.dryRun) {
-      console.log(`\n💾 DB 저장 중... (${articles.length}개)`);
-      const { saved, skipped, updated } = await saveArticles(articles, supabase, sourceUserId);
-      result.new = saved;
-
-      const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`✅ 크롤링 완료: ${source.name}`);
-      console.log(`${'='.repeat(80)}`);
-      console.log(`⏱️  소요시간: ${duration}초`);
-      console.log(`📊 발견: ${result.found}개`);
-      console.log(`💾 저장: ${result.new}개`);
-      if (updated > 0) console.log(`🔄 카테고리 업데이트: ${updated}개`);
-      console.log(`⏭️  건너뜀: ${skipped - updated}개 (중복)`);
-      console.log(`${'='.repeat(80)}\n`);
-
-      // URL 해시 DB 업데이트 (변경 감지용)
+    // URL 해시 DB 업데이트 (변경 감지용, 스킵 시에도 저장)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const computedHash = (effectiveSource.config as any)?._computed_url_hash;
+    if (computedHash && !options?.dryRun) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const computedHash = (effectiveSource.config as any)?._computed_url_hash;
-      if (computedHash) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: current } = await (supabase as any)
-          .from('crawl_sources')
-          .select('config')
-          .eq('id', source.id)
-          .single();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
-          .from('crawl_sources')
-          .update({
-            config: { ...(current?.config || {}), _last_url_hash: computedHash }
-          })
-          .eq('id', source.id);
-      }
-    } else {
-      const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`🧪 테스트 완료: ${source.name}`);
-      console.log(`${'='.repeat(80)}`);
-      console.log(`⏱️  소요시간: ${duration}초`);
-      console.log(`📊 저장 예정: ${result.found}개`);
-      if (options?.verbose) {
-        console.log('\n📰 아티클 목록:');
-        articles.forEach((a, i) => {
-          console.log(`  ${i + 1}. ${a.title}`);
-          console.log(`     🔗 URL: ${a.source_url}`);
-          console.log(`     📅 날짜: ${a.published_at || 'N/A'}`);
-        });
-      }
-      console.log(`${'='.repeat(80)}\n`);
+      const { data: current } = await (supabase as any)
+        .from('crawl_sources')
+        .select('config')
+        .eq('id', source.id)
+        .single();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from('crawl_sources')
+        .update({
+          config: { ...(current?.config || {}), _last_url_hash: computedHash }
+        })
+        .eq('id', source.id);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
