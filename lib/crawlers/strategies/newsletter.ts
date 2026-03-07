@@ -144,7 +144,8 @@ export class NewsletterStrategy implements CrawlStrategy {
       ...config.selectors,
     };
 
-    $(finalSelectors.item).each((_, el) => {
+    const $container = finalSelectors.container ? $(finalSelectors.container) : $.root();
+    $container.find(finalSelectors.item).each((_, el) => {
       try {
         const $el = $(el);
 

@@ -127,8 +127,8 @@ export class APIStrategy implements CrawlStrategy {
           }
           break;
         case 'cursor':
-          // cursor는 이전 응답에서 가져와야 함
-          // 첫 페이지는 cursor 없이 요청
+          console.warn('[API] Cursor pagination not yet implemented, fetching first page only');
+          page = maxPages;
           break;
       }
 
@@ -294,6 +294,16 @@ export class APIStrategy implements CrawlStrategy {
           link = `${transformBase}${link.startsWith('/') ? '' : '/'}${link}`;
         }
 
+        // 선택 필드: 썸네일
+        let thumbnail: string | null = null;
+        if (mapping.thumbnail) {
+          thumbnail = (this.getNestedValue(item, mapping.thumbnail) as string) || null;
+          if (thumbnail && !thumbnail.startsWith('http')) {
+            const transformBase = urlTransform?.thumbnailPrefix || origin;
+            thumbnail = `${transformBase}${thumbnail.startsWith('/') ? '' : '/'}${thumbnail}`;
+          }
+        }
+
         // 선택 필드: 작성자
         let author: string | null = null;
         if (mapping.author) {
@@ -328,6 +338,7 @@ export class APIStrategy implements CrawlStrategy {
         items.push({
           title,
           link: this.normalizeUrl(link),
+          thumbnail,
           author,
           dateStr,
           content,

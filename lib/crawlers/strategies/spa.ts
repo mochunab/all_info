@@ -7,7 +7,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, CrawlConfig, SelectorConfig, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview } from '../content-extractor';
-import { isWithinDays, MAX_ARTICLE_AGE_DAYS } from '../date-parser';
+import { isWithinDays, MAX_ARTICLE_AGE_DAYS, extractDateFromText } from '../date-parser';
 import { processTitle } from '../title-cleaner';
 
 // 기본 셀렉터
@@ -418,6 +418,7 @@ export class SPAStrategy implements CrawlStrategy {
 
             // 날짜
             let dateStr: string | null = null;
+            let rawDateText: string | null = null;
             if (selectors.date) {
               const dateEl = el.querySelector(selectors.date);
               dateStr =
@@ -425,6 +426,9 @@ export class SPAStrategy implements CrawlStrategy {
                 dateEl?.getAttribute('content') ||
                 dateEl?.textContent?.trim() ||
                 null;
+              if (!dateStr && dateEl?.textContent) {
+                rawDateText = dateEl.textContent.trim().substring(0, 100);
+              }
             }
 
             results.push({
@@ -433,6 +437,8 @@ export class SPAStrategy implements CrawlStrategy {
               thumbnail,
               author,
               dateStr,
+              // rawDateText passed via content field temporarily
+              content: rawDateText ? `__rawDateText__${rawDateText}` : undefined,
             });
           } catch {
             // 개별 아이템 파싱 실패 무시
@@ -458,6 +464,15 @@ export class SPAStrategy implements CrawlStrategy {
         excludeSelectors: config.excludeSelectors,
       }
     );
+
+    // 날짜 텍스트 fallback: evaluate 내에서 추출한 rawDateText로 날짜 파싱
+    for (const item of items) {
+      if (!item.dateStr && item.content?.startsWith('__rawDateText__')) {
+        const rawText = item.content.substring('__rawDateText__'.length);
+        item.dateStr = extractDateFromText(rawText);
+        item.content = undefined;
+      }
+    }
 
     // 제목 정제 + 7일 이내 필터링
     const filteredItems: RawContentItem[] = [];

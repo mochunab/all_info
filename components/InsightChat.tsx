@@ -156,7 +156,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-[420px] xl:right-[calc((100vw-1280px)/2+32px)] z-50 max-h-[70vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-slide-up">
+    <div className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-[420px] xl:right-[calc((100vw-1280px)/2+32px)] z-50 max-h-[70vh] sm:max-h-none sm:top-[112px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-slide-up">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/80 shrink-0">
         <div className="flex items-center gap-2 min-w-0">

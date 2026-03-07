@@ -72,8 +72,8 @@ export const translations = {
     'sources.categoryDeleted': "'{name}' 카테고리가 삭제되었습니다.",
     'sources.categoryExists': "'{name}' 카테고리가 이미 존재합니다.",
     'sources.autoAnalysis': '{count}개 소스 저장 (자동분석: {methods})',
-    'sources.botBlocked': '⚠️ {sites} — 봇 차단 사이트로 크롤링이 불가합니다.',
-    'sources.botBlockedDialog': '정보 수집을 차단하는 사이트에요.\n다른 링크를 저장해주세요.',
+    'sources.botBlocked': '⚠️ {sites} — 봇 차단 사이트로 일부 콘텐츠를 가져오지 못할 수 있습니다.',
+    'sources.botBlockedDialog': '정보 수집을 차단하는 사이트에요.\nAI가 대체 방식으로 콘텐츠를 가져오지만,\n일부 누락될 수 있습니다.',
 
     // Sources Recommend
     'sources.recommendLink': '콘텐츠 링크 추천받기',
@@ -270,7 +270,7 @@ export const translations = {
     'sources.categoryExists': "Category '{name}' already exists.",
     'sources.autoAnalysis': '{count} sources saved (auto-analysis: {methods})',
     'sources.botBlocked': '⚠️ {sites} — Bot-protected site, crawling unavailable.',
-    'sources.botBlockedDialog': 'This site blocks data collection.\nPlease save a different link.',
+    'sources.botBlockedDialog': 'This site blocks data collection.\nAI will try alternative methods,\nbut some content may be missing.',
 
     // Sources Recommend
     'sources.recommendLink': 'Get link recommendations',
@@ -467,7 +467,7 @@ export const translations = {
     'sources.categoryExists': "Danh mục '{name}' đã tồn tại.",
     'sources.autoAnalysis': '{count} nguồn đã lưu (phân tích tự động: {methods})',
     'sources.botBlocked': '⚠️ {sites} — Trang web chặn bot, không thể thu thập.',
-    'sources.botBlockedDialog': 'Trang web này chặn thu thập dữ liệu.\nVui lòng lưu liên kết khác.',
+    'sources.botBlockedDialog': 'Trang web này chặn thu thập dữ liệu.\nAI sẽ thử phương pháp thay thế,\nnhưng một số nội dung có thể bị thiếu.',
 
     // Sources Recommend
     'sources.recommendLink': 'Gợi ý liên kết',
@@ -664,7 +664,7 @@ export const translations = {
     'sources.categoryExists': "类别 '{name}' 已存在。",
     'sources.autoAnalysis': '{count} 来源已保存（自动分析：{methods}）',
     'sources.botBlocked': '⚠️ {sites} — 该网站阻止机器人访问，无法抓取。',
-    'sources.botBlockedDialog': '该网站阻止数据收集。\n请保存其他链接。',
+    'sources.botBlockedDialog': '该网站阻止数据收集。\nAI将尝试替代方式获取，\n但部分内容可能缺失。',
 
     // Sources Recommend
     'sources.recommendLink': '获取链接推荐',
@@ -861,7 +861,7 @@ export const translations = {
     'sources.categoryExists': "カテゴリ '{name}' は既に存在します。",
     'sources.autoAnalysis': '{count} ソース保存 (自動分析: {methods})',
     'sources.botBlocked': '⚠️ {sites} — ボットをブロックするサイトのため、クロールできません。',
-    'sources.botBlockedDialog': 'データ収集をブロックするサイトです。\n別のリンクを保存してください。',
+    'sources.botBlockedDialog': 'データ収集をブロックするサイトです。\nAIが代替手段で取得を試みますが、\n一部コンテンツが欠落する場合があります。',
 
     // Sources Recommend
     'sources.recommendLink': 'リンクをおすすめ',

@@ -162,18 +162,21 @@ async function handleCrawlRun(request: NextRequest) {
         await (supabase as any)
           .from('crawl_logs')
           .update({
-            status: 'completed',
+            status: crawlResult.errors.length > 0 ? 'failed' : 'completed',
             finished_at: new Date().toISOString(),
             articles_found: crawlResult.found,
             articles_new: crawlResult.new,
+            error_message: crawlResult.errors.length > 0 ? crawlResult.errors.join('; ') : null,
           })
           .eq('id', log.id);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
-          .from('crawl_sources')
-          .update({ last_crawled_at: new Date().toISOString() })
-          .eq('id', source.id);
+        if (!crawlResult.skipped) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase as any)
+            .from('crawl_sources')
+            .update({ last_crawled_at: new Date().toISOString() })
+            .eq('id', source.id);
+        }
 
         if (crawlResult.skipped) {
           console.log(`⏭️  [SKIP] ${source.name} — 변경 없음 (${elapsed}초)`);
