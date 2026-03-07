@@ -394,8 +394,7 @@ function normalizeUrl(href: string, baseUrl: string): string {
       return `https:${href}`;
     }
 
-    const base = new URL(baseUrl);
-    const resolved = new URL(href, base.origin);
+    const resolved = new URL(href, baseUrl);
     return resolved.toString();
   } catch {
     return href;

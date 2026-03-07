@@ -21,8 +21,8 @@ export function inferCrawlerType(url: string): CrawlerType {
 
   // RSS 피드
   if (
-    urlLower.includes('/rss') ||
-    urlLower.includes('/feed') ||
+    /\/rss(\/|$|\?|#)/.test(urlLower) ||
+    /\/feed(\/|$|\?|#)/.test(urlLower) ||
     urlLower.includes('.xml') ||
     urlLower.includes('atom')
   ) {
@@ -30,7 +30,7 @@ export function inferCrawlerType(url: string): CrawlerType {
   }
 
   // 네이버
-  if (urlLower.includes('blog.naver.com') || urlLower.includes('naver.com')) {
+  if (urlLower.includes('blog.naver.com')) {
     return 'PLATFORM_NAVER';
   }
 
@@ -118,8 +118,8 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
 
   // 1b. RSS 피드 (confidence: 0.95)
   if (
-    urlLower.includes('/rss') ||
-    urlLower.includes('/feed') ||
+    /\/rss(\/|$|\?|#)/.test(urlLower) ||
+    /\/feed(\/|$|\?|#)/.test(urlLower) ||
     urlLower.includes('.xml') ||
     urlLower.includes('atom.xml')
   ) {
@@ -130,9 +130,6 @@ export function inferCrawlerTypeEnhanced(url: string): InferenceResult {
   // 네이버
   if (urlLower.includes('blog.naver.com')) {
     return { type: 'PLATFORM_NAVER', confidence: 0.95 };
-  }
-  if (urlLower.includes('naver.com')) {
-    return { type: 'PLATFORM_NAVER', confidence: 0.85 };
   }
 
   // 카카오 브런치

@@ -6,7 +6,7 @@ import type { CrawlSource } from '@/types';
 import type { CrawlStrategy, RawContentItem, ContentResult } from '../types';
 import { parseConfig } from '../types';
 import { extractContent, generatePreview, extractMetadata } from '../content-extractor';
-import { isWithinDays } from '../base';
+import { isWithinDays } from '../date-parser';
 import { MAX_ARTICLE_AGE_DAYS } from '../date-parser';
 import { DEFAULT_HEADERS, fetchWithTimeout } from '../base';
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-interface ToastProps {
+type ToastProps = {
   message: string;
   isVisible: boolean;
   onClose: () => void;
   duration?: number;
-}
+};
 
 export default function Toast({
   message,
@@ -16,18 +16,20 @@ export default function Toast({
   duration = 2200,
 }: ToastProps) {
   const [isAnimating, setIsAnimating] = useState(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (isVisible) {
       setIsAnimating(true);
       const timer = setTimeout(() => {
         setIsAnimating(false);
-        setTimeout(onClose, 300);
+        setTimeout(() => onCloseRef.current(), 300);
       }, duration);
 
       return () => clearTimeout(timer);
     }
-  }, [isVisible, duration, onClose]);
+  }, [isVisible, duration]);
 
   if (!isVisible && !isAnimating) return null;
 

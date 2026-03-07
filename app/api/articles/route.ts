@@ -19,8 +19,10 @@ export async function GET(request: NextRequest) {
     const effectiveUserId = userIdParam || await getMasterUserId();
     const offset = (page - 1) * limit;
 
+    const nocache = searchParams.get('nocache') === '1';
+
     // In-Memory cache — 검색 쿼리 없는 요청만 캐시 (검색은 변동성 높음)
-    const cacheKey = !search
+    const cacheKey = !search && !nocache
       ? `${CACHE_KEYS.ARTICLES_PREFIX}u=${effectiveUserId}&p=${page}&l=${limit}&c=${category}&s=${source}`
       : null;
 
