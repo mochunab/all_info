@@ -28,13 +28,13 @@ export async function getBlogPost(slug: string, language = 'ko'): Promise<BlogPo
   return data ? (data as BlogPost) : null;
 }
 
-export async function getBlogSlugs(): Promise<{ slug: string }[]> {
+export async function getBlogSlugs(): Promise<{ slug: string; language: string }[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createServiceClient() as any;
   const { data } = await supabase
     .from('blog_posts')
-    .select('slug')
+    .select('slug, language')
     .eq('published', true);
 
-  return (data as { slug: string }[]) ?? [];
+  return (data as { slug: string; language: string }[]) ?? [];
 }

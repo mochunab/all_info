@@ -35,7 +35,10 @@ export default async function BlogPage({
   const { locale } = await params;
   const lang = locale as Language;
   const lp = (p: string) => localePath(locale, p);
-  const posts = await getBlogPosts();
+  let posts = await getBlogPosts(locale);
+  if (posts.length === 0 && locale !== 'ko') {
+    posts = await getBlogPosts('ko');
+  }
 
   const jsonLd = {
     '@context': 'https://schema.org',
