@@ -1,9 +1,12 @@
 export const GA_ID = 'G-1JHEHJCLXN';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const pageview = (url: string) => {
+export const pageview = (url: string, pageTitle?: string) => {
   if (typeof window.gtag === 'undefined') return;
-  window.gtag('config', GA_ID, { page_path: url });
+  window.gtag('config', GA_ID, {
+    page_path: url,
+    page_title: pageTitle || document.title,
+  });
 };
 
 type GTagEvent = {

@@ -118,7 +118,9 @@ export default async function BlogPostPage({ params }: Props) {
               prose-a:text-[var(--accent)] prose-a:no-underline hover:prose-a:underline
               prose-table:text-sm
               prose-th:bg-[var(--bg-tertiary)] prose-th:px-3 prose-th:py-2
-              prose-td:px-3 prose-td:py-2 prose-td:border-[var(--border)]"
+              prose-td:px-3 prose-td:py-2 prose-td:border-[var(--border)]
+              prose-pre:bg-[#f5f5f5] prose-pre:text-[#333] prose-pre:text-sm prose-pre:leading-snug prose-pre:tracking-normal
+              prose-code:text-sm prose-code:tracking-normal"
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
         </article>

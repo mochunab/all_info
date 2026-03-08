@@ -1,6 +1,11 @@
+import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import { getMasterUserId } from '@/lib/user';
 import HomeFeed from '@/components/HomeFeed';
+
+export const metadata: Metadata = {
+  title: '홈피드',
+};
 
 const ARTICLE_LIST_COLUMNS = [
   'id', 'source_id', 'source_name', 'source_url', 'title', 'title_ko',

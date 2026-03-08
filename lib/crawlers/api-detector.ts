@@ -403,3 +403,92 @@ function extractReasonableArrays(obj: unknown, depth = 0): unknown[][] {
 
   return arrays;
 }
+
+/**
+ * 감지된 API 설정으로 실제 test fetch → 아이템 매핑 검증
+ * title/link 필드가 실제로 존재하는 아이템이 2개 이상이어야 통과
+ */
+export async function validateApiConfig(config: DetectedApiConfig): Promise<boolean> {
+  try {
+    const options: RequestInit = {
+      method: config.method,
+      headers: {
+        'User-Agent': 'InsightHub/1.0',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...config.headers,
+      },
+      signal: AbortSignal.timeout(10000),
+    };
+
+    if (config.method === 'POST' && config.body) {
+      options.body = JSON.stringify(config.body);
+    }
+
+    const response = await fetch(config.endpoint, options);
+    if (!response.ok) {
+      console.log(`[API-VALIDATE] ❌ HTTP ${response.status}`);
+      return false;
+    }
+
+    const data = await response.json();
+
+    // items 배열 추출
+    let items: unknown[];
+    if (config.responseMapping.items) {
+      let value: unknown = data;
+      for (const key of config.responseMapping.items.split('.')) {
+        if (value && typeof value === 'object') {
+          value = (value as Record<string, unknown>)[key];
+        } else {
+          value = undefined;
+          break;
+        }
+      }
+      items = Array.isArray(value) ? value : [];
+    } else {
+      items = Array.isArray(data) ? data : [];
+    }
+
+    if (items.length < 2) {
+      console.log(`[API-VALIDATE] ❌ 아이템 ${items.length}개 (최소 2개 필요)`);
+      return false;
+    }
+
+    // title/link 필드 존재 검증 (상위 5개 샘플)
+    const sample = items.slice(0, 5);
+    let validCount = 0;
+    for (const raw of sample) {
+      const item = raw as Record<string, unknown>;
+      const title = getNestedField(item, config.responseMapping.title);
+      const link = getNestedField(item, config.responseMapping.link);
+      if (title && typeof title === 'string' && title.length > 0 && link !== undefined) {
+        validCount++;
+      }
+    }
+
+    const passRate = validCount / sample.length;
+    if (passRate < 0.5) {
+      console.log(`[API-VALIDATE] ❌ 필드 매핑 실패 (${validCount}/${sample.length} 유효, title="${config.responseMapping.title}", link="${config.responseMapping.link}")`);
+      return false;
+    }
+
+    console.log(`[API-VALIDATE] ✅ 검증 통과 (${validCount}/${sample.length} 유효, ${items.length}개 아이템)`);
+    return true;
+  } catch (error) {
+    console.log(`[API-VALIDATE] ❌ 오류: ${error instanceof Error ? error.message : error}`);
+    return false;
+  }
+}
+
+function getNestedField(obj: Record<string, unknown>, path: string): unknown {
+  let value: unknown = obj;
+  for (const key of path.split('.')) {
+    if (value && typeof value === 'object') {
+      value = (value as Record<string, unknown>)[key];
+    } else {
+      return undefined;
+    }
+  }
+  return value;
+}
