@@ -58,8 +58,8 @@ export async function GET() {
 
     return `    <item>
       <title>${escapeXml(title)}</title>
-      <link>${escapeXml(a.source_url)}</link>
-      <guid isPermaLink="false">${a.id}</guid>
+      <link>https://aca-info.com/ko/articles/${a.id}</link>
+      <guid isPermaLink="true">https://aca-info.com/ko/articles/${a.id}</guid>
       <pubDate>${pubDate}</pubDate>${a.summary ? `
       <description>${escapeXml(a.summary)}</description>` : ''}${a.category ? `
       <category>${escapeXml(a.category)}</category>` : ''}
