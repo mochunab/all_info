@@ -310,7 +310,7 @@ Rules:
 | Primary button | `--accent` bg | `--accent-hover` bg | `scale-95` |
 | Inverted button | `bg-white` | `bg-gray-50` | `scale-95` |
 | Landing card | `shadow-sm` | `shadow-md` + `scale(1.02)` | `scale(0.98)` |
-| App card | `shadow-sm` | `translateY(-4px)` + `shadow-lg` | — |
+| App card | `shadow-sm` | `translateY(-2px)` + `shadow-md` | — |
 | Inner card | — | `shadow-sm` | `scale(0.98)` |
 
 ### Tailwind에서 CSS 변수 + opacity 사용 주의
@@ -358,7 +358,35 @@ className="bg-white hover:bg-gray-50"
 
 ---
 
-## 11. File Reference
+## 11. Logo (/Ai 레터마크)
+
+컨셉: ACA INFO → AI. "/" 슬래시 + 짧은 바 + "i" (줄기+도트) 조합.
+
+### SVG (viewBox 0 0 32 32)
+
+```svg
+<path d="M3.5 27L11 5" strokeWidth="6.5" strokeLinecap="round" />   <!-- / 슬래시 -->
+<path d="M16.5 27V17" strokeWidth="6.5" strokeLinecap="round" />    <!-- 짧은 바 -->
+<path d="M26 27V14" strokeWidth="6.5" strokeLinecap="round" />      <!-- i 줄기 -->
+<circle cx="26" cy="5.5" r="3.8" />                                  <!-- i 도트 -->
+```
+
+### 사용처별 크기
+
+| 위치 | 렌더링 크기 | 색상 |
+|------|-------------|------|
+| Header | 28x28 | 그라디언트 `#1E3A8A → #3B82F6` |
+| Favicon (`app/icon.svg`) | 32x32 | 그라디언트 `#1E3A8A → #3B82F6` |
+| OG 이미지 | 40x40 | 단색 `#2563EB` |
+
+### 규칙
+
+- "i" 도트와 줄기 사이 최소 2px 간격 유지 (붙으면 "i"로 안 읽힘)
+- 에셋 원본: `minor_docs/asset/` (PNG 1024x1024, OG 1200x630)
+
+---
+
+## 12. File Reference
 
 | 파일 | 내용 |
 |------|------|
@@ -367,11 +395,15 @@ className="bg-white hover:bg-gray-50"
 | `app/[locale]/landing/AnimatedSection.tsx` | Framer Motion variants + MD3 easing |
 | `components/Header.tsx` | 글로벌 헤더 (sticky, z-50, backdrop-blur) |
 | `components/LocaleLink.tsx` | i18n 링크 래퍼 |
+| `components/InsightChat.tsx` | AI 채팅 (디자인 토큰 적용) |
+| `components/SeoBreadcrumb.tsx` | 브레드크럼 (SVG chevron) |
+| `app/icon.svg` | 파비콘 (/Ai SVG) |
+| `app/api/og/route.tsx` | OG 이미지 (Edge Runtime) |
 | `lib/i18n.ts` | 번역 키 (이모지 금지) |
 
 ---
 
-## 12. New Page Checklist
+## 13. New Page Checklist
 
 새 페이지/컴포넌트 작성 시:
 

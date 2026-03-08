@@ -983,16 +983,25 @@ export default function SourcesPageClient({
 
         {/* Browse Master Categories Button - shown when no categories */}
         {categories.length === 0 && !readOnly && (
-          <div className="mb-6 flex flex-col items-center justify-center py-8 border border-dashed border-[var(--border)] rounded-xl">
-            <svg className="w-10 h-10 text-[var(--text-tertiary)] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <p className="text-sm text-[var(--text-tertiary)] mb-4">
+          <div
+            className="mb-6 flex flex-col items-center justify-center py-10 bg-[var(--bg-secondary)] border border-[var(--border)]"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)' }}
+          >
+            <div
+              className="w-12 h-12 flex items-center justify-center mb-4"
+              style={{ borderRadius: '16px', backgroundColor: 'var(--accent-light)' }}
+            >
+              <svg className="w-5 h-5" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <p className="text-sm text-[var(--text-tertiary)] mb-5">
               {t('sources.subtitle')}
             </p>
             <button
               onClick={handleOpenBrowseMaster}
-              className="px-5 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-full hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+              style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -1223,7 +1232,8 @@ export default function SourcesPageClient({
               handleSave();
             }}
             disabled={!hasValidSources || isSaving}
-            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer shadow-lg"
+            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-lg hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            style={{ boxShadow: 'var(--shadow-md)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
             {isSaving ? t('sources.saving') : t('sources.save')}
           </button>
@@ -1232,8 +1242,14 @@ export default function SourcesPageClient({
 
       {/* Delete Category Confirmation Dialog */}
       {deletingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeletingCategory(null)} />
+          <div
+            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="p-6">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
                 {t('sources.deleteCategory')}
@@ -1253,7 +1269,8 @@ export default function SourcesPageClient({
               <button
                 onClick={() => setDeletingCategory(null)}
                 disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+                className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {t('sources.cancel')}
               </button>
@@ -1261,7 +1278,8 @@ export default function SourcesPageClient({
               <button
                 onClick={handleDeleteCategory}
                 disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {isDeleting ? t('sources.deleting') : t('sources.delete')}
               </button>
@@ -1272,10 +1290,16 @@ export default function SourcesPageClient({
 
       {/* Bot Blocked Dialog */}
       {showBotBlockedDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowBotBlockedDialog(false)} />
+          <div
+            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="p-6 text-center">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center" style={{ borderRadius: '16px', backgroundColor: '#FEF3C7' }}>
                 <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
@@ -1287,7 +1311,8 @@ export default function SourcesPageClient({
             <div className="border-t border-[var(--border)]">
               <button
                 onClick={() => setShowBotBlockedDialog(false)}
-                className="w-full py-3.5 text-sm font-medium text-[var(--accent)] hover:bg-[var(--bg-secondary)] transition-colors"
+                className="w-full py-3.5 text-sm font-medium text-[var(--accent)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {t('dialog.confirm')}
               </button>
@@ -1298,43 +1323,53 @@ export default function SourcesPageClient({
 
       {/* Analysis Progress Dialog */}
       {showAnalysisDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-[var(--accent)] animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                    크롤링 전략 분석 중
-                  </h3>
-                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                    AI가 최적의 크롤링 방식을 찾고 있어요
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)] p-6"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ borderRadius: '16px', backgroundColor: 'var(--accent-light)' }}>
+                <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
               </div>
-              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-[var(--accent)] rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${analysisProgress}%` }}
-                />
+              <div>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  크롤링 전략 분석 중
+                </h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  AI가 최적의 크롤링 방식을 찾고 있어요
+                </p>
               </div>
-              <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
-                {Math.round(analysisProgress)}%
-              </p>
             </div>
+            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{ backgroundColor: 'var(--accent)', width: `${analysisProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
+              />
+            </div>
+            <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
+              {Math.round(analysisProgress)}%
+            </p>
           </div>
         </div>
       )}
 
       {/* Scope Selection Dialog */}
       {showScopeDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowScopeDialog(false)} />
+          <div
+            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="p-6">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
                 {t('sources.recommendScope')}
@@ -1342,19 +1377,22 @@ export default function SourcesPageClient({
               <div className="space-y-2">
                 <button
                   onClick={() => handleRecommendSources('domestic')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
+                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
                 >
                   {t('sources.scopeDomestic')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('international')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
+                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
                 >
                   {t('sources.scopeInternational')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('both')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-left"
+                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
+                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
                 >
                   {t('sources.scopeBoth')}
                 </button>
@@ -1363,7 +1401,8 @@ export default function SourcesPageClient({
             <div className="border-t border-[var(--border)]">
               <button
                 onClick={() => setShowScopeDialog(false)}
-                className="w-full py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+                className="w-full py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {t('sources.cancel')}
               </button>
@@ -1374,35 +1413,39 @@ export default function SourcesPageClient({
 
       {/* Recommend Loading Dialog */}
       {showRecommendDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--bg-primary)] rounded-2xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-[var(--accent)]/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-[var(--accent)] animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                    {t('sources.recommendLoading')}
-                  </h3>
-                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                    {t('sources.recommendLoadingDesc')}
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)] p-6"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ borderRadius: '16px', backgroundColor: 'var(--accent-light)' }}>
+                <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
               </div>
-              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-[var(--accent)] rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${recommendProgress}%` }}
-                />
+              <div>
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  {t('sources.recommendLoading')}
+                </h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                  {t('sources.recommendLoadingDesc')}
+                </p>
               </div>
-              <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
-                {Math.round(recommendProgress)}%
-              </p>
             </div>
+            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{ backgroundColor: 'var(--accent)', width: `${recommendProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
+              />
+            </div>
+            <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
+              {Math.round(recommendProgress)}%
+            </p>
           </div>
         </div>
       )}
@@ -1417,10 +1460,14 @@ export default function SourcesPageClient({
 
       {/* Browse Master Categories Modal */}
       {showBrowseMaster && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowBrowseMaster(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowBrowseMaster(false)} />
           <div
-            className="bg-[var(--bg-primary)] rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col"
+            className="relative bg-[var(--bg-secondary)] w-full max-w-md mx-4 max-h-[80vh] flex flex-col border border-[var(--border)]"
+            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
             <div className="p-5 border-b border-[var(--border)]">
               <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('sources.browseMasterTitle')}</h3>
@@ -1430,7 +1477,7 @@ export default function SourcesPageClient({
             <div className="flex-1 overflow-y-auto p-4">
               {masterLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full" />
+                  <div className="animate-spin w-6 h-6 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
                   <span className="ml-3 text-sm text-[var(--text-secondary)]">{t('sources.browseMasterLoading')}</span>
                 </div>
               ) : !masterData || masterData.categories.length === 0 ? (
@@ -1442,7 +1489,7 @@ export default function SourcesPageClient({
                     const isExpanded = expandedMasterCats.has(cat.name);
                     const sources = masterData.sourcesByCategory[cat.name] || [];
                     return (
-                      <div key={cat.name} className="border border-[var(--border)] rounded-xl overflow-hidden">
+                      <div key={cat.name} className="border border-[var(--border)] rounded-lg overflow-hidden">
                         <div className="flex items-center gap-3 px-4 py-3">
                           <input
                             type="checkbox"
@@ -1455,7 +1502,7 @@ export default function SourcesPageClient({
                                 return next;
                               });
                             }}
-                            className="w-4 h-4 rounded accent-[var(--accent)] shrink-0"
+                            className="w-4 h-4 rounded accent-[var(--accent)] shrink-0 cursor-pointer"
                           />
                           <button
                             onClick={() => {
@@ -1466,14 +1513,15 @@ export default function SourcesPageClient({
                                 return next;
                               });
                             }}
-                            className="flex-1 flex items-center justify-between text-left"
+                            className="flex-1 flex items-center justify-between text-left cursor-pointer"
                           >
                             <span className="text-sm font-medium text-[var(--text-primary)]">
                               {cat.name}
                               <span className="ml-2 text-xs text-[var(--text-tertiary)]">({sources.length})</span>
                             </span>
                             <svg
-                              className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              className={`w-4 h-4 text-[var(--text-tertiary)]`}
+                              style={{ transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
                               fill="none" stroke="currentColor" viewBox="0 0 24 24"
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1485,7 +1533,7 @@ export default function SourcesPageClient({
                             <ul className="mt-2 space-y-1.5">
                               {sources.map((s) => (
                                 <li key={s.id} className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
                                   <span className="truncate">{s.name || s.url}</span>
                                 </li>
                               ))}
@@ -1502,14 +1550,16 @@ export default function SourcesPageClient({
             <div className="p-4 border-t border-[var(--border)] flex gap-3">
               <button
                 onClick={() => setShowBrowseMaster(false)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] rounded-xl border border-[var(--border)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--bg-primary)] text-[var(--text-secondary)] rounded-lg border border-[var(--border)] hover:bg-[var(--bg-tertiary)] active:scale-95 cursor-pointer"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {t('sources.cancel')}
               </button>
               <button
                 onClick={handleAddMasterCategories}
                 disabled={selectedMasterCats.size === 0}
-                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
               >
                 {t('sources.browseMasterAdd')} {selectedMasterCats.size > 0 && `(${selectedMasterCats.size})`}
               </button>
