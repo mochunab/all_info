@@ -30,6 +30,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className={`${pretendard.variable} ${outfit.variable}`}>
       <head>
+        <meta name="naver-site-verification" content="638756f30fb0ff87777d7707aa69619afad13b56" />
         <link rel="alternate" type="application/rss+xml" title="아카인포 RSS" href="/feed.xml" />
       </head>
       <body className="antialiased min-h-screen">
