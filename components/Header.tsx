@@ -7,6 +7,7 @@ import { t } from '@/lib/i18n';
 import { createClient } from '@/lib/supabase/client';
 import { event as gaEvent } from '@/lib/gtag';
 import { useAuth } from '@/lib/auth-context';
+import Image from 'next/image';
 import LanguageSwitcher from './LanguageSwitcher';
 import LocaleLink from './LocaleLink';
 
@@ -50,24 +51,14 @@ export default function Header({
         <div className="flex items-center justify-between h-16 sm:h-20">
           <div className="flex items-center gap-8">
             <LocaleLink href={logoHref} className="flex items-center gap-3">
-              <svg
-                width="28"
-                height="28"
-                viewBox="0 0 32 32"
-                fill="none"
+              <Image
+                src="/logo-mark.png"
+                alt=""
+                width={36}
+                height={36}
                 aria-hidden="true"
-              >
-                <defs>
-                  <linearGradient id="aca-logo-g" x1="2" y1="28" x2="28" y2="2" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#1E3A8A" />
-                    <stop offset="1" stopColor="#3B82F6" />
-                  </linearGradient>
-                </defs>
-                <path d="M3.5 27L11 5" stroke="url(#aca-logo-g)" strokeWidth="6.5" strokeLinecap="round" />
-                <path d="M16.5 27V17" stroke="url(#aca-logo-g)" strokeWidth="6.5" strokeLinecap="round" />
-                <path d="M26 27V14" stroke="url(#aca-logo-g)" strokeWidth="6.5" strokeLinecap="round" />
-                <circle cx="26" cy="5.5" r="3.8" fill="url(#aca-logo-g)" />
-              </svg>
+                priority
+              />
               <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)]">
                 {t(language, 'header.logo')}
               </h1>
