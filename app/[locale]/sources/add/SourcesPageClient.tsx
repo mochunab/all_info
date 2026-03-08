@@ -951,7 +951,7 @@ export default function SourcesPageClient({
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <button
-              onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
+              onClick={() => window.history.length > 1 ? router.back() : router.push(`/${language}`)}
               className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               <svg
