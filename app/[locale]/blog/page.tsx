@@ -15,13 +15,16 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const lang = locale as Language;
+  const metaTitle = t(lang, 'blog.metaTitle');
+  const metaDesc = t(lang, 'blog.metaDesc');
   return {
-    title: '블로그 - 면접·취업 팁',
-    description: '면접 준비, 취업 팁, 커리어 성장에 도움이 되는 블로그 글을 확인하세요.',
+    title: metaTitle,
+    description: metaDesc,
     alternates: { canonical: `/${locale}/blog`, languages: buildAlternateLanguages('/blog') },
     openGraph: {
-      title: '블로그 - 면접·취업 팁 | 아카인포',
-      description: '면접 준비, 취업 팁, 커리어 성장에 도움이 되는 블로그 글을 확인하세요.',
+      title: `${metaTitle} | ${t(lang, 'header.logo')}`,
+      description: metaDesc,
       type: 'website',
     },
   };
