@@ -9,7 +9,7 @@ import { useLanguage } from '@/lib/language-context';
 
 export default function SignupPage() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -37,7 +37,7 @@ export default function SignupPage() {
     }
 
     gaEvent({ action: 'signup', category: 'auth', label: 'email' });
-    router.push('/');
+    router.push(`/${language}`);
     router.refresh();
   };
 

@@ -117,7 +117,7 @@ export default function FilterBar({
         {/* Add Source Button */}
         {!hideAddSource && (
           <button
-            onClick={() => router.push(userId ? `/sources/add?user_id=${userId}` : '/sources/add')}
+            onClick={() => router.push(userId ? `/${language}/sources/add?user_id=${userId}` : `/${language}/sources/add`)}
             className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap cursor-pointer"
           >
             <svg
