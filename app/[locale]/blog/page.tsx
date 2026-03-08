@@ -4,6 +4,8 @@ import SeoBreadcrumb from '@/components/SeoBreadcrumb';
 import BlogList from '@/components/BlogList';
 import { buildAlternateLanguages } from '@/lib/hreflang';
 import { localePath } from '@/lib/locale-path';
+import { t } from '@/lib/i18n';
+import type { Language } from '@/types';
 
 export const revalidate = 3600;
 
@@ -31,14 +33,15 @@ export default async function BlogPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  const lang = locale as Language;
   const lp = (p: string) => localePath(locale, p);
   const posts = await getBlogPosts();
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: '블로그 - 면접·취업 팁',
-    description: '면접 준비, 취업 팁, 커리어 성장 블로그',
+    name: t(lang, 'blog.title'),
+    description: t(lang, 'blog.subtitle'),
     url: `https://aca-info.com${lp('/blog')}`,
     numberOfItems: posts.length,
   };
@@ -49,10 +52,10 @@ export default async function BlogPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '블로그' }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: t(lang, 'blog.title') }]} locale={locale} />
 
-      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">블로그</h1>
-      <p className="text-sm text-[var(--text-secondary)] mb-6">취업 준비부터 AI 활용까지, 커리어 성장에 도움이 되는 글을 모았습니다.</p>
+      <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">{t(lang, 'blog.title')}</h1>
+      <p className="text-sm text-[var(--text-secondary)] mb-6">{t(lang, 'blog.subtitle')}</p>
 
       <BlogList posts={posts} locale={locale} />
     </main>

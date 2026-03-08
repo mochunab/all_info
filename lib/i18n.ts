@@ -52,6 +52,15 @@ export const translations = {
     'dialog.deleteArticleMessage': '이 인사이트를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
     'dialog.delete': '삭제',
 
+    // Blog
+    'blog.title': '블로그',
+    'blog.subtitle': '취업 준비부터 AI 활용까지, 커리어 성장에 도움이 되는 글을 모았습니다.',
+    'blog.empty': '해당 카테고리에 게시된 글이 없습니다.',
+    'blog.catAll': '전체',
+    'blog.catJob': '취업팁',
+    'blog.catCareer': '커리어UP',
+    'blog.catAi': 'AI따라잡기',
+
     // Sources Add Page
     'sources.back': '돌아가기',
     'sources.title': '링크 관리',
@@ -248,6 +257,15 @@ export const translations = {
     'dialog.deleteArticleTitle': 'Delete Insight',
     'dialog.deleteArticleMessage': 'Are you sure you want to delete this insight? This action cannot be undone.',
     'dialog.delete': 'Delete',
+
+    // Blog
+    'blog.title': 'Blog',
+    'blog.subtitle': 'Tips on job prep, AI tools, and career growth — all in one place.',
+    'blog.empty': 'No posts in this category yet.',
+    'blog.catAll': 'All',
+    'blog.catJob': 'Job Tips',
+    'blog.catCareer': 'Career UP',
+    'blog.catAi': 'AI Catch-up',
 
     // Sources Add Page
     'sources.back': 'Back',
@@ -446,6 +464,15 @@ export const translations = {
     'dialog.deleteArticleMessage': 'Bạn có chắc muốn xóa insight này? Hành động này không thể hoàn tác.',
     'dialog.delete': 'Xóa',
 
+    // Blog
+    'blog.title': 'Blog',
+    'blog.subtitle': 'Từ chuẩn bị phỏng vấn đến ứng dụng AI, tổng hợp bài viết hữu ích cho sự nghiệp.',
+    'blog.empty': 'Chưa có bài viết trong danh mục này.',
+    'blog.catAll': 'Tất cả',
+    'blog.catJob': 'Mẹo việc làm',
+    'blog.catCareer': 'Phát triển',
+    'blog.catAi': 'AI Cập nhật',
+
     // Sources Add Page
     'sources.back': 'Quay lại',
     'sources.title': 'Quản lý liên kết',
@@ -643,6 +670,15 @@ export const translations = {
     'dialog.deleteArticleMessage': '您确定要删除此洞察吗？此操作无法撤消。',
     'dialog.delete': '删除',
 
+    // Blog
+    'blog.title': '博客',
+    'blog.subtitle': '从求职准备到AI应用，汇集助力职业成长的实用文章。',
+    'blog.empty': '该分类暂无文章。',
+    'blog.catAll': '全部',
+    'blog.catJob': '求职技巧',
+    'blog.catCareer': '职业提升',
+    'blog.catAi': 'AI前沿',
+
     // Sources Add Page
     'sources.back': '返回',
     'sources.title': '链接管理',
@@ -839,6 +875,15 @@ export const translations = {
     'dialog.deleteArticleTitle': 'インサイトを削除',
     'dialog.deleteArticleMessage': 'このインサイトを削除してもよろしいですか？この操作は取り消せません。',
     'dialog.delete': '削除',
+
+    // Blog
+    'blog.title': 'ブログ',
+    'blog.subtitle': '就活準備からAI活用まで、キャリア成長に役立つ記事をまとめました。',
+    'blog.empty': 'このカテゴリにはまだ記事がありません。',
+    'blog.catAll': 'すべて',
+    'blog.catJob': '就活Tips',
+    'blog.catCareer': 'キャリアUP',
+    'blog.catAi': 'AIキャッチアップ',
 
     // Sources Add Page
     'sources.back': '戻る',
