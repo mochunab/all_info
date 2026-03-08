@@ -224,3 +224,81 @@ body {
     @apply bg-[var(--accent)] text-white border-transparent;
   }
 }
+
+/* ============================================
+   Landing Page — Material You (MD3) Inspired
+   ============================================ */
+@layer utilities {
+  /* MD3 easing */
+  .md3-ease {
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Hero background — organic blur shapes */
+  .landing-hero-bg {
+    background-color: var(--bg-primary);
+  }
+
+  /* Glass-morphism card (MD3 tonal surface + blur) */
+  .landing-glass {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+
+  /* Tonal icon container */
+  .landing-icon-box {
+    @apply w-12 h-12 rounded-2xl flex items-center justify-center shrink-0;
+    background-color: var(--accent-light);
+  }
+
+  .landing-icon-box svg {
+    @apply w-5 h-5;
+    color: var(--accent);
+  }
+
+  /* Pill step number */
+  .landing-step-num {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0;
+    background-color: var(--accent);
+  }
+
+  /* MD3-style tonal card (no border, surface bg) */
+  .landing-card {
+    @apply rounded-3xl overflow-hidden;
+    background-color: var(--bg-tertiary);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 300ms cubic-bezier(0.2, 0, 0, 1),
+                transform 300ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .landing-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: scale(1.02);
+  }
+
+  .landing-card:active {
+    transform: scale(0.98);
+  }
+
+  /* CTA gradient surface */
+  .landing-cta-section {
+    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 60%, #3B82F6 100%);
+  }
+
+  /* Step connector */
+  .landing-connector {
+    @apply hidden md:block absolute top-1/2 -right-4 w-8;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-light), transparent);
+    border-radius: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-card:hover,
+    .card-hover:hover {
+      transform: none;
+    }
+  }
+}

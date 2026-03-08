@@ -78,26 +78,34 @@ export async function middleware(request: NextRequest) {
   }
 
   // No locale prefix → detect and redirect (302)
+  const hasVisited = request.cookies.has('ih_visited');
   if (!LOCALE_SET.has(firstSegment)) {
     const detected = detectLocaleFromHeader(request);
     const url = request.nextUrl.clone();
-    const target = pathname === '/' ? '/landing' : pathname;
+    const target = (pathname === '/' && !hasVisited) ? '/landing' : pathname;
     url.pathname = `/${detected}${target}`;
-    return NextResponse.redirect(url, 302);
+    const res = NextResponse.redirect(url, 302);
+    if (!hasVisited) res.cookies.set('ih_visited', '1', { maxAge: 60 * 60 * 24 * 365, path: '/' });
+    return res;
   }
 
-  // /{locale} root → /{locale}/landing redirect
+  // /{locale} root → /{locale}/landing redirect (first visit only)
   const segments = pathname.split('/').filter(Boolean);
-  if (segments.length === 1 && LOCALE_SET.has(segments[0])) {
+  if (segments.length === 1 && LOCALE_SET.has(segments[0]) && !hasVisited) {
     const url = request.nextUrl.clone();
     url.pathname = `/${segments[0]}/landing`;
-    return NextResponse.redirect(url, 302);
+    const res = NextResponse.redirect(url, 302);
+    res.cookies.set('ih_visited', '1', { maxAge: 60 * 60 * 24 * 365, path: '/' });
+    return res;
   }
 
-  // Valid locale prefix → continue
+  // Valid locale prefix → continue (set visited cookie on landing page)
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
+  if (!hasVisited && pathname.endsWith('/landing')) {
+    response.cookies.set('ih_visited', '1', { maxAge: 60 * 60 * 24 * 365, path: '/' });
+  }
 
   // Supabase auth
   const supabase = createServerClient(

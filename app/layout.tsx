@@ -1,10 +1,8 @@
 import Script from "next/script";
 import localFont from "next/font/local";
 import { Outfit } from "next/font/google";
-import { Suspense } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
-import GTagPageView from "@/components/GTagPageView";
 import { GA_ID } from "@/lib/gtag";
 
 const pretendard = localFont({
@@ -47,9 +45,6 @@ export default async function RootLayout({
             gtag('config', '${GA_ID}');
           `}
         </Script>
-        <Suspense fallback={null}>
-          <GTagPageView />
-        </Suspense>
         {children}
       </body>
     </html>
