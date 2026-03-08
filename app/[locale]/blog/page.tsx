@@ -52,36 +52,36 @@ export default async function BlogPage({
       <SeoBreadcrumb items={[{ label: '블로그' }]} locale={locale} />
 
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">블로그</h1>
-      <p className="text-[var(--text-secondary)] mb-8">면접 준비와 취업에 도움이 되는 글을 모았습니다.</p>
+      <p className="text-sm text-[var(--text-secondary)] mb-8">면접 준비와 취업에 도움이 되는 글을 모았습니다.</p>
 
       {posts.length === 0 ? (
         <p className="text-[var(--text-tertiary)]">아직 게시된 글이 없습니다.</p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2">
           {posts.map((post) => (
             <Link
               key={post.slug}
               href={lp(`/blog/${post.slug}`)}
-              className="card p-5 hover:border-[var(--accent)] transition-colors group"
+              className="card card-hover p-6 group cursor-pointer"
             >
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors line-clamp-2">
+              <h2 className="text-lg font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors duration-200 line-clamp-2">
                 {post.title}
               </h2>
-              <p className="text-sm text-[var(--text-secondary)] mt-2 line-clamp-2">
+              <p className="text-sm text-[var(--text-secondary)] mt-2.5 line-clamp-2 leading-relaxed">
                 {post.description}
               </p>
-              <div className="flex items-center gap-3 mt-3">
+              <div className="flex items-center gap-3 mt-4 pt-3 border-t border-[var(--border)]">
                 {post.published_at && (
                   <time className="text-xs text-[var(--text-tertiary)]">
                     {new Date(post.published_at).toLocaleDateString('ko-KR')}
                   </time>
                 )}
                 {post.tags.length > 0 && (
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 ml-auto">
                     {post.tags.slice(0, 3).map((tag) => (
                       <span
                         key={tag}
-                        className="px-1.5 py-0.5 text-xs bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] rounded"
+                        className="px-2.5 py-0.5 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded-full"
                       >
                         {tag}
                       </span>

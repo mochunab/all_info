@@ -30,11 +30,11 @@ export default function SeoArticleList({ articles, locale = 'ko' }: SeoArticleLi
         const tags = article.summary_tags?.slice(0, 3) || [];
 
         return (
-          <article key={article.id} className="card p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-2">
+          <article key={article.id} className="card card-hover p-5 sm:p-6">
+            <div className="flex items-center gap-2 mb-3">
               <Link
                 href={lp(`/sources/${encodeURIComponent(article.source_name)}`)}
-                className="px-2 py-0.5 rounded text-white text-xs font-medium hover:opacity-80 transition-opacity"
+                className="px-2.5 py-1 rounded-full text-white text-xs font-medium hover:opacity-90 transition-opacity"
                 style={{ backgroundColor: sourceColor }}
               >
                 {article.source_name}
@@ -42,7 +42,7 @@ export default function SeoArticleList({ articles, locale = 'ko' }: SeoArticleLi
               {article.category && (
                 <Link
                   href={lp(`/topics/${encodeURIComponent(article.category)}`)}
-                  className="text-xs text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
+                  className="text-xs text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors duration-200"
                 >
                   {article.category}
                 </Link>
@@ -52,19 +52,19 @@ export default function SeoArticleList({ articles, locale = 'ko' }: SeoArticleLi
               </span>
             </div>
 
-            <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2">
+            <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)] mb-2">
               <a
                 href={article.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-[var(--accent)] transition-colors"
+                className="hover:text-[var(--accent)] transition-colors duration-200"
               >
                 {title}
               </a>
             </h3>
 
             {summary && (
-              <p className="text-sm text-[var(--text-secondary)] line-clamp-2 mb-2">{summary}</p>
+              <p className="text-sm text-[var(--text-secondary)] line-clamp-2 mb-3 leading-relaxed">{summary}</p>
             )}
 
             {tags.length > 0 && (
@@ -73,7 +73,7 @@ export default function SeoArticleList({ articles, locale = 'ko' }: SeoArticleLi
                   <Link
                     key={i}
                     href={lp(`/tags/${encodeURIComponent(tag)}`)}
-                    className="px-2 py-0.5 text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded hover:text-[var(--accent)] transition-colors"
+                    className="px-2.5 py-0.5 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded-full hover:bg-[var(--accent)] hover:text-white transition-colors duration-200"
                   >
                     #{tag}
                   </Link>

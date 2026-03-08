@@ -132,11 +132,11 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
         onClick={handleClick}
         className="card card-hover cursor-pointer group relative"
       >
-        <div className="p-4 sm:p-5">
+        <div className="p-5 sm:p-6">
           {/* Top: Source Badge + External Link + Delete */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3.5">
             <div
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded text-white text-xs font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-xs font-medium"
               style={{ backgroundColor: sourceColor }}
             >
               {article.source_name}
@@ -188,7 +188,7 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
           </div>
 
         {/* Hook Title (메인 타이틀 — 후킹 제목, 없으면 title_ko fallback) */}
-        <h3 className="text-base sm:text-lg font-semibold text-[var(--text-primary)] line-clamp-2 mb-3 group-hover:text-[var(--accent)] transition-colors">
+        <h3 className="text-base sm:text-lg font-bold text-[var(--text-primary)] line-clamp-2 mb-3.5 group-hover:text-[var(--accent)] transition-colors duration-200">
           {isTranslating && language !== 'ko' ? (
             <span className="text-[var(--text-tertiary)] italic">{t(language, 'article.translating')}</span>
           ) : (
@@ -198,14 +198,14 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
 
         {/* Summary Box (서브타이틀: title_ko + 상세 설명) */}
         {translatedSummary && (
-          <div className="bg-[var(--bg-tertiary)] rounded-lg p-3 mb-3">
+          <div className="bg-[var(--bg-tertiary)] rounded-xl p-3.5 mb-3.5">
             {isTranslating && language !== 'ko' ? (
               <p className="text-sm text-[var(--text-secondary)]">...</p>
             ) : (
               <>
                 {/* 원본 제목 (서브타이틀) */}
                 {headline && (
-                  <p className="text-sm font-semibold text-[var(--text-primary)] mb-2 leading-relaxed">
+                  <p className="text-sm font-medium text-[var(--text-primary)] mb-2 leading-relaxed">
                     {translatedTitle}
                   </p>
                 )}
@@ -222,11 +222,11 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
 
         {/* Tags */}
         {translatedTags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="flex flex-wrap gap-1.5 mb-3.5">
             {translatedTags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
-                className="px-2 py-0.5 text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded"
+                className="px-2.5 py-0.5 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded-full"
               >
                 #{tag}
               </span>
@@ -235,7 +235,7 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
         )}
 
         {/* Date */}
-        <div className="flex items-center text-xs text-[var(--text-tertiary)] pt-2 border-t border-[var(--border)]">
+        <div className="flex items-center text-xs text-[var(--text-tertiary)] pt-3">
           <div className="flex items-center gap-1.5">
             <svg
               className="w-3.5 h-3.5"

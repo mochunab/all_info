@@ -53,38 +53,45 @@ export default async function SourcesIndexPage({
       <SeoBreadcrumb items={[{ label: '소스' }]} locale={locale} />
 
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">소스</h1>
-      <p className="text-[var(--text-secondary)] mb-8">아카인포가 큐레이션하는 콘텐츠 출처입니다.</p>
+      <p className="text-sm text-[var(--text-secondary)] mb-8">아카인포가 큐레이션하는 콘텐츠 출처입니다.</p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         {sources.map((src) => {
           const color = SOURCE_COLORS[src.name] || DEFAULT_SOURCE_COLOR;
           return (
             <Link
               key={src.name}
               href={lp(`/sources/${encodeURIComponent(src.name)}`)}
-              className="card p-4 hover:border-[var(--accent)] transition-colors group"
+              className="card card-hover p-5 group cursor-pointer"
             >
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-                <h2 className="text-lg font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
-                  {src.name}
-                </h2>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: `${color}18` }}
+                >
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors duration-200">
+                    {src.name}
+                  </h2>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">아티클 {src.count}개</p>
+                </div>
               </div>
-              <p className="text-sm text-[var(--text-tertiary)] mt-1 ml-5">아티클 {src.count}개</p>
             </Link>
           );
         })}
       </div>
 
       <nav className="mt-12 pt-6 border-t border-[var(--border)]">
-        <p className="text-sm text-[var(--text-tertiary)] mb-3">더 탐색하기</p>
-        <div className="flex gap-4">
-          <Link href={lp('/topics')} className="text-sm text-[var(--accent)] hover:underline">카테고리별 탐색</Link>
-          <Link href={lp('/tags')} className="text-sm text-[var(--accent)] hover:underline">태그별 탐색</Link>
-          <Link href={lp('/authors')} className="text-sm text-[var(--accent)] hover:underline">저자별 탐색</Link>
+        <p className="text-xs font-medium text-[var(--text-tertiary)] mb-3 uppercase tracking-wider">더 탐색하기</p>
+        <div className="flex flex-wrap gap-2">
+          <Link href={lp('/topics')} className="px-4 py-2 text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-full hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors duration-200">카테고리별 탐색</Link>
+          <Link href={lp('/tags')} className="px-4 py-2 text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-full hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors duration-200">태그별 탐색</Link>
+          <Link href={lp('/authors')} className="px-4 py-2 text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-full hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors duration-200">저자별 탐색</Link>
         </div>
       </nav>
     </main>

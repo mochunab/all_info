@@ -35,9 +35,9 @@ export default function ArticleGrid({
     const isEmptyFeed = !search;
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
-        <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--accent-light)] flex items-center justify-center mb-4">
           <svg
-            className="w-8 h-8 text-[var(--text-tertiary)]"
+            className="w-8 h-8 text-[var(--accent)]"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -96,7 +96,7 @@ export default function ArticleGrid({
         <div className="flex justify-center mt-10">
           <button
             onClick={onLoadMore}
-            className="btn btn-secondary"
+            className="btn btn-secondary rounded-full px-6 cursor-pointer active:scale-95"
           >
             <svg
               className="w-4 h-4"

@@ -6,10 +6,9 @@ export const runtime = 'edge';
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const title = searchParams.get('title') || '아카인포';
-  const description = searchParams.get('description') || '나만의 면접 치트키';
+  const description = searchParams.get('description') || 'AI 비즈니스 인사이트 큐레이션';
   const type = searchParams.get('type') || 'default';
 
-  const accentColor = type === 'blog' ? '#7C3AED' : type === 'author' ? '#0891B2' : '#4F46E5';
   const typeLabel = type === 'blog' ? 'BLOG' : type === 'author' ? 'AUTHOR' : type === 'article' ? 'ARTICLE' : '';
 
   return new ImageResponse(
@@ -21,87 +20,97 @@ export async function GET(request: NextRequest) {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          padding: '60px',
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          padding: '64px',
+          background: '#FAFAFA',
           fontFamily: 'sans-serif',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Organic blur shapes */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-120px',
+            right: '-80px',
+            width: '400px',
+            height: '400px',
+            borderRadius: '50%',
+            background: 'rgba(37, 99, 235, 0.08)',
+            filter: 'blur(60px)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '-60px',
+            left: '-40px',
+            width: '300px',
+            height: '300px',
+            borderRadius: '50%',
+            background: 'rgba(59, 130, 246, 0.06)',
+            filter: 'blur(60px)',
+          }}
+        />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
           {typeLabel && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <div
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span
                 style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  background: accentColor,
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  letterSpacing: '3px',
+                  color: '#2563EB',
+                  background: '#DBEAFE',
+                  padding: '6px 16px',
+                  borderRadius: '100px',
                 }}
-              />
-              <span style={{ color: accentColor, fontSize: '20px', fontWeight: 600, letterSpacing: '2px' }}>
+              >
                 {typeLabel}
               </span>
             </div>
           )}
           <div
             style={{
-              fontSize: title.length > 30 ? '42px' : '52px',
+              fontSize: title.length > 30 ? '44px' : '56px',
               fontWeight: 700,
-              color: '#f8fafc',
-              lineHeight: 1.3,
+              color: '#111827',
+              lineHeight: 1.25,
               maxWidth: '900px',
-              overflow: 'hidden',
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
+              display: 'flex',
             }}
           >
-            {title}
+            {title.length > 80 ? title.substring(0, 80) + '...' : title}
           </div>
           {description && (
             <div
               style={{
                 fontSize: '24px',
-                color: '#94a3b8',
+                color: '#4B5563',
                 lineHeight: 1.5,
                 maxWidth: '800px',
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
+                display: 'flex',
               }}
             >
-              {description}
+              {description.length > 120 ? description.substring(0, 120) + '...' : description}
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: accentColor,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontSize: '20px',
-                fontWeight: 700,
-              }}
-            >
-              A
-            </div>
-            <span style={{ color: '#e2e8f0', fontSize: '22px', fontWeight: 600 }}>아카인포</span>
+        {/* Bottom bar: logo + domain */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* /Ai logo mark */}
+            <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
+              <path d="M3.5 27L11 5" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
+              <path d="M16.5 27L16.5 17" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
+              <path d="M26 27L26 14" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
+              <circle cx="26" cy="5.5" r="3.8" fill="#2563EB" />
+            </svg>
+            <span style={{ color: '#111827', fontSize: '24px', fontWeight: 700 }}>아카인포</span>
           </div>
-          <span style={{ color: '#64748b', fontSize: '18px' }}>aca-info.com</span>
+          <span style={{ color: '#9CA3AF', fontSize: '18px', fontWeight: 500 }}>aca-info.com</span>
         </div>
       </div>
     ),
