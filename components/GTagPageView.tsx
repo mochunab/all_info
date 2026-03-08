@@ -12,7 +12,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/blog': '블로그',
   '/login': '로그인',
   '/signup': '회원가입',
-  '/sources/add': '소스관리',
+  '/sources/add': '링크 관리',
   '/terms': '이용약관',
   '/topics': '토픽 목록',
   '/tags': '태그 목록',

@@ -143,6 +143,31 @@ body {
     }
   }
 
+  /* Dialog animations — MD3 easing */
+  .dialog-enter {
+    animation: dialogIn 250ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  .dialog-backdrop-enter {
+    animation: backdropIn 200ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  @keyframes dialogIn {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes backdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   /* Pulse animation for update badge */
   .pulse-dot {
     animation: pulse 2s infinite;
