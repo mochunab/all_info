@@ -2,15 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { BlogPost } from '@/types';
+import type { BlogPost, Language } from '@/types';
 import { localePath } from '@/lib/locale-path';
-
-const CATEGORIES = [
-  { key: 'all', label: '전체' },
-  { key: 'job', label: '취업팁' },
-  { key: 'career', label: '커리어UP' },
-  { key: 'ai', label: 'AI따라잡기' },
-] as const;
+import { useLanguage } from '@/lib/language-context';
 
 type Props = {
   posts: BlogPost[];
@@ -19,16 +13,30 @@ type Props = {
 
 export default function BlogList({ posts, locale }: Props) {
   const lp = (p: string) => localePath(locale, p);
+  const { t } = useLanguage();
   const [category, setCategory] = useState('all');
+
+  const categories = [
+    { key: 'all', label: t('blog.catAll') },
+    { key: 'job', label: t('blog.catJob') },
+    { key: 'career', label: t('blog.catCareer') },
+    { key: 'ai', label: t('blog.catAi') },
+  ];
 
   const filtered = category === 'all'
     ? posts
     : posts.filter((p) => p.category === category);
 
+  const dateLocale = (locale as Language) === 'ja' ? 'ja-JP'
+    : (locale as Language) === 'zh' ? 'zh-CN'
+    : (locale as Language) === 'vi' ? 'vi-VN'
+    : (locale as Language) === 'en' ? 'en-US'
+    : 'ko-KR';
+
   return (
     <>
       <div className="flex gap-2 mb-8">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <button
             key={cat.key}
             onClick={() => setCategory(cat.key)}
@@ -44,7 +52,7 @@ export default function BlogList({ posts, locale }: Props) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-[var(--text-tertiary)]">해당 카테고리에 게시된 글이 없습니다.</p>
+        <p className="text-[var(--text-tertiary)]">{t('blog.empty')}</p>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2">
           {filtered.map((post) => (
@@ -62,7 +70,7 @@ export default function BlogList({ posts, locale }: Props) {
               <div className="flex items-center gap-3 mt-4 pt-3 border-t border-[var(--border)]">
                 {post.published_at && (
                   <time className="text-xs text-[var(--text-tertiary)]">
-                    {new Date(post.published_at).toLocaleDateString('ko-KR')}
+                    {new Date(post.published_at).toLocaleDateString(dateLocale)}
                   </time>
                 )}
                 {post.tags.length > 0 && (
