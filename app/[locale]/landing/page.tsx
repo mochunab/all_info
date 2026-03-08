@@ -13,8 +13,8 @@ type LandingMeta = {
 
 const LANDING_META: Record<string, LandingMeta> = {
   ko: {
-    title: '아카인포 - 면접 준비 & 취업 정보 | AI 업계 트렌드 크롤링',
-    description: '면접 예상 질문, 업계 트렌드를 AI가 매일 자동 크롤링하고 요약합니다. 취업 준비부터 면접 질문 대비까지, 마케팅·스타트업·IT 최신 정보를 무료로 받아보세요.',
+    title: '아카인포 - 면접 준비 & 취업 정보 AI 크롤링',
+    description: '면접 예상 질문, 업계 트렌드를 AI가 매일 자동 크롤링하고 요약. 취업 준비부터 면접 대비까지 무료.',
     ogTitle: '아카인포 - 면접 준비 & 업계 트렌드 AI 요약',
     ogDescription: 'AI가 매일 업계 뉴스를 크롤링하고 핵심만 요약. 면접 준비, 취업 정보를 하루 30초로.',
     appName: '아카인포',
