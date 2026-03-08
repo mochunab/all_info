@@ -114,7 +114,7 @@ export const translations = {
     'chat.pinHint': '채팅이 열린 상태에서 콘텐츠를 클릭하면 해당 콘텐츠 기반으로 면접 코칭을 받을 수 있습니다.',
 
     // Landing
-    'landing.badge': '🎯 취준생을 위한 업계 브리핑',
+    'landing.badge': '취준생을 위한 업계 브리핑',
     'landing.headline1': '30년이 달라진다',
     'landing.headline2': '하루 30초로',
     'landing.sub1': 'AI가 매일 업계 브리핑을 읽고 면접 답변까지 만들어드립니다',
@@ -311,7 +311,7 @@ export const translations = {
     'chat.pinHint': 'Click an article while chat is open to reference it.',
 
     // Landing
-    'landing.badge': '🎯 Industry Briefing for Job Seekers',
+    'landing.badge': 'Industry Briefing for Job Seekers',
     'landing.headline1': '30 Years of Difference',
     'landing.headline2': 'In Just 30 Seconds a Day',
     'landing.sub1': 'AI reads daily industry briefings and prepares interview answers for you',
@@ -508,7 +508,7 @@ export const translations = {
     'chat.pinHint': 'Nhấn vào bài viết khi chat đang mở để tham chiếu.',
 
     // Landing
-    'landing.badge': '🎯 Bản tin ngành cho người tìm việc',
+    'landing.badge': 'Bản tin ngành cho người tìm việc',
     'landing.headline1': '30 năm thay đổi',
     'landing.headline2': 'Chỉ với 30 giây mỗi ngày',
     'landing.sub1': 'AI đọc bản tin ngành hàng ngày và chuẩn bị câu trả lời phỏng vấn cho bạn',
@@ -705,7 +705,7 @@ export const translations = {
     'chat.pinHint': '聊天打开时点击文章即可引用。',
 
     // Landing
-    'landing.badge': '🎯 求职者的行业简报',
+    'landing.badge': '求职者的行业简报',
     'landing.headline1': '30年因此不同',
     'landing.headline2': '每天只需30秒',
     'landing.sub1': 'AI每天阅读行业简报，为您准备面试答案',
@@ -902,7 +902,7 @@ export const translations = {
     'chat.pinHint': 'チャットが開いている状態で記事をクリックすると参照できます。',
 
     // Landing
-    'landing.badge': '🎯 就活生のための業界ブリーフィング',
+    'landing.badge': '就活生のための業界ブリーフィング',
     'landing.headline1': '30年が変わる',
     'landing.headline2': '1日たった30秒で',
     'landing.sub1': 'AIが毎日業界ブリーフィングを読み、面接の回答まで作成します',

@@ -341,3 +341,4 @@ middleware.ts           Rate Limit, CORS, Security Headers
 | [DECISIONS.md](./key_docs/DECISIONS.md) | 설계 의도 확인 |
 | [DATABASE_SCHEMA.md](./key_docs/DATABASE_SCHEMA.md) | DB 스키마, 인덱스, RLS |
 | [EDGE_FUNCTIONS_GUIDE.md](./key_docs/supabase/EDGE_FUNCTIONS_GUIDE.md) | Edge Function 작업 |
+| [DESIGN_SYSTEM.md](./key_docs/DESIGN_SYSTEM.md) | UI/UX 퍼블리싱 (MD3 디자인 토큰, 컴포넌트 패턴, 금지 사항) |

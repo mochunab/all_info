@@ -1,7 +1,7 @@
 # 아카인포 SEO 전략
 
 > 최초 작성: 2026-03-02
-> 최종 업데이트: 2026-03-08
+> 최종 업데이트: 2026-03-08 (Phase 16)
 > 도메인: `https://aca-info.com`
 
 ---
@@ -18,7 +18,7 @@ AI 기반 멀티소스 모니터링 & 브리핑 서비스 (RSS, YouTube, Slack, 
 | **블로그/콘텐츠 마케팅** | 30+ SEO 블로그 포스트 | 9편 SEO 블로그 + 아티클 상세 페이지 | 개선됨 |
 | **프로그래매틱 페이지** | 소스별·템플릿별 랜딩 20+ | 없음 | 열세 |
 | **다국어 hreflang** | ko/en/ja (URL 분리) | i18n 5개 + hreflang 서브디렉토리 (`/ko/`, `/en/`, `/vi/`, `/zh/`, `/ja/`) | **동등** |
-| **FAQ** | 8개 Q&A | 10개 Q&A | 우세 |
+| **FAQ** | 8개 Q&A | 5~6개 Q&A × 5개 언어 (키워드 최적화) | 우세 |
 | **JSON-LD** | Organization + SoftwareApplication | Organization + WebSite + FAQ + SoftwareApp | 동등 |
 | **OG/Twitter 카드** | 완비 (언어별 이미지) | 완비 | 동등 |
 | **SSR** | Next.js SSR | SSR 전환 완료 | 동등 |
@@ -115,6 +115,12 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 |-------|------|------|--------|
 | Phase 15 | 서브디렉토리 i18n 마이그레이션 + 블로그 번역 인프라 + Baidu SEO | ✅ 완료 | 2026-03-08 |
 
+### 완료 (Phase 16)
+
+| Phase | 내용 | 상태 | 배포일 |
+|-------|------|------|--------|
+| Phase 16 | 국가별 언어 자동감지 + 랜딩 리다이렉트 + 도메인 마이그레이션 + 키워드 SEO | ✅ 완료 | 2026-03-08 |
+
 ### Phase 9: 프로그래매틱 SEO 페이지 (완료)
 
 **구현 완료**: `/topics/[category]`, `/tags/[tag]`, `/sources/[source]` 자동 생성 페이지
@@ -197,7 +203,7 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 | 위치 | 스키마 |
 |------|--------|
 | `app/layout.tsx` | `Organization` + `WebSite` |
-| `app/landing/page.tsx` | `FAQPage` (3개 Q&A) + `SoftwareApplication` (무료, Web) |
+| `app/[locale]/landing/page.tsx` | `FAQPage` (5~6개 Q&A × 5개 언어) + `SoftwareApplication` (무료, Web) |
 
 ### Phase 5: 검색엔진 등록
 
@@ -249,7 +255,7 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 **AI 크롤러 차단**: `robots.ts` rules 배열 변환, AI 학습용 봇 전면 차단
 - GPTBot (OpenAI), ClaudeBot (Anthropic), CCBot (Common Crawl), Google-Extended (Gemini)
 
-| `app/landing/page.tsx` | 2, 3, 12 | 서버 컴포넌트 + 메타데이터 + JSON-LD (FAQ 10개) |
+| `app/[locale]/landing/page.tsx` | 2, 3, 12, 16 | 서버 컴포넌트 + 5개 언어별 메타데이터/키워드/FAQ JSON-LD |
 | `app/landing/LandingContent.tsx` | 2 | 서버 컴포넌트 SSR |
 | `app/landing/AnimatedSection.tsx` | 2 | framer-motion 클라이언트 래퍼 |
 | `app/landing/LandingHeader.tsx` | 2 | Header 클라이언트 래퍼 |
@@ -322,6 +328,10 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 22. LanguageSwitcher 전환 시 URL 경로 변경 확인 (쿼리 아닌 서브디렉토리)
 23. `/sitemap.xml`에 서브디렉토리 URL + 5개 로케일 엔트리 확인
 24. `<html lang="ko">` 등 동적 lang 속성 확인
+25. `https://aca-info.com/` 접속 시 국가 기반 언어 감지 → `/{locale}/landing` 리다이렉트 확인
+26. `https://archi-info.vercel.app/ko` 접속 시 `https://aca-info.com/ko` 301 리다이렉트 확인
+27. 각 언어별 랜딩 페이지 `<title>`, `<meta name="description">`, `<meta name="keywords">` 확인
+28. Google Search Console에서 주요 URL 색인 상태 확인
 
 ### Phase 13: 아티클 상세 페이지 SEO (완료)
 
@@ -379,7 +389,8 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 **2. middleware.ts i18n 로직**:
 - URL 첫 세그먼트가 유효 로케일 → `x-locale` 헤더 설정 후 통과
 - `?lang=` 쿼리 → `/{locale}/path` 301 리다이렉트 (레거시 호환)
-- 로케일 없는 URL → `Accept-Language` 감지 → `/{detected}/path` 302 리다이렉트
+- 로케일 없는 URL → `x-vercel-ip-country` 국가 감지 → `Accept-Language` fallback → `/{detected}/path` 302 리다이렉트 (Phase 16에서 개선)
+- `/` 또는 `/{locale}` → `/{locale}/landing` 리다이렉트 (Phase 16에서 추가)
 
 **3. 로케일 인식 링크**:
 - `components/LocaleLink.tsx` (client) — `usePathname()`에서 로케일 추출, 자동 prefix
@@ -412,7 +423,7 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 | `app/[locale]/layout.tsx` | (신규) 로케일별 메타데이터 + JSON-LD |
 | `app/[locale]/**/*.tsx` | 모든 페이지 `[locale]` 하위로 이동, params에 locale 추가 |
 | `app/providers.tsx` | locale prop 수신 |
-| `middleware.ts` | i18n 라우팅 (301/302 리다이렉트, Accept-Language 감지) |
+| `middleware.ts` | i18n 라우팅 (301/302 리다이렉트, IP 국가 감지 + Accept-Language fallback, 루트→랜딩 리다이렉트) |
 | `lib/hreflang.ts` | 서브디렉토리 형식 전환 |
 | `lib/language-context.tsx` | `locale` prop 기반으로 전환, `?lang=` 감지 제거 |
 | `app/sitemap.ts` | 5개 로케일 × 모든 URL 생성 |
@@ -425,3 +436,45 @@ MZ세대 시사 뉴스레터 → 지식 플랫폼 확장, 구독자 110만+.
 | `lib/blog.ts` | language 필터 파라미터 추가 |
 | `supabase/migrations/016_blog_posts_i18n.sql` | (신규) language + translation_group_id 컬럼 |
 | `supabase/functions/translate-blog/` | (신규) Gemini 블로그 번역 Edge Function |
+
+### Phase 16: 국가별 언어 자동감지 + 랜딩 리다이렉트 + 도메인 마이그레이션 + 키워드 SEO (완료)
+
+**목적**: 해외 사용자 자동 언어 설정, 검색 유입을 랜딩 페이지로 유도, 옛 도메인 리다이렉트, 키워드 기반 SEO 최적화
+
+**1. 국가별 언어 자동감지** (`middleware.ts`):
+- Vercel `x-vercel-ip-country` 헤더로 접속 국가 감지
+- 국가→언어 매핑: KR→ko, CN→zh, JP→ja, VN→vi
+- 매핑에 없는 국가 → `Accept-Language` 헤더 fallback → 최종 기본값 `en` (기존 `ko`에서 변경)
+
+**2. 루트 → 랜딩 리다이렉트** (`middleware.ts`):
+- `/` → `/{locale}/landing` 302 리다이렉트 (예: 미국 → `/en/landing`, 한국 → `/ko/landing`)
+- `/{locale}` (예: `/ko`, `/en`) → `/{locale}/landing` 302 리다이렉트
+- 검색엔진/직접 유입 모두 랜딩 페이지로 유도
+
+**3. 옛 도메인 301 리다이렉트** (`vercel.json`):
+- `archi-info.vercel.app/*` → `aca-info.com/*` 영구 리다이렉트
+- 구글 인덱스가 새 도메인으로 자연 이전
+
+**4. 랜딩 페이지 키워드 SEO 최적화** (`app/[locale]/landing/page.tsx`):
+- 연관 키워드 데이터 분석 (면접/취업/크롤링 3개 카테고리)
+- title/description/keywords/OG를 5개 언어별로 검색 키워드 중심 재작성
+- FAQ JSON-LD도 검색 키워드 포함하여 5개 언어별 재작성
+
+| 언어 | title 키워드 | 주요 타겟 키워드 |
+|------|-------------|----------------|
+| ko | 면접 준비, 취업 정보, AI 크롤링 | 면접 예상 질문, 업계 트렌드, 웹 크롤링, 데이터 크롤링 |
+| en | AI News Crawler, Industry Trend | web crawling tool, business news aggregator, market research |
+| zh | AI新闻爬虫, 行业趋势 | 数据采集, 市场调研, 商业资讯 |
+| ja | AIニュースクローラー, 業界トレンド | Webクロール, ビジネスニュースまとめ |
+| vi | AI Thu thập Tin tức, Xu hướng Ngành | web crawling, nghiên cứu thị trường |
+
+**5. Search Console 색인 요청**:
+- 사이트맵 제출 확인 (1,930 페이지, 성공)
+- 주요 7개 URL 색인 생성 요청 완료:
+  - `/ko/landing` (재색인), `/en/landing`, `/zh/landing`, `/ja/landing`, `/vi/landing`, `/ko`, `/en`
+
+| 파일 | 작업 |
+|------|------|
+| `middleware.ts` | `x-vercel-ip-country` 국가 감지, 루트→랜딩 리다이렉트, 기본 언어 ko→en 변경 |
+| `vercel.json` | `archi-info.vercel.app` → `aca-info.com` 301 리다이렉트 추가 |
+| `app/[locale]/landing/page.tsx` | 5개 언어별 title/description/keywords/OG/FAQ 키워드 최적화 |

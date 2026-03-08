@@ -1,7 +1,9 @@
 'use client';
 
+import { Suspense } from 'react';
 import { LanguageProvider } from '@/lib/language-context';
 import { AuthProvider } from '@/lib/auth-context';
+import GTagPageView from '@/components/GTagPageView';
 
 export default function Providers({
   children,
@@ -12,7 +14,12 @@ export default function Providers({
 }) {
   return (
     <AuthProvider>
-      <LanguageProvider locale={locale}>{children}</LanguageProvider>
+      <LanguageProvider locale={locale}>
+        <Suspense fallback={null}>
+          <GTagPageView />
+        </Suspense>
+        {children}
+      </LanguageProvider>
     </AuthProvider>
   );
 }
