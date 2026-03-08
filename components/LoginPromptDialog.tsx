@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/lib/language-context';
+import { localePath } from '@/lib/locale-path';
 
 type LoginPromptDialogProps = {
   isOpen: boolean;
@@ -11,7 +12,7 @@ type LoginPromptDialogProps = {
 
 export default function LoginPromptDialog({ isOpen, onClose }: LoginPromptDialogProps) {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const handleEsc = useCallback((e: KeyboardEvent) => {
@@ -104,7 +105,7 @@ export default function LoginPromptDialog({ isOpen, onClose }: LoginPromptDialog
           </button>
 
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.push(localePath(language, '/login'))}
             className="px-4 py-2.5 text-sm font-medium text-white rounded-lg active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             style={{
               backgroundColor: 'var(--accent)',
