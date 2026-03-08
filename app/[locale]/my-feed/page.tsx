@@ -452,7 +452,7 @@ export default function MyFeed() {
         <Header language={language} onLanguageChange={setLanguage} />
         <LoginPromptDialog
           isOpen={showLoginDialog}
-          onClose={() => router.push('/')}
+          onClose={() => router.push(`/${language}`)}
         />
       </div>
     );
@@ -484,7 +484,7 @@ export default function MyFeed() {
         onLanguageChange={setLanguage}
       />
 
-      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 transition-all duration-300 ${isChatOpen ? 'lg:pr-[460px]' : ''}`}>
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 transition-all duration-300 min-h-[calc(100vh-8rem)] ${isChatOpen ? 'lg:pr-[460px]' : ''}`}>
         <div className="mb-6 sm:mb-8">
           <FilterBar
             search={search}
@@ -517,7 +517,7 @@ export default function MyFeed() {
 
       <Footer language={language} />
 
-      {!isChatOpen && (
+      {!isChatOpen && totalCount > 0 && (
         <div className="fixed bottom-6 left-0 right-0 z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-none">
           <button
             className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 pointer-events-auto"
