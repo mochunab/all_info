@@ -176,6 +176,40 @@ export class StaticStrategy implements CrawlStrategy {
     }
     if (!href) return null;
 
+    // javascript: / #hash+onclick 링크 처리 (JSP/레거시 동적 페이지)
+    const linkTemplate = config.link_processing?.linkTemplate || null;
+    let needsTemplate = false;
+    let argsSource = '';
+
+    if (href.startsWith('javascript:')) {
+      needsTemplate = true;
+      argsSource = href;
+    } else if (href === '#' || (href.startsWith('#') && href.length <= 10)) {
+      const onclickAttr = $link.attr('onclick') || $el.attr('onclick') || $el.find('a').first().attr('onclick');
+      if (onclickAttr) {
+        needsTemplate = true;
+        argsSource = onclickAttr;
+      }
+    }
+
+    if (needsTemplate) {
+      if (linkTemplate) {
+        const argsMatch = argsSource.match(/\(([^)]*)\)/);
+        if (argsMatch) {
+          const args = argsMatch[1].split(',').map((a: string) => a.trim().replace(/['"]/g, ''));
+          let resolvedUrl = linkTemplate;
+          args.forEach((arg: string, i: number) => {
+            resolvedUrl = resolvedUrl.replace(`{${i}}`, arg);
+          });
+          href = resolvedUrl;
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
     const link = this.normalizeUrl(href, baseUrl, config.link_processing?.removeParams);
 
     // 썸네일

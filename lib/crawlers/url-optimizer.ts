@@ -195,9 +195,11 @@ async function optimizeByPath(url: string): Promise<UrlOptimizationResult | null
   }
 
   // 시도할 경로 패턴 (우선순위 순)
-  const pathPatterns = [
+  const rssPatterns = [
     { path: '/feed', reason: 'RSS 피드 경로' },
     { path: '/rss', reason: 'RSS 피드 경로' },
+  ];
+  const contentPatterns = [
     { path: '/blog', reason: '블로그 콘텐츠' },
     { path: '/articles', reason: '아티클 목록' },
     { path: '/news', reason: '뉴스 목록' },
@@ -205,9 +207,28 @@ async function optimizeByPath(url: string): Promise<UrlOptimizationResult | null
     { path: '/archive', reason: '아카이브' },
   ];
 
-  console.log(`   🔍 ${pathPatterns.length}개 경로 패턴 시도...`);
+  console.log(`   🔍 ${rssPatterns.length + contentPatterns.length}개 경로 패턴 시도...`);
 
-  for (const pattern of pathPatterns) {
+  // RSS 경로는 실제 피드 콘텐츠 검증 (200 OK + body에 RSS 태그 확인)
+  for (const pattern of rssPatterns) {
+    const testUrl = `${urlObj.origin}${pattern.path}`;
+    console.log(`      • 시도: ${testUrl}`);
+
+    const isValid = await validateRssFeedContent(testUrl);
+    if (isValid) {
+      console.log(`      ✅ 발견 (RSS 검증 통과): ${testUrl}`);
+      return {
+        originalUrl: url,
+        optimizedUrl: testUrl,
+        reason: pattern.reason,
+        confidence: 0.8,
+        method: 'rule-path',
+      };
+    }
+  }
+
+  // 일반 콘텐츠 경로는 HTTP 200 확인만
+  for (const pattern of contentPatterns) {
     const testUrl = `${urlObj.origin}${pattern.path}`;
     console.log(`      • 시도: ${testUrl}`);
 
@@ -363,6 +384,35 @@ async function discoverFromHtml(url: string): Promise<UrlOptimizationResult | nu
 /**
  * URL 유효성 검증 (HEAD 요청)
  */
+async function validateRssFeedContent(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return false;
+
+    const reader = response.body?.getReader();
+    if (!reader) return false;
+
+    const { value } = await reader.read();
+    reader.releaseLock();
+
+    if (!value) return false;
+
+    const text = new TextDecoder().decode(value.slice(0, 2048));
+    return /<rss|<feed|<channel/i.test(text);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function validateUrl(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);

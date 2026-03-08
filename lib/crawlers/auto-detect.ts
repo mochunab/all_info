@@ -191,7 +191,34 @@ export function calculateSPAScore($: cheerio.CheerioAPI): number {
     score += 0.3;
   }
 
-  // 10. SSR 역지표: 풍부한 body 텍스트 + 구조적 콘텐츠 → 감점
+  // 10. 빈 데이터 컨테이너 감지 (AJAX 로딩 패턴)
+  if (bodyText.length > 500) {
+    let emptyContainerScore = 0;
+
+    // 빈 <tbody> (0개 <tr>) — 테이블 기반 게시판
+    const emptyTbodyCount = $('tbody').filter((_, el) =>
+      $(el).find('tr').length === 0
+    ).length;
+    if (emptyTbodyCount > 0) emptyContainerScore += 0.4;
+
+    // ID가 있는 빈 <ul>/<ol> (0개 <li>) — 리스트 기반 게시판
+    const emptyNamedListCount = $('ul[id], ol[id]').filter((_, el) =>
+      $(el).children('li').length === 0
+    ).length;
+    if (emptyNamedListCount > 0) emptyContainerScore += 0.3;
+
+    // ID가 있는 빈 <div>/<section> (자식 없음, 주요 콘텐츠 영역 후보)
+    const emptyNamedDivCount = $('div[id], section[id]').filter((_, el) => {
+      const id = $(el).attr('id') || '';
+      const isContentId = /list|board|body|content|data|result|item/i.test(id);
+      return isContentId && $(el).children().length === 0;
+    }).length;
+    if (emptyNamedDivCount > 0) emptyContainerScore += 0.25;
+
+    score += Math.min(emptyContainerScore, 0.5);
+  }
+
+  // 11. SSR 역지표: 풍부한 body 텍스트 + 구조적 콘텐츠 → 감점
   const articleCount = $('article').length;
   const mainContentLength = $('body').text().replace(/\s+/g, ' ').trim().length;
 

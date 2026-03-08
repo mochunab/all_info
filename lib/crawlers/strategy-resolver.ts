@@ -7,7 +7,7 @@ import { inferCrawlerTypeEnhanced } from './infer-type';
 import type { SelectorDetectionResult } from './infer-type';
 import { fetchPage, calculateSPAScore, detectByRules } from './auto-detect';
 import { optimizeUrl } from './url-optimizer';
-import { detectApiEndpoint } from './api-detector';
+import { detectApiEndpoint, validateApiConfig } from './api-detector';
 
 /**
  * 통합 AI 감지 (타입 + 셀렉터) — detect-crawler-type Edge Function 호출
@@ -462,32 +462,38 @@ export async function resolveStrategy(url: string, options?: { cachedHtml?: stri
         const apiDuration = Date.now() - apiStartTime;
 
         if (apiConfig && apiConfig.confidence >= 0.6) {
-          console.log(`   ✅ API 엔드포인트 감지 성공! (${apiDuration}ms)`);
+          console.log(`   ✅ API 엔드포인트 감지! (${apiDuration}ms)`);
           console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
           console.log(`   🔗 엔드포인트: ${apiConfig.endpoint}`);
           console.log(`   📋 items 경로: ${apiConfig.responseMapping.items}`);
-          console.log(`   💡 근거: ${apiConfig.reasoning}`);
 
-          console.log(`\n${'='.repeat(80)}`);
-          console.log(`✨ [전략 결정] API - 네트워크 인터셉션 자동 감지`);
-          console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
-          console.log(`   🔌 엔드포인트: ${apiConfig.endpoint}`);
-          console.log(`   🔄 대체 전략: SPA → STATIC`);
-          console.log(`${'='.repeat(80)}\n`);
+          console.log(`   🔍 Test fetch로 필드 매핑 검증 중...`);
+          const isValid = await validateApiConfig(apiConfig);
 
-          return {
-            primaryStrategy: 'API',
-            fallbackStrategies: ['SPA', 'STATIC'],
-            rssUrl: null,
-            selectors: null,
-            excludeSelectors: undefined,
-            pagination: null,
-            confidence: apiConfig.confidence,
-            detectionMethod: 'api-detection',
-            spaDetected: true,
-            optimizedUrl,
-            apiConfig,
-          };
+          if (isValid) {
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`✨ [전략 결정] API - 네트워크 인터셉션 자동 감지 (검증 통과)`);
+            console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
+            console.log(`   🔌 엔드포인트: ${apiConfig.endpoint}`);
+            console.log(`   🔄 대체 전략: SPA → STATIC`);
+            console.log(`${'='.repeat(80)}\n`);
+
+            return {
+              primaryStrategy: 'API',
+              fallbackStrategies: ['SPA', 'STATIC'],
+              rssUrl: null,
+              selectors: null,
+              excludeSelectors: undefined,
+              pagination: null,
+              confidence: apiConfig.confidence,
+              detectionMethod: 'api-detection',
+              spaDetected: true,
+              optimizedUrl,
+              apiConfig,
+            };
+          } else {
+            console.log(`   ⚠️  API 필드 매핑 검증 실패 → SPA 전략 유지`);
+          }
         } else {
           console.log(`   ⚠️  API 미감지 또는 낮은 신뢰도 (${apiDuration}ms)`);
           console.log(`   ➡️  SPA 전략 유지, 다음 단계로 진행`);
@@ -589,32 +595,38 @@ export async function resolveStrategy(url: string, options?: { cachedHtml?: stri
         const apiDuration = Date.now() - apiStartTime;
 
         if (apiConfig && apiConfig.confidence >= 0.6) {
-          console.log(`   ✅ API 엔드포인트 감지 성공! (${apiDuration}ms)`);
+          console.log(`   ✅ API 엔드포인트 감지! (${apiDuration}ms)`);
           console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
           console.log(`   🔗 엔드포인트: ${apiConfig.endpoint}`);
           console.log(`   📋 items 경로: ${apiConfig.responseMapping.items}`);
-          console.log(`   💡 근거: ${apiConfig.reasoning}`);
 
-          console.log(`\n${'='.repeat(80)}`);
-          console.log(`✨ [전략 결정] API - 네트워크 인터셉션 자동 감지`);
-          console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
-          console.log(`   🔌 엔드포인트: ${apiConfig.endpoint}`);
-          console.log(`   🔄 대체 전략: SPA → STATIC`);
-          console.log(`${'='.repeat(80)}\n`);
+          console.log(`   🔍 Test fetch로 필드 매핑 검증 중...`);
+          const isValid = await validateApiConfig(apiConfig);
 
-          return {
-            primaryStrategy: 'API',
-            fallbackStrategies: ['SPA', 'STATIC'],
-            rssUrl: null,
-            selectors: null,
-            excludeSelectors: undefined,
-            pagination: null,
-            confidence: apiConfig.confidence,
-            detectionMethod: 'api-detection',
-            spaDetected: true,
-            optimizedUrl,
-            apiConfig,
-          };
+          if (isValid) {
+            console.log(`\n${'='.repeat(80)}`);
+            console.log(`✨ [전략 결정] API - 네트워크 인터셉션 자동 감지 (검증 통과)`);
+            console.log(`   📊 신뢰도: ${(apiConfig.confidence * 100).toFixed(0)}%`);
+            console.log(`   🔌 엔드포인트: ${apiConfig.endpoint}`);
+            console.log(`   🔄 대체 전략: SPA → STATIC`);
+            console.log(`${'='.repeat(80)}\n`);
+
+            return {
+              primaryStrategy: 'API',
+              fallbackStrategies: ['SPA', 'STATIC'],
+              rssUrl: null,
+              selectors: null,
+              excludeSelectors: undefined,
+              pagination: null,
+              confidence: apiConfig.confidence,
+              detectionMethod: 'api-detection',
+              spaDetected: true,
+              optimizedUrl,
+              apiConfig,
+            };
+          } else {
+            console.log(`   ⚠️  API 필드 매핑 검증 실패 → SPA 전략 유지`);
+          }
         } else {
           console.log(`   ⚠️  API 미감지 또는 낮은 신뢰도 (${apiDuration}ms)`);
           console.log(`   ➡️  SPA 전략 유지, 다음 단계로 진행`);
@@ -788,9 +800,14 @@ function isRssScopeCompatible(registeredUrl: string, discoveredRssUrl: string): 
     // 루트 레벨 RSS (/feed, /rss.xml 등)
     const RSS_ROOT_PATTERN = /^\/(feed|rss|atom|feed\.xml|rss\.xml|atom\.xml|index\.xml)\/?$/i;
     if (RSS_ROOT_PATTERN.test(rss.pathname)) {
-      // 얕은 경로(1~2세그먼트: /blog, /news/tech)면 루트 RSS 허용
-      // 깊은 경로(3+세그먼트: /magazine/list/business)면 거부
       const regSegments = regPath.split('/').filter(Boolean);
+      // 1세그먼트(/blog, /news)면 루트 RSS 허용
+      if (regSegments.length <= 1) return true;
+      // 2세그먼트: 카테고리/분류 패턴이면 루트 RSS 거부 (서브섹션 특정)
+      const CATEGORY_PREFIXES = ['category', 'categories', 'cat', 'tag', 'tags', 'topic', 'topics', 'section', 'type', 'genre', 'subject', 'group'];
+      if (regSegments.length === 2 && CATEGORY_PREFIXES.includes(regSegments[0].toLowerCase())) {
+        return false;
+      }
       return regSegments.length <= 2;
     }
 

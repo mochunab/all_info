@@ -1,6 +1,11 @@
+import type { Metadata } from 'next';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getMasterUserId } from '@/lib/user';
 import SourcesPageClient from './SourcesPageClient';
+
+export const metadata: Metadata = {
+  title: '소스관리',
+};
 
 type SourceLink = {
   id: string;

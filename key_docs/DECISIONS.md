@@ -958,6 +958,24 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 
 ---
 
+## ADR-025: API 감지 test fetch 검증
+
+**일시**: 2026-03-08
+**상태**: 확정
+
+**결정**: API 엔드포인트 자동 감지(Stage 5.5/7.5) 후, 실제 test fetch로 필드 매핑 유효성을 검증한다. 검증 실패 시 SPA 전략을 유지한다.
+
+**이유**:
+- AI(Gemini)가 API 응답의 title/link 필드명을 잘못 매핑하는 경우 발생 (예: `title: "title"`로 매핑했지만 실제 응답에 title 필드 없음)
+- 검증 없이 SPA→API 전환 시 DB에 `crawler_type: 'API'`로 저장되어 이후 크롤링도 계속 실패
+- `validateApiConfig`: 실제 API 호출 → items 배열 2개 이상 + title/link 필드 50% 이상 유효 → 통과
+
+**대안 검토**:
+- AI 프롬프트 고도화만으로 해결: AI 오탐을 완전히 제거할 수 없음
+- confidence 임계값 상향 (0.6→0.8): 정상 감지도 거부될 위험
+
+---
+
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
