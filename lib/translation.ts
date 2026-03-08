@@ -82,23 +82,35 @@ export function setCachedTranslation(
   setTranslationCache(cache);
 }
 
-/**
- * 배치 번역 (DeepL API 호출)
- * texts 배열을 targetLang으로 번역
- */
-export async function translateTexts(
-  texts: string[],
-  targetLang: Language,
-  sourceLang: Language = 'ko'
-): Promise<string[]> {
+// 동시 요청 제한 (DeepL Free API rate limit 방어)
+const MAX_CONCURRENT = 3;
+let activeRequests = 0;
+const requestQueue: Array<{ resolve: () => void }> = [];
+
+function acquireSlot(): Promise<void> {
+  if (activeRequests < MAX_CONCURRENT) {
+    activeRequests++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    requestQueue.push({ resolve });
+  });
+}
+
+function releaseSlot(): void {
+  activeRequests--;
+  const next = requestQueue.shift();
+  if (next) {
+    activeRequests++;
+    next.resolve();
+  }
+}
+
+async function fetchTranslation(texts: string[], targetLang: string, sourceLang: string): Promise<string[]> {
   const response = await fetch('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      texts,
-      targetLang: targetLang.toUpperCase(),
-      sourceLang: sourceLang.toUpperCase(),
-    }),
+    body: JSON.stringify({ texts, targetLang, sourceLang }),
   });
 
   if (!response.ok) {
@@ -107,4 +119,29 @@ export async function translateTexts(
 
   const data = await response.json();
   return data.translations;
+}
+
+/**
+ * 배치 번역 (DeepL API 호출, 동시 요청 제한 + 1회 재시도)
+ */
+export async function translateTexts(
+  texts: string[],
+  targetLang: Language,
+  sourceLang: Language = 'ko'
+): Promise<string[]> {
+  await acquireSlot();
+  try {
+    const tLang = targetLang.toUpperCase();
+    const sLang = sourceLang.toUpperCase();
+
+    try {
+      return await fetchTranslation(texts, tLang, sLang);
+    } catch {
+      // 1회 재시도 (1초 대기)
+      await new Promise((r) => setTimeout(r, 1000));
+      return await fetchTranslation(texts, tLang, sLang);
+    }
+  } finally {
+    releaseSlot();
+  }
 }

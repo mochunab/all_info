@@ -45,28 +45,52 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
     }
 
     setIsTranslating(true);
-    const textsToTranslate = [
-      article.title_ko || article.title,
-      article.summary || '',
-      ...tags,
+
+    const titleKo = article.title_ko || article.title;
+    const summaryRaw = article.summary || '';
+    const [hookTitle = '', ...detailParts] = summaryRaw.split('\n\n');
+    const detailText = detailParts.join('\n\n');
+
+    // summary를 hook/detail로 분리해서 번역 → \n\n 구조 보존
+    const pieces: string[] = [titleKo, hookTitle, detailText, ...tags].filter(Boolean);
+    // 각 파트의 위치를 맵으로 추적
+    const keys = [
+      'title',
+      ...(hookTitle ? ['hook'] : []),
+      ...(detailText ? ['detail'] : []),
+      ...tags.map((_, i) => `tag_${i}`),
     ];
 
-    translateTexts(textsToTranslate, language, 'ko')
+    let cancelled = false;
+    translateTexts(pieces, language, 'ko')
       .then((translated) => {
-        const [title, summary, ...translatedTagResults] = translated;
-        setTranslatedTitle(title);
-        setTranslatedSummary(summary);
-        if (translatedTagResults.length) setTranslatedTags(translatedTagResults);
-        setCachedTranslation(article.id, language, title, null, summary, null, translatedTagResults);
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        keys.forEach((k, i) => { map[k] = translated[i] || ''; });
+
+        const tTitle = map['title'] || titleKo;
+        const tHook = map['hook'] || hookTitle;
+        const tDetail = map['detail'] || detailText;
+        const tSummary = tDetail ? `${tHook}\n\n${tDetail}` : tHook;
+        const tTags = tags.map((_, i) => map[`tag_${i}`] || tags[i]);
+
+        setTranslatedTitle(tTitle);
+        setTranslatedSummary(tSummary || summaryRaw);
+        if (tTags.length) setTranslatedTags(tTags);
+        if (tTitle && tSummary) {
+          setCachedTranslation(article.id, language, tTitle, null, tSummary, null, tTags);
+        }
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error('Translation failed:', err);
-        setTranslatedTitle(article.title);
-        setTranslatedSummary(article.summary || '');
+        setTranslatedTitle(titleKo);
+        setTranslatedSummary(summaryRaw);
       })
       .finally(() => {
-        setIsTranslating(false);
+        if (!cancelled) setIsTranslating(false);
       });
+    return () => { cancelled = true; };
   }, [article, language]);
 
   const handleClick = () => {
