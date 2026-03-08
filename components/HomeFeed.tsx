@@ -437,7 +437,7 @@ export default function HomeFeed({
 
       <Footer language={language} />
 
-      {!isChatOpen && (
+      {!isChatOpen && totalCount > 0 && (
         <div className="fixed bottom-6 left-0 right-0 z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-none">
           <button
             className="ml-auto flex items-center gap-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white px-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 pointer-events-auto cursor-pointer"

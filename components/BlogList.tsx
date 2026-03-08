@@ -35,12 +35,12 @@ export default function BlogList({ posts, locale }: Props) {
 
   return (
     <>
-      <div className="flex gap-2 mb-8">
+      <div className="flex gap-2 mb-8 overflow-x-auto scrollbar-hide -mx-4 px-4">
         {categories.map((cat) => (
           <button
             key={cat.key}
             onClick={() => setCategory(cat.key)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors duration-200 ${
+            className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors duration-200 whitespace-nowrap shrink-0 ${
               category === cat.key
                 ? 'bg-[var(--accent)] text-white'
                 : 'bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:bg-[var(--surface-tertiary)]'

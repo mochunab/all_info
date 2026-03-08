@@ -72,6 +72,7 @@ Tags: ${JSON.stringify(post.tags)}`;
         description: translated.description,
         content: translated.content,
         tags: translated.tags || post.tags,
+        category: post.category,
         cover_image: post.cover_image,
         published: false,
         language: lang,
