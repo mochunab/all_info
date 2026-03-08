@@ -64,7 +64,7 @@ export default function ConfirmDialog({
       {/* Dialog */}
       <div
         ref={dialogRef}
-        className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+        className="relative w-full max-w-[400px] overflow-hidden dialog-enter outline-none"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderRadius: 'var(--radius-lg)',
@@ -77,28 +77,6 @@ export default function ConfirmDialog({
       >
         {/* Content */}
         <div className="px-6 pt-6 pb-5">
-          {/* Icon */}
-          <div
-            className="w-11 h-11 rounded-full flex items-center justify-center mb-4"
-            style={{
-              backgroundColor: isDanger ? '#FEF2F2' : 'var(--accent-light)',
-            }}
-          >
-            {isDanger ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            )}
-          </div>
-
           <h2
             id="confirm-dialog-title"
             className="text-lg font-bold mb-1.5"

@@ -347,15 +347,32 @@ POST .../media_publish → creation_id: "{컨테이너 ID}"
 
 <p>저는 Google Drive에도 자동 저장되게 해뒀어요. 팀원한테 공유 드라이브 링크 보내서 "이거 올려도 될까요?" 하고 확인받는 것도 n8n으로 자동화할 수 있거든요.</p>
 
-<pre style="background:#1e1e2e;color:#cdd6f4;padding:16px;border-radius:8px;overflow-x:auto;font-size:14px;line-height:1.5;"><code>최종 워크플로우:
-
-┌──────────┐   ┌──────┐   ┌────────┐   ┌──────┐   ┌──────────────┐
-│ 매주 월요일│ → │ 기획 │ → │ 이미지 │ → │ 조립 │ → │ 자동 배포    │
-│ 자동 실행  │   │      │   │        │   │      │   │ ├─ Instagram │
-└──────────┘   └──────┘   └────────┘   └──────┘   │ ├─ Drive     │
-                                                    │ └─ Slack알림 │
-                                                    └──────────────┘
-</code></pre>
+<div style="background:#1e1e2e;border-radius:12px;padding:24px 20px;margin:16px 0;">
+  <p style="color:#a6adc8;font-size:13px;font-weight:600;margin:0 0 16px 0;">최종 워크플로우</p>
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">매주 월요일</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">자동 실행</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:70px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">기획</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:70px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">이미지</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:70px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">조립</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;min-width:110px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">자동 배포</p>
+      <p style="color:#a6adc8;font-size:12px;margin:6px 0 0;line-height:1.6;">Instagram<br/>Drive<br/>Slack 알림</p>
+    </div>
+  </div>
+</div>
 
 <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;" />
 
