@@ -752,23 +752,7 @@ export default function SourcesPageClient({
       setIsAddingCategory(false);
     }
 
-    // 로컬에 있는 카테고리 중 DB에 없는 것(isExisting 아닌 새 카테고리) 일괄 생성
-    const newCatsToCreate = categories.filter(
-      (c) => !initialCategories.some((ic) => ic.name === c.name) && c.name !== pendingCategory
-    );
-    if (newCatsToCreate.length > 0) {
-      await Promise.allSettled(
-        newCatsToCreate.map((c) =>
-          fetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: c.name }),
-          })
-        )
-      );
-    }
-
-    // 카테고리 이름 변경 일괄 처리
+    // 카테고리 이름 변경 일괄 처리 (새 카테고리 생성보다 먼저 실행)
     for (const rename of pendingRenames) {
       try {
         const res = await fetch('/api/categories', {
@@ -787,6 +771,24 @@ export default function SourcesPageClient({
       }
     }
     if (pendingRenames.length > 0) setPendingRenames([]);
+
+    // 로컬에 있는 카테고리 중 DB에 없는 것(새 카테고리) 일괄 생성
+    // pendingRenames의 newName은 기존 카테고리 이름 변경이므로 제외
+    const renamedNewNames = new Set(pendingRenames.map((r) => r.newName));
+    const newCatsToCreate = categories.filter(
+      (c) => !initialCategories.some((ic) => ic.name === c.name) && c.name !== pendingCategory && !renamedNewNames.has(c.name)
+    );
+    if (newCatsToCreate.length > 0) {
+      await Promise.allSettled(
+        newCatsToCreate.map((c) =>
+          fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: c.name }),
+          })
+        )
+      );
+    }
 
     // 카테고리 순서 변경 저장
     if (orderChanged) {
@@ -1232,7 +1234,7 @@ export default function SourcesPageClient({
               handleSave();
             }}
             disabled={!hasValidSources || isSaving}
-            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-lg hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
             style={{ boxShadow: 'var(--shadow-md)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
             {isSaving ? t('sources.saving') : t('sources.save')}
@@ -1242,19 +1244,19 @@ export default function SourcesPageClient({
 
       {/* Delete Category Confirmation Dialog */}
       {deletingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeletingCategory(null)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" onClick={() => setDeletingCategory(null)} aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             role="dialog"
             aria-modal="true"
           >
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
+            <div className="px-6 pt-6 pb-5">
+              <h3 className="text-lg font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>
                 {t('sources.deleteCategory')}
               </h3>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
                 {t('sources.deleteCategoryConfirm', { name: deletingCategory })}
               </p>
               {(sourcesByCategory[deletingCategory]?.filter((s) => s.isExisting).length || 0) > 0 && (
@@ -1265,21 +1267,24 @@ export default function SourcesPageClient({
                 </p>
               )}
             </div>
-            <div className="flex border-t border-[var(--border)]">
+            <div className="flex items-center justify-end gap-2.5 px-6 py-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
               <button
                 onClick={() => setDeletingCategory(null)}
                 disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="px-4 py-2.5 text-sm font-medium rounded-lg active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; e.currentTarget.style.borderColor = 'var(--border-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
               >
                 {t('sources.cancel')}
               </button>
-              <div className="w-px bg-[var(--border)]" />
               <button
                 onClick={handleDeleteCategory}
                 disabled={isDeleting}
-                className="flex-1 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="px-4 py-2.5 text-sm font-medium text-white rounded-lg active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ backgroundColor: '#DC2626', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#B91C1C'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#DC2626'; }}
               >
                 {isDeleting ? t('sources.deleting') : t('sources.delete')}
               </button>
@@ -1290,29 +1295,26 @@ export default function SourcesPageClient({
 
       {/* Bot Blocked Dialog */}
       {showBotBlockedDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowBotBlockedDialog(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" onClick={() => setShowBotBlockedDialog(false)} aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             role="dialog"
             aria-modal="true"
           >
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center" style={{ borderRadius: '16px', backgroundColor: '#FEF3C7' }}>
-                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+            <div className="px-6 pt-6 pb-5">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
                 {t('sources.botBlockedDialog')}
               </p>
             </div>
-            <div className="border-t border-[var(--border)]">
+            <div className="px-6 py-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
               <button
                 onClick={() => setShowBotBlockedDialog(false)}
-                className="w-full py-3.5 text-sm font-medium text-[var(--accent)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="w-full py-2.5 text-sm font-medium text-white rounded-lg active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ backgroundColor: 'var(--accent)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent)'; }}
               >
                 {t('dialog.confirm')}
               </button>
@@ -1323,86 +1325,96 @@ export default function SourcesPageClient({
 
       {/* Analysis Progress Dialog */}
       {showAnalysisDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)] p-6"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             role="dialog"
             aria-modal="true"
           >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ borderRadius: '16px', backgroundColor: 'var(--accent-light)' }}>
-                <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+            <div className="px-6 pt-6 pb-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent-light)' }}>
+                  <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                    크롤링 전략 분석 중
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    AI가 최적의 크롤링 방식을 찾고 있어요
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                  크롤링 전략 분석 중
-                </h3>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  AI가 최적의 크롤링 방식을 찾고 있어요
-                </p>
+              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: 'var(--accent)', width: `${analysisProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
+                />
               </div>
+              <p className="text-xs mt-2 text-right" style={{ color: 'var(--text-tertiary)' }}>
+                {Math.round(analysisProgress)}%
+              </p>
             </div>
-            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{ backgroundColor: 'var(--accent)', width: `${analysisProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
-              />
-            </div>
-            <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
-              {Math.round(analysisProgress)}%
-            </p>
           </div>
         </div>
       )}
 
       {/* Scope Selection Dialog */}
       {showScopeDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowScopeDialog(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" onClick={() => setShowScopeDialog(false)} aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)]"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             role="dialog"
             aria-modal="true"
           >
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+            <div className="px-6 pt-6 pb-5">
+              <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
                 {t('sources.recommendScope')}
               </h3>
               <div className="space-y-2">
                 <button
                   onClick={() => handleRecommendSources('domestic')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
-                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  className="w-full py-3 px-4 text-sm font-medium rounded-lg active:scale-[0.98] cursor-pointer text-left"
+                  style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
                 >
                   {t('sources.scopeDomestic')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('international')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
-                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  className="w-full py-3 px-4 text-sm font-medium rounded-lg active:scale-[0.98] cursor-pointer text-left"
+                  style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
                 >
                   {t('sources.scopeInternational')}
                 </button>
                 <button
                   onClick={() => handleRecommendSources('both')}
-                  className="w-full py-3 px-4 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.98] cursor-pointer text-left"
-                  style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  className="w-full py-3 px-4 text-sm font-medium rounded-lg active:scale-[0.98] cursor-pointer text-left"
+                  style={{ color: 'var(--text-primary)', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
                 >
                   {t('sources.scopeBoth')}
                 </button>
               </div>
             </div>
-            <div className="border-t border-[var(--border)]">
+            <div className="px-6 py-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
               <button
                 onClick={() => setShowScopeDialog(false)}
-                className="w-full py-3.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="w-full py-2.5 text-sm font-medium rounded-lg active:scale-95 cursor-pointer"
+                style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
               >
                 {t('sources.cancel')}
               </button>
@@ -1413,39 +1425,41 @@ export default function SourcesPageClient({
 
       {/* Recommend Loading Dialog */}
       {showRecommendDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] max-w-sm w-full mx-4 overflow-hidden border border-[var(--border)] p-6"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             role="dialog"
             aria-modal="true"
           >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ borderRadius: '16px', backgroundColor: 'var(--accent-light)' }}>
-                <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+            <div className="px-6 pt-6 pb-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent-light)' }}>
+                  <svg className="w-5 h-5 animate-spin" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {t('sources.recommendLoading')}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    {t('sources.recommendLoadingDesc')}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                  {t('sources.recommendLoading')}
-                </h3>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  {t('sources.recommendLoadingDesc')}
-                </p>
+              <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: 'var(--accent)', width: `${recommendProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
+                />
               </div>
+              <p className="text-xs mt-2 text-right" style={{ color: 'var(--text-tertiary)' }}>
+                {Math.round(recommendProgress)}%
+              </p>
             </div>
-            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{ backgroundColor: 'var(--accent)', width: `${recommendProgress}%`, transition: 'width 300ms cubic-bezier(0.2, 0, 0, 1)' }}
-              />
-            </div>
-            <p className="text-xs text-[var(--text-tertiary)] mt-2 text-right">
-              {Math.round(recommendProgress)}%
-            </p>
           </div>
         </div>
       )}
@@ -1460,28 +1474,28 @@ export default function SourcesPageClient({
 
       {/* Browse Master Categories Modal */}
       {showBrowseMaster && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowBrowseMaster(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[6px] dialog-backdrop-enter" onClick={() => setShowBrowseMaster(false)} aria-hidden="true" />
           <div
-            className="relative bg-[var(--bg-secondary)] w-full max-w-md mx-4 max-h-[80vh] flex flex-col border border-[var(--border)]"
-            style={{ borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
+            className="relative w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden dialog-enter"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)' }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >
-            <div className="p-5 border-b border-[var(--border)]">
-              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('sources.browseMasterTitle')}</h3>
-              <p className="text-sm text-[var(--text-tertiary)] mt-1">{t('sources.browseMasterDesc')}</p>
+            <div className="px-6 pt-6 pb-4">
+              <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('sources.browseMasterTitle')}</h3>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>{t('sources.browseMasterDesc')}</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto px-6 pb-4">
               {masterLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin w-6 h-6 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-                  <span className="ml-3 text-sm text-[var(--text-secondary)]">{t('sources.browseMasterLoading')}</span>
+                  <span className="ml-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{t('sources.browseMasterLoading')}</span>
                 </div>
               ) : !masterData || masterData.categories.length === 0 ? (
-                <p className="text-center text-sm text-[var(--text-tertiary)] py-12">{t('sources.browseMasterEmpty')}</p>
+                <p className="text-center text-sm py-12" style={{ color: 'var(--text-tertiary)' }}>{t('sources.browseMasterEmpty')}</p>
               ) : (
                 <div className="space-y-2">
                   {masterData.categories.map((cat) => {
@@ -1489,7 +1503,7 @@ export default function SourcesPageClient({
                     const isExpanded = expandedMasterCats.has(cat.name);
                     const sources = masterData.sourcesByCategory[cat.name] || [];
                     return (
-                      <div key={cat.name} className="border border-[var(--border)] rounded-lg overflow-hidden">
+                      <div key={cat.name} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
                         <div className="flex items-center gap-3 px-4 py-3">
                           <input
                             type="checkbox"
@@ -1515,13 +1529,13 @@ export default function SourcesPageClient({
                             }}
                             className="flex-1 flex items-center justify-between text-left cursor-pointer"
                           >
-                            <span className="text-sm font-medium text-[var(--text-primary)]">
+                            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                               {cat.name}
-                              <span className="ml-2 text-xs text-[var(--text-tertiary)]">({sources.length})</span>
+                              <span className="ml-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>({sources.length})</span>
                             </span>
                             <svg
-                              className={`w-4 h-4 text-[var(--text-tertiary)]`}
-                              style={{ transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                              className="w-4 h-4"
+                              style={{ color: 'var(--text-tertiary)', transition: 'transform 200ms cubic-bezier(0.2, 0, 0, 1)', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
                               fill="none" stroke="currentColor" viewBox="0 0 24 24"
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1529,10 +1543,10 @@ export default function SourcesPageClient({
                           </button>
                         </div>
                         {isExpanded && sources.length > 0 && (
-                          <div className="px-4 pb-3 border-t border-[var(--border)]">
+                          <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--border)' }}>
                             <ul className="mt-2 space-y-1.5">
                               {sources.map((s) => (
-                                <li key={s.id} className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                                <li key={s.id} className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
                                   <span className="truncate">{s.name || s.url}</span>
                                 </li>
@@ -1547,19 +1561,23 @@ export default function SourcesPageClient({
               )}
             </div>
 
-            <div className="p-4 border-t border-[var(--border)] flex gap-3">
+            <div className="flex items-center gap-2.5 px-6 py-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
               <button
                 onClick={() => setShowBrowseMaster(false)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--bg-primary)] text-[var(--text-secondary)] rounded-lg border border-[var(--border)] hover:bg-[var(--bg-tertiary)] active:scale-95 cursor-pointer"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg active:scale-95 cursor-pointer"
+                style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; e.currentTarget.style.borderColor = 'var(--border-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
               >
                 {t('sources.cancel')}
               </button>
               <button
                 onClick={handleAddMasterCategories}
                 disabled={selectedMasterCats.size === 0}
-                className="flex-1 px-4 py-2.5 text-sm font-medium bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-                style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                style={{ backgroundColor: 'var(--accent)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent)'; }}
               >
                 {t('sources.browseMasterAdd')} {selectedMasterCats.size > 0 && `(${selectedMasterCats.size})`}
               </button>
