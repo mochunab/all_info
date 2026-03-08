@@ -216,7 +216,8 @@ resolveStrategy(url) — lib/crawlers/strategy-resolver.ts
       ├─ detect-crawler-type Edge Fn (Gemini 2.5 Flash Lite)
       └─ 후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
   7.5 API 감지 — SPA 확정 후 detect-api-endpoint 호출
-      └─ Puppeteer 네트워크 캡처 → Gemini 2.5 Flash Lite → crawl_config 생성
+      ├─ Puppeteer 네트워크 캡처 → Gemini 2.5 Flash Lite → crawl_config 생성
+      └─ test fetch 검증 (validateApiConfig): title/link 매핑 유효성 확인 → 실패 시 SPA 유지
   8.5 SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재시도
   9.  사전 감지 (크롤링 시점) — STATIC/SPA 소스에 셀렉터 없으면:
       └─ AI 1차 → Rule-based 2차 → DB 자동 저장 (SPA는 Puppeteer HTML 사용)
@@ -308,8 +309,10 @@ const SOURCE_COLORS: Record<string, string> = {
 
 ### v1.8.6 (2026-03-07)
 - robots.txt 체크 비활성화 (`lib/crawlers/index.ts`, 추후 재활성화 예정)
-- API 감지 상대경로 거부: `api-detector.ts`에서 절대 URL이 아닌 엔드포인트 거부 → SPA 유지
-  - CSRF/세션 보호 SPA 사이트(예: surfit.io)가 잘못된 API 타입으로 감지되는 문제 방지
+- API 감지 안전장치 강화 (`api-detector.ts`, `strategy-resolver.ts`):
+  - 상대경로 엔드포인트 거부 (절대 URL만 허용)
+  - `validateApiConfig`: test fetch 후 title/link 필드 매핑 유효성 검증 → 실패 시 SPA 유지
+  - Stage 5.5 + 7.5 양쪽 모두 검증 적용
 - Hydration error 수정: `language-context.tsx` 초기값을 `'ko'`로 고정, `useEffect`에서 감지
   - 서버(`'ko'`) vs 클라이언트(localStorage) 불일치로 전체 CSS 깨지는 문제 해결
 - UI: LanguageSwitcher 지구본 아이콘 → 현재 언어 국기 이모지로 변경

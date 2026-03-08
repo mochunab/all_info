@@ -378,11 +378,26 @@ export class SPAStrategy implements CrawlStrategy {
             let href = linkEl?.getAttribute('href') || (el as HTMLAnchorElement).getAttribute?.('href') || el.querySelector('a')?.getAttribute('href');
             if (!href) return;
 
-            // javascript: 링크 처리 (JSP/레거시 동적 페이지)
+            // javascript: / #hash+onclick 링크 처리 (JSP/레거시 동적 페이지)
+            let needsTemplate = false;
+            let argsSource = '';
+
             if (href.startsWith('javascript:')) {
+              needsTemplate = true;
+              argsSource = href;
+            } else if (href === '#' || (href.startsWith('#') && href.length <= 10)) {
+              const onclickAttr = linkEl?.getAttribute('onclick')
+                || (el as HTMLAnchorElement).getAttribute?.('onclick')
+                || el.querySelector('a')?.getAttribute('onclick');
+              if (onclickAttr) {
+                needsTemplate = true;
+                argsSource = onclickAttr;
+              }
+            }
+
+            if (needsTemplate) {
               if (linkTemplate) {
-                // 함수 인자 추출: javascript:go_view(12345) → ['12345']
-                const argsMatch = href.match(/\(([^)]*)\)/);
+                const argsMatch = argsSource.match(/\(([^)]*)\)/);
                 if (argsMatch) {
                   const args = argsMatch[1].split(',').map(a => a.trim().replace(/['"]/g, ''));
                   let resolvedUrl = linkTemplate;
@@ -395,10 +410,77 @@ export class SPAStrategy implements CrawlStrategy {
                     href = `${baseUrl}${resolvedUrl}`;
                   }
                 } else {
-                  return; // 인자 추출 실패 시 스킵
+                  return;
                 }
               } else {
-                return; // linkTemplate 없으면 javascript: 링크 스킵
+                // linkTemplate 없음 → onclick 함수 본문에서 URL 자동 추출
+                let resolved = false;
+                const funcMatch = argsSource.match(/^(\w+)\s*\(/);
+                if (funcMatch) {
+                  const funcName = funcMatch[1];
+                  const innerArgs = argsSource.match(/\(([^)]*)\)/);
+                  const args = innerArgs
+                    ? innerArgs[1].split(',').map(a => a.trim().replace(/['"]/g, ''))
+                    : [];
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const func = (window as any)[funcName];
+                    if (typeof func === 'function') {
+                      const funcBody = func.toString();
+                      const funcArgNames = (funcBody.match(/function\s*\w*\s*\(([^)]*)\)/) || [])[1]
+                        ?.split(',').map((a: string) => a.trim()) || [];
+
+                      // Pattern 1: form.action + param.value 할당
+                      const actionMatch = funcBody.match(/\.action\s*=\s*["']([^"']+)["']/);
+                      if (actionMatch) {
+                        const actionPath = actionMatch[1];
+                        const paramPattern = /\.(\w+)\.value\s*=\s*(\w+)/g;
+                        const qp: string[] = [];
+                        let pm;
+                        while ((pm = paramPattern.exec(funcBody)) !== null) {
+                          const argIdx = funcArgNames.indexOf(pm[2]);
+                          if (argIdx >= 0 && args[argIdx]) {
+                            qp.push(`${pm[1]}=${encodeURIComponent(args[argIdx])}`);
+                          }
+                        }
+                        const qs = qp.length > 0 ? '?' + qp.join('&') : '';
+                        try {
+                          href = new URL(actionPath + qs, baseUrl).toString();
+                          resolved = true;
+                        } catch { /* ignore */ }
+                      }
+
+                      // Pattern 2: location.href = "path" + arg
+                      if (!resolved) {
+                        const locMatch = funcBody.match(/location(?:\.href)?\s*=\s*["']([^"']*?)["']\s*\+\s*(\w+)/);
+                        if (locMatch) {
+                          const argIdx = funcArgNames.indexOf(locMatch[2]);
+                          if (argIdx >= 0 && args[argIdx]) {
+                            try {
+                              href = new URL(locMatch[1] + args[argIdx], baseUrl).toString();
+                              resolved = true;
+                            } catch { /* ignore */ }
+                          }
+                        }
+                      }
+
+                      // Pattern 3: window.open("path" + arg)
+                      if (!resolved) {
+                        const openMatch = funcBody.match(/(?:window\.)?open\s*\(\s*["']([^"']*?)["']\s*\+\s*(\w+)/);
+                        if (openMatch) {
+                          const argIdx = funcArgNames.indexOf(openMatch[2]);
+                          if (argIdx >= 0 && args[argIdx]) {
+                            try {
+                              href = new URL(openMatch[1] + args[argIdx], baseUrl).toString();
+                              resolved = true;
+                            } catch { /* ignore */ }
+                          }
+                        }
+                      }
+                    }
+                  } catch { /* ignore */ }
+                }
+                if (!resolved) return;
               }
             } else {
               // 일반 링크: 절대 URL로 변환

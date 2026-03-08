@@ -24,6 +24,19 @@
       "maxDuration": 300
     }
   },
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "archi-info.vercel.app"
+        }
+      ],
+      "destination": "https://aca-info.com/:path*",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

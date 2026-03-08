@@ -13,14 +13,26 @@ const TRIGGER_COOLDOWN_MS = 30_000;
 
 const LOCALE_SET = new Set<string>(LOCALES);
 
+const COUNTRY_TO_LOCALE: Record<string, Locale> = {
+  KR: 'ko',
+  CN: 'zh',
+  JP: 'ja',
+  VN: 'vi',
+};
+
 function detectLocaleFromHeader(request: NextRequest): Locale {
+  const country = request.headers.get('x-vercel-ip-country');
+  if (country && COUNTRY_TO_LOCALE[country]) {
+    return COUNTRY_TO_LOCALE[country];
+  }
+
   const accept = request.headers.get('accept-language') || '';
   const preferred = accept.split(',').map((s) => s.split(';')[0].trim().toLowerCase());
   for (const lang of preferred) {
     const short = lang.substring(0, 2);
     if (LOCALE_SET.has(short)) return short as Locale;
   }
-  return DEFAULT_LOCALE;
+  return 'en';
 }
 
 export async function middleware(request: NextRequest) {
@@ -69,7 +81,16 @@ export async function middleware(request: NextRequest) {
   if (!LOCALE_SET.has(firstSegment)) {
     const detected = detectLocaleFromHeader(request);
     const url = request.nextUrl.clone();
-    url.pathname = `/${detected}${pathname === '/' ? '' : pathname}`;
+    const target = pathname === '/' ? '/landing' : pathname;
+    url.pathname = `/${detected}${target}`;
+    return NextResponse.redirect(url, 302);
+  }
+
+  // /{locale} root → /{locale}/landing redirect
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length === 1 && LOCALE_SET.has(segments[0])) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/${segments[0]}/landing`;
     return NextResponse.redirect(url, 302);
   }
 

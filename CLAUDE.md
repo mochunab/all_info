@@ -39,7 +39,7 @@
 [Stage 6 제거 — v1.5.1]
 7+8. 통합 AI 감지 (타입 + 셀렉터) — 단일 Edge Function 호출 (Cheerio 전처리: aside/nav/sidebar 제거)
      후검증: Cheerio로 셀렉터 매칭 (최소 3건 이상 필요)
-7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출 (상대경로 엔드포인트는 거부 → SPA 유지)
+7.5. API 감지 — SPA 확정 후 detect-api-endpoint 호출 → test fetch 검증 (title/link 매핑 유효성) → 실패 시 SPA 유지
 8.5. SPA 셀렉터 재감지 — confidence < 0.5 → Puppeteer HTML로 재감지
 9. 사전 감지 (크롤링 시점) — STATIC/SPA 소스에 셀렉터 없으면: AI 1차 → Rule-based 2차 (SPA는 Puppeteer HTML 사용)
 10. 자동 복구 — 품질 검증 실패 (0건/유효 부족)
@@ -110,7 +110,7 @@
 | AI 셀렉터 오탐 | `infer-type.ts` 프롬프트 고도화 |
 | 시맨틱 감지 오작동 | `trySemanticDetection` 조건 강화 |
 | 크롤러 타입 오탐 | `strategy-resolver.ts` 파이프라인 개선 |
-| API 감지 오탐 (상대경로) | `api-detector.ts` — 절대 URL만 허용 |
+| API 감지 오탐 | `api-detector.ts` — 절대 URL만 허용 + test fetch 검증 (`validateApiConfig`) |
 | URL 최적화 오탐 | `url-optimizer.ts` 필터/검증 강화 |
 | 특정 패턴 일관 실패 | 해당 패턴의 **범용** 감지 규칙 추가 |
 | fetch redirect loop | `fetchWithTimeout` bot UA 재시도 (base.ts) |
