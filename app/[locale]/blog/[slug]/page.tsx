@@ -14,12 +14,12 @@ type Props = {
 
 export async function generateStaticParams() {
   const slugs = await getBlogSlugs();
-  return slugs.map((s) => ({ slug: s.slug }));
+  return slugs.map((s) => ({ slug: s.slug, locale: s.language || 'ko' }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
-  const post = await getBlogPost(slug);
+  const post = await getBlogPost(slug, locale);
   if (!post) return {};
 
   return {
@@ -43,27 +43,34 @@ export default async function BlogPostPage({ params }: Props) {
   const { locale, slug } = await params;
   const lp = (p: string) => localePath(locale, p);
   const [post, allPosts] = await Promise.all([
-    getBlogPost(slug),
-    getBlogPosts(),
+    getBlogPost(slug, locale),
+    getBlogPosts(locale),
   ]);
 
   if (!post) notFound();
 
   const otherPosts = allPosts.filter((p) => p.slug !== slug).slice(0, 5);
 
+  const ogImage = post.cover_image || `https://aca-info.com/api/og?title=${encodeURIComponent(post.title)}&description=${encodeURIComponent(post.description.substring(0, 100))}&type=blog`;
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'Article',
+    '@type': 'BlogPosting',
     headline: post.title,
     description: post.description,
     url: `https://aca-info.com${lp(`/blog/${slug}`)}`,
-    ...(post.cover_image ? { image: post.cover_image } : {}),
+    image: ogImage,
     ...(post.published_at ? { datePublished: post.published_at } : {}),
     dateModified: post.updated_at,
+    author: {
+      '@type': 'Organization',
+      name: '아카인포',
+      url: 'https://aca-info.com',
+    },
     publisher: {
       '@type': 'Organization',
       name: '아카인포',
       url: 'https://aca-info.com',
+      logo: { '@type': 'ImageObject', url: 'https://aca-info.com/logo.png' },
     },
   };
 
