@@ -68,12 +68,26 @@ export default async function BlogPostPage({ params }: Props) {
   };
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8 sm:py-12">
+    <main className="max-w-5xl mx-auto px-4 pt-8 sm:pt-12 pb-28">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <SeoBreadcrumb items={[{ label: '블로그', href: lp('/blog') }, { label: post.title }]} locale={locale} />
+
+      {/* 하단 스티키 CTA — 본문 article 너비에만 맞춤 */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="max-w-5xl mx-auto px-4 lg:grid lg:grid-cols-[1fr_260px] lg:gap-12">
+          <div className="pointer-events-auto py-3">
+            <a
+              href={`https://aca-info.com/${locale}?utm_source=blog&utm_medium=${slug}&utm_campaign=sticky-cta`}
+              className="btn btn-primary w-full py-3 text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all"
+            >
+              취뽀하러 가기
+            </a>
+          </div>
+        </div>
+      </div>
 
       <div className="lg:grid lg:grid-cols-[1fr_260px] lg:gap-12">
         <article>

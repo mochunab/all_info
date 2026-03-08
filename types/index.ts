@@ -183,4 +183,5 @@ export type BlogPost = {
   updated_at: string;
   language: Language;
   translation_group_id: string | null;
+  category: string;
 };

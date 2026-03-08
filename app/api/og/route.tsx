@@ -104,9 +104,9 @@ export async function GET(request: NextRequest) {
             {/* /Ai logo mark */}
             <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
               <path d="M3.5 27L11 5" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
-              <path d="M16.5 27L16.5 17" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
-              <path d="M26 27L26 14" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
-              <circle cx="26" cy="5.5" r="3.8" fill="#2563EB" />
+              <path d="M16.5 27L16.5 15" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
+              <path d="M26 27L26 12" stroke="#2563EB" strokeWidth="6.5" strokeLinecap="round" />
+              <circle cx="26" cy="4.5" r="3.8" fill="#2563EB" />
             </svg>
             <span style={{ color: '#111827', fontSize: '24px', fontWeight: 700 }}>아카인포</span>
           </div>

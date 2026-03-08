@@ -60,36 +60,42 @@ export default function ConfirmDialog({
         onClick={onCancel}
       />
 
-      {/* Dialog */}
-      <div className="relative bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 border border-[var(--border)] animate-in fade-in-0 zoom-in-95 duration-200">
-        {/* Title */}
-        <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+      <div
+        className="relative bg-[var(--bg-secondary)] w-full max-w-md mx-4 p-6 border border-[var(--border)] animate-in fade-in-0 zoom-in-95 duration-200"
+        style={{
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-lg)',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+      >
+        <h2 id="confirm-dialog-title" className="text-xl font-bold text-[var(--text-primary)] mb-2">
           {title}
         </h2>
 
-        {/* Message */}
         <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
           {message}
         </p>
 
-        {/* Actions */}
         <div className="flex items-center justify-end gap-3">
-          {/* Cancel Button */}
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
             {cancelText || t(language, 'dialog.cancel')}
           </button>
 
-          {/* Confirm Button */}
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+            className={`px-4 py-2 text-sm font-medium text-white rounded-lg active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
               variant === 'danger'
                 ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]'
             }`}
+            style={{ transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
             {confirmText || t(language, 'dialog.confirm')}
           </button>
