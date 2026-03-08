@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { pageview } from '@/lib/gtag';
+import { pageview, setGtagMaster } from '@/lib/gtag';
+import { useAuth } from '@/lib/auth-context';
 
 const PAGE_NAMES: Record<string, string> = {
   '/': '홈피드',
@@ -37,6 +38,11 @@ function getPageName(pathname: string): string {
 export default function GTagPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isMaster } = useAuth();
+
+  useEffect(() => {
+    setGtagMaster(isMaster);
+  }, [isMaster]);
 
   useEffect(() => {
     const url = pathname + (searchParams?.toString() ? `?${searchParams}` : '');

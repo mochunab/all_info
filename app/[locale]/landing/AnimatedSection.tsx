@@ -15,32 +15,34 @@ type AnimatedSectionProps = {
   useViewport?: boolean;
 };
 
+const MD3_EASE = [0.2, 0, 0, 1] as const;
+
 const animations = {
   fadeUp: {
     hidden: { opacity: 0, y: 24 },
     visible: (i: number) => ({
       opacity: 1, y: 0,
-      transition: { duration: 0.5, delay: i * 0.12, ease: 'easeOut' as const },
+      transition: { duration: 0.5, delay: i * 0.12, ease: MD3_EASE },
     }),
   },
   scaleIn: {
     hidden: { opacity: 0, scale: 0.92 },
     visible: (i: number) => ({
       opacity: 1, scale: 1,
-      transition: { duration: 0.45, delay: i * 0.1, ease: 'easeOut' as const },
+      transition: { duration: 0.45, delay: i * 0.1, ease: MD3_EASE },
     }),
   },
   slideLeft: {
     hidden: { opacity: 0, x: -30 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.5 } },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: MD3_EASE } },
   },
   slideRight: {
     hidden: { opacity: 0, x: 30 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.5, delay: 0.1 } },
+    visible: { opacity: 1, x: 0, transition: { duration: 0.5, delay: 0.1, ease: MD3_EASE } },
   },
   fadeIn: {
     hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: MD3_EASE } },
   },
 };
 
@@ -91,7 +93,7 @@ export function AnimatedCard({
       style={style}
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, delay: delay + index * 0.15 }}
+      transition={{ duration: 0.4, delay: delay + index * 0.15, ease: MD3_EASE }}
     >
       {children}
     </motion.div>
