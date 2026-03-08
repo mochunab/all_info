@@ -77,27 +77,32 @@ export default async function BlogPostPage({ params }: Props) {
 
       <div className="lg:grid lg:grid-cols-[1fr_260px] lg:gap-12">
         <article>
-          <header className="mb-8 pb-6 border-b border-[var(--border)]">
+          <header className="mb-10 pb-8 border-b border-[var(--border)]">
             <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] leading-tight mb-4">
               {post.title}
             </h1>
-            <p className="text-[var(--text-secondary)] text-base mb-4">{post.description}</p>
+            <p className="text-[var(--text-secondary)] text-base mb-5 leading-relaxed">{post.description}</p>
             <div className="flex items-center gap-3 flex-wrap">
               {post.published_at && (
-                <time className="text-sm text-[var(--text-tertiary)]">
-                  {new Date(post.published_at).toLocaleDateString('ko-KR', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </time>
+                <div className="flex items-center gap-1.5 text-sm text-[var(--text-tertiary)]">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <time>
+                    {new Date(post.published_at).toLocaleDateString('ko-KR', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </time>
+                </div>
               )}
               {post.tags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
                   {post.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2.5 py-0.5 text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] rounded-full"
+                      className="px-2.5 py-0.5 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded-full"
                     >
                       {tag}
                     </span>
@@ -126,16 +131,16 @@ export default async function BlogPostPage({ params }: Props) {
         </article>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-8 space-y-6">
+          <div className="sticky top-8 space-y-5">
             {otherPosts.length > 0 && (
-              <div className="bg-[var(--bg-secondary)] rounded-xl p-5 border border-[var(--border)]">
-                <h2 className="text-sm font-bold text-[var(--text-primary)] mb-4">다른 글</h2>
+              <div className="bg-[var(--bg-secondary)] rounded-2xl p-5 border border-[var(--border)]">
+                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-4 uppercase tracking-wider">다른 글</h2>
                 <ul className="space-y-3">
                   {otherPosts.map((p) => (
                     <li key={p.slug}>
                       <Link
                         href={lp(`/blog/${p.slug}`)}
-                        className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors line-clamp-2 leading-snug"
+                        className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors duration-200 line-clamp-2 leading-snug"
                       >
                         {p.title}
                       </Link>
@@ -146,13 +151,13 @@ export default async function BlogPostPage({ params }: Props) {
             )}
 
             {post.tags.length > 0 && (
-              <div className="bg-[var(--bg-secondary)] rounded-xl p-5 border border-[var(--border)]">
-                <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3">태그</h2>
+              <div className="bg-[var(--bg-secondary)] rounded-2xl p-5 border border-[var(--border)]">
+                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-3 uppercase tracking-wider">태그</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {post.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2.5 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-full"
+                      className="px-2.5 py-1 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded-full"
                     >
                       {tag}
                     </span>
@@ -163,9 +168,12 @@ export default async function BlogPostPage({ params }: Props) {
 
             <Link
               href={lp('/blog')}
-              className="flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline transition-colors duration-200"
             >
-              ← 블로그 목록
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              블로그 목록
             </Link>
           </div>
         </aside>

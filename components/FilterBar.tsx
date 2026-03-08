@@ -90,7 +90,7 @@ export default function FilterBar({
             value={localSearch}
             onChange={(e) => handleSearchInput(e.target.value)}
             placeholder={t(language, 'filter.search')}
-            className="input pl-12"
+            className="input pl-12 !rounded-xl"
           />
           {localSearch && (
             <button
@@ -118,7 +118,7 @@ export default function FilterBar({
         {!hideAddSource && (
           <button
             onClick={() => router.push(userId ? `/sources/add?user_id=${userId}` : '/sources/add')}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium rounded-lg hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] text-sm font-medium rounded-xl hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap cursor-pointer"
           >
             <svg
               className="w-4 h-4"
@@ -142,7 +142,7 @@ export default function FilterBar({
           <button
             onClick={() => { if (!isCrawling) onRefresh(); }}
             disabled={isCrawling}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--accent)] text-white text-sm font-medium rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer active:scale-95"
           >
             <svg
               className={`w-4 h-4 ${isCrawling ? 'animate-spin' : ''}`}
@@ -179,7 +179,7 @@ export default function FilterBar({
         <div className="relative ml-auto" ref={dropdownRef}>
           <button
             onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors min-w-[140px]"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors min-w-[140px] cursor-pointer"
           >
             <span className="font-medium">{translateCat(category || categories[0] || '')}</span>
             <svg
@@ -201,7 +201,7 @@ export default function FilterBar({
 
           {/* Dropdown Menu */}
           {isCategoryDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-lg z-50 overflow-hidden">
+            <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-lg z-50 overflow-hidden">
               <div className="py-1 max-h-64 overflow-y-auto custom-scrollbar">
                 {categories.map((cat) => {
                   const isActive = category === cat;
