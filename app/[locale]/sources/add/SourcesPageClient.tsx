@@ -138,9 +138,9 @@ function SortableCategory({ category, isActive, count, onSelect, onDelete, onRen
       <button
         onClick={onSelect}
         onDoubleClick={handleDoubleClick}
-        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${
+        className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 flex items-center gap-2 cursor-pointer ${
           isActive
-            ? 'bg-[var(--accent)] text-white'
+            ? 'bg-[var(--accent)] text-white shadow-sm'
             : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
         }`}
       >
@@ -950,7 +950,7 @@ export default function SourcesPageClient({
           <div className="flex items-center justify-between h-16">
             <button
               onClick={() => window.history.length > 1 ? router.back() : router.push('/')}
-              className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               <svg
                 className="w-5 h-5"
@@ -1092,7 +1092,7 @@ export default function SourcesPageClient({
                   }
                   setIsAddingCategory(true);
                 }}
-                className="flex items-center gap-1 px-3 py-2 rounded-full text-sm text-[var(--accent)] bg-[var(--bg-secondary)] border border-dashed border-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors"
+                className="flex items-center gap-1 px-3 py-2 rounded-full text-sm text-[var(--accent)] bg-[var(--bg-secondary)] border border-dashed border-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors duration-200 cursor-pointer"
               >
                 <svg
                   className="w-4 h-4"
@@ -1123,7 +1123,7 @@ export default function SourcesPageClient({
               </label>
               <button
                 onClick={() => setShowScopeDialog(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[var(--accent)] rounded-lg hover:bg-[var(--accent)]/85 active:scale-[0.97] shadow-sm shadow-[var(--accent)]/25 transition-all"
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-[var(--accent)] rounded-xl hover:bg-[var(--accent-hover)] active:scale-95 shadow-sm transition-all duration-200 cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.476.859h4.002z" />
@@ -1133,18 +1133,18 @@ export default function SourcesPageClient({
             </div>
             <div className="space-y-3">
               {currentSources.map((source) => (
-                <div key={source.id} className="relative">
+                <div key={source.id} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-4 transition-all duration-200 hover:shadow-sm">
                   <div className="flex gap-2">
                     <input
                       type="url"
                       value={source.url}
                       onChange={(e) => handleSourceChange(source.id, 'url', e.target.value)}
                       placeholder={t('sources.urlPlaceholder')}
-                      className="flex-1 px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                      className="flex-1 px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-light)] transition-all duration-200"
                     />
                     <button
                       onClick={() => handleRemoveLink(source.id)}
-                      className="px-3 py-3 text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
+                      className="px-3 py-2.5 text-[var(--text-tertiary)] hover:text-red-500 transition-colors cursor-pointer"
                     >
                       <svg
                         className="w-5 h-5"
@@ -1162,18 +1162,18 @@ export default function SourcesPageClient({
                     </button>
                   </div>
                   {source.url && (
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-3 flex gap-2">
                       <input
                         type="text"
                         value={source.name}
                         onChange={(e) => handleSourceChange(source.id, 'name', e.target.value)}
                         placeholder={t('sources.namePlaceholder')}
-                        className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                        className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-light)] transition-all duration-200"
                       />
                       <select
                         value={source.crawlerType}
                         onChange={(e) => handleSourceChange(source.id, 'crawlerType', e.target.value)}
-                        className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                        className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-xl text-sm text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent)] transition-all duration-200 cursor-pointer"
                       >
                         {CRAWLER_TYPES.map((type) => (
                           <option key={type} value={type}>
@@ -1190,7 +1190,7 @@ export default function SourcesPageClient({
             {/* Add Link Button */}
             <button
               onClick={handleAddLink}
-              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-[var(--border)] rounded-lg text-sm text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-[var(--border)] rounded-xl text-sm text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors duration-200 cursor-pointer"
             >
               <svg
                 className="w-4 h-4"
@@ -1212,8 +1212,8 @@ export default function SourcesPageClient({
       </main>
 
       {/* Bottom Sticky Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-primary)] border-t border-[var(--border)] p-4">
-        <div className="max-w-2xl mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 z-40">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 pb-4 pt-3 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)] to-transparent">
           <button
             onClick={() => {
               if (readOnly) {
@@ -1223,7 +1223,7 @@ export default function SourcesPageClient({
               handleSave();
             }}
             disabled={!hasValidSources || isSaving}
-            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] cursor-pointer shadow-lg"
           >
             {isSaving ? t('sources.saving') : t('sources.save')}
           </button>

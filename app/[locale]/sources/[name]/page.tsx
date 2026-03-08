@@ -68,20 +68,25 @@ export default async function SourcePage({ params }: Props) {
 
         <aside className="hidden lg:block">
           <div className="sticky top-8">
-            <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">인기 태그</h2>
+            <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-3 uppercase tracking-wider">인기 태그</h2>
             <div className="flex flex-wrap gap-1.5">
               {tags.map((t) => (
                 <Link
                   key={t.tag}
                   href={lp(`/tags/${encodeURIComponent(t.tag)}`)}
-                  className="px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded hover:text-[var(--accent)] transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-full hover:bg-[var(--accent-light)] hover:text-[var(--accent)] transition-colors duration-200"
                 >
                   #{t.tag}
                 </Link>
               ))}
             </div>
             <div className="mt-6 pt-4 border-t border-[var(--border)]">
-              <Link href={lp('/sources')} className="text-sm text-[var(--accent)] hover:underline">← 전체 소스</Link>
+              <Link href={lp('/sources')} className="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline transition-colors duration-200">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                전체 소스
+              </Link>
             </div>
           </div>
         </aside>

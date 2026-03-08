@@ -35,19 +35,21 @@ export default function SeoBreadcrumb({ items, locale = 'ko' }: SeoBreadcrumbPro
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <nav aria-label="Breadcrumb" className="text-sm text-[var(--text-tertiary)] mb-6">
-        <ol className="flex items-center gap-1.5 flex-wrap">
+        <ol className="flex items-center gap-1 flex-wrap">
           <li>
-            <Link href={lp('/')} className="hover:text-[var(--accent)] transition-colors">홈</Link>
+            <Link href={lp('/')} className="hover:text-[var(--accent)] transition-colors duration-200">홈</Link>
           </li>
           {items.map((item, i) => (
-            <li key={i} className="flex items-center gap-1.5">
-              <span>/</span>
+            <li key={i} className="flex items-center gap-1">
+              <svg className="w-4 h-4 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
               {item.href ? (
-                <Link href={lp(item.href)} className="hover:text-[var(--accent)] transition-colors">
+                <Link href={lp(item.href)} className="hover:text-[var(--accent)] transition-colors duration-200">
                   {item.label}
                 </Link>
               ) : (
-                <span className="text-[var(--text-primary)]">{item.label}</span>
+                <span className="text-[var(--text-primary)] font-medium">{item.label}</span>
               )}
             </li>
           ))}

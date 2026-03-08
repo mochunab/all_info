@@ -101,7 +101,7 @@ export const translations = {
     'chat.buttonLabel': '면접 코칭 받기',
     'chat.title': 'AI 면접 코칭',
     'chat.contextBadge': '{category}의 {count}개 기사 기반',
-    'chat.welcome': '최신 업계 기사를 바탕으로 면접 답변을 코칭해드립니다. 궁금한 것을 질문해보세요!',
+    'chat.welcome': '최신 업계 기사를 바탕으로 면접 답변을 코칭해드립니다.\n궁금한 것을 질문해보세요!',
     'chat.placeholder': '면접 질문이나 궁금한 점을 입력하세요...',
     'chat.send': '전송',
     'chat.error': '응답 생성에 실패했습니다.',
