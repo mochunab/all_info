@@ -54,7 +54,7 @@ export const translations = {
 
     // Sources Add Page
     'sources.back': '돌아가기',
-    'sources.title': '소스 관리',
+    'sources.title': '링크 관리',
     'sources.subtitle': '카테고리별로 크롤링할 웹사이트를 관리하세요.',
     'sources.linkLabel': '출처 링크',
     'sources.urlPlaceholder': 'https://example.com/blog',
@@ -251,7 +251,7 @@ export const translations = {
 
     // Sources Add Page
     'sources.back': 'Back',
-    'sources.title': 'Source Management',
+    'sources.title': 'Link Management',
     'sources.subtitle': 'Manage websites to crawl by category.',
     'sources.linkLabel': 'Source Link',
     'sources.urlPlaceholder': 'https://example.com/blog',
@@ -448,7 +448,7 @@ export const translations = {
 
     // Sources Add Page
     'sources.back': 'Quay lại',
-    'sources.title': 'Quản lý nguồn',
+    'sources.title': 'Quản lý liên kết',
     'sources.subtitle': 'Quản lý các trang web thu thập theo danh mục.',
     'sources.linkLabel': 'Liên kết nguồn',
     'sources.urlPlaceholder': 'https://example.com/blog',
@@ -645,7 +645,7 @@ export const translations = {
 
     // Sources Add Page
     'sources.back': '返回',
-    'sources.title': '来源管理',
+    'sources.title': '链接管理',
     'sources.subtitle': '按类别管理要抓取的网站。',
     'sources.linkLabel': '来源链接',
     'sources.urlPlaceholder': 'https://example.com/blog',
@@ -842,7 +842,7 @@ export const translations = {
 
     // Sources Add Page
     'sources.back': '戻る',
-    'sources.title': 'ソース管理',
+    'sources.title': 'リンク管理',
     'sources.subtitle': 'カテゴリ別にクロールするウェブサイトを管理します。',
     'sources.linkLabel': 'ソースリンク',
     'sources.urlPlaceholder': 'https://example.com/blog',

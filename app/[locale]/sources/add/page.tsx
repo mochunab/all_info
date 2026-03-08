@@ -4,7 +4,7 @@ import { getMasterUserId } from '@/lib/user';
 import SourcesPageClient from './SourcesPageClient';
 
 export const metadata: Metadata = {
-  title: '소스관리',
+  title: '링크 관리',
 };
 
 type SourceLink = {
