@@ -38,3 +38,22 @@ export async function getBlogSlugs(): Promise<{ slug: string; language: string }
 
   return (data as { slug: string; language: string }[]) ?? [];
 }
+
+export async function getBlogTranslationSlugs(
+  translationGroupId: string | null,
+): Promise<Record<string, string>> {
+  if (!translationGroupId) return {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = createServiceClient() as any;
+  const { data } = await supabase
+    .from('blog_posts')
+    .select('slug, language')
+    .eq('translation_group_id', translationGroupId)
+    .eq('published', true);
+
+  const map: Record<string, string> = {};
+  for (const row of (data as { slug: string; language: string }[]) ?? []) {
+    map[row.language] = row.slug;
+  }
+  return map;
+}

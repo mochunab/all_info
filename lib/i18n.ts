@@ -60,6 +60,13 @@ export const translations = {
     'blog.catJob': '취업팁',
     'blog.catCareer': '커리어UP',
     'blog.catAi': 'AI따라잡기',
+    'blog.otherPosts': '다른 글',
+    'blog.tags': '태그',
+    'blog.backToList': '블로그 목록',
+    'blog.cta': '취뽀하러 가기',
+    'blog.ogSuffix': '아카인포 블로그',
+    'blog.metaTitle': '블로그 - 면접·취업 팁',
+    'blog.metaDesc': '면접 준비, 취업 팁, 커리어 성장에 도움이 되는 블로그 글을 확인하세요.',
 
     // Sources Add Page
     'sources.back': '돌아가기',
@@ -266,6 +273,13 @@ export const translations = {
     'blog.catJob': 'Job Tips',
     'blog.catCareer': 'Career UP',
     'blog.catAi': 'AI Catch-up',
+    'blog.otherPosts': 'Other Posts',
+    'blog.tags': 'Tags',
+    'blog.backToList': 'Blog List',
+    'blog.cta': 'Start Your Career',
+    'blog.ogSuffix': 'AcaInfo Blog',
+    'blog.metaTitle': 'Blog - Job & Career Tips',
+    'blog.metaDesc': 'Explore blog posts on interview prep, job search tips, and career growth.',
 
     // Sources Add Page
     'sources.back': 'Back',
@@ -472,6 +486,13 @@ export const translations = {
     'blog.catJob': 'Mẹo việc làm',
     'blog.catCareer': 'Phát triển',
     'blog.catAi': 'AI Cập nhật',
+    'blog.otherPosts': 'Bài viết khác',
+    'blog.tags': 'Thẻ',
+    'blog.backToList': 'Danh sách blog',
+    'blog.cta': 'Tìm việc ngay',
+    'blog.ogSuffix': 'AcaInfo Blog',
+    'blog.metaTitle': 'Blog - Mẹo tuyển dụng & phỏng vấn',
+    'blog.metaDesc': 'Khám phá bài viết về chuẩn bị phỏng vấn, tìm việc và phát triển sự nghiệp.',
 
     // Sources Add Page
     'sources.back': 'Quay lại',
@@ -678,6 +699,13 @@ export const translations = {
     'blog.catJob': '求职技巧',
     'blog.catCareer': '职业提升',
     'blog.catAi': 'AI前沿',
+    'blog.otherPosts': '其他文章',
+    'blog.tags': '标签',
+    'blog.backToList': '博客列表',
+    'blog.cta': '开始求职',
+    'blog.ogSuffix': 'AcaInfo博客',
+    'blog.metaTitle': '博客 - 面试·求职技巧',
+    'blog.metaDesc': '浏览面试准备、求职技巧和职业发展相关的博客文章。',
 
     // Sources Add Page
     'sources.back': '返回',
@@ -884,6 +912,13 @@ export const translations = {
     'blog.catJob': '就活Tips',
     'blog.catCareer': 'キャリアUP',
     'blog.catAi': 'AIキャッチアップ',
+    'blog.otherPosts': '他の記事',
+    'blog.tags': 'タグ',
+    'blog.backToList': 'ブログ一覧',
+    'blog.cta': '就活を始める',
+    'blog.ogSuffix': 'AcaInfoブログ',
+    'blog.metaTitle': 'ブログ - 面接・就活ヒント',
+    'blog.metaDesc': '面接対策、就活のコツ、キャリア成長に役立つブログ記事をご覧ください。',
 
     // Sources Add Page
     'sources.back': '戻る',

@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getBlogPost, getBlogSlugs, getBlogPosts } from '@/lib/blog';
+import { getBlogPost, getBlogSlugs, getBlogPosts, getBlogTranslationSlugs } from '@/lib/blog';
 import SeoBreadcrumb from '@/components/SeoBreadcrumb';
-import { buildAlternateLanguages } from '@/lib/hreflang';
 import { localePath } from '@/lib/locale-path';
+import { t } from '@/lib/i18n';
+import type { Language } from '@/types';
 
 export const revalidate = 3600;
 
@@ -19,18 +20,26 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
+  const lang = locale as Language;
   const post = await getBlogPost(slug, locale);
   if (!post) return {};
+
+  const translationSlugs = await getBlogTranslationSlugs(post.translation_group_id);
+  const languages: Record<string, string> = {};
+  for (const [l, s] of Object.entries(translationSlugs)) {
+    languages[l] = `https://aca-info.com/${l}/blog/${s}`;
+  }
+  languages['x-default'] = `https://aca-info.com/ko/blog/${translationSlugs['ko'] || slug}`;
 
   return {
     title: post.title,
     description: post.description,
     alternates: {
       canonical: `/${locale}/blog/${slug}`,
-      languages: buildAlternateLanguages(`/blog/${slug}`),
+      languages,
     },
     openGraph: {
-      title: `${post.title} | 아카인포 블로그`,
+      title: `${post.title} | ${t(lang, 'blog.ogSuffix')}`,
       description: post.description,
       type: 'article',
       images: [post.cover_image || `https://aca-info.com/api/og?title=${encodeURIComponent(post.title)}&description=${encodeURIComponent(post.description.substring(0, 100))}&type=blog`],
@@ -41,6 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogPostPage({ params }: Props) {
   const { locale, slug } = await params;
+  const lang = locale as Language;
   const lp = (p: string) => localePath(locale, p);
   const [post, allPosts] = await Promise.all([
     getBlogPost(slug, locale),
@@ -80,7 +90,7 @@ export default async function BlogPostPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '블로그', href: lp('/blog') }, { label: post.title }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: t(lang, 'blog.title'), href: lp('/blog') }, { label: post.title }]} locale={locale} />
 
       {/* 하단 스티키 CTA — 본문 article 너비에만 맞춤 */}
       <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
@@ -90,7 +100,7 @@ export default async function BlogPostPage({ params }: Props) {
               href={`https://aca-info.com/${locale}?utm_source=blog&utm_medium=${slug}&utm_campaign=sticky-cta`}
               className="btn btn-primary w-full py-3 text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all"
             >
-              취뽀하러 가기
+              {t(lang, 'blog.cta')}
             </a>
           </div>
         </div>
@@ -110,7 +120,7 @@ export default async function BlogPostPage({ params }: Props) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <time>
-                    {new Date(post.published_at).toLocaleDateString('ko-KR', {
+                    {new Date(post.published_at).toLocaleDateString(locale, {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
@@ -155,7 +165,7 @@ export default async function BlogPostPage({ params }: Props) {
           <div className="sticky top-8 space-y-5">
             {otherPosts.length > 0 && (
               <div className="bg-[var(--bg-secondary)] rounded-2xl p-5 border border-[var(--border)]">
-                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-4 uppercase tracking-wider">다른 글</h2>
+                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-4 uppercase tracking-wider">{t(lang, 'blog.otherPosts')}</h2>
                 <ul className="space-y-3">
                   {otherPosts.map((p) => (
                     <li key={p.slug}>
@@ -173,7 +183,7 @@ export default async function BlogPostPage({ params }: Props) {
 
             {post.tags.length > 0 && (
               <div className="bg-[var(--bg-secondary)] rounded-2xl p-5 border border-[var(--border)]">
-                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-3 uppercase tracking-wider">태그</h2>
+                <h2 className="text-xs font-semibold text-[var(--text-tertiary)] mb-3 uppercase tracking-wider">{t(lang, 'blog.tags')}</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {post.tags.map((tag) => (
                     <span
@@ -194,7 +204,7 @@ export default async function BlogPostPage({ params }: Props) {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              블로그 목록
+              {t(lang, 'blog.backToList')}
             </Link>
           </div>
         </aside>
