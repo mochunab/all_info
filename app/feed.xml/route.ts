@@ -19,7 +19,7 @@ export async function GET() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('articles')
-      .select('id, title_ko, source_url, summary, published_at, crawled_at, category')
+      .select('id, slug, title_ko, source_url, summary, published_at, crawled_at, category')
       .eq('is_active', true)
       .eq('user_id', masterUserId)
       .order('crawled_at', { ascending: false })
@@ -35,6 +35,7 @@ export async function GET() {
 
   type RssArticle = {
     id: string;
+    slug: string | null;
     title_ko: string | null;
     source_url: string;
     summary: string | null;
@@ -56,10 +57,11 @@ export async function GET() {
       ? new Date(a.published_at).toUTCString()
       : new Date(a.crawled_at).toUTCString();
 
+    const articlePath = a.slug ? `/ko/articles/${escapeXml(a.slug)}` : `/ko/articles/${a.id}`;
     return `    <item>
       <title>${escapeXml(title)}</title>
-      <link>https://aca-info.com/ko/articles/${a.id}</link>
-      <guid isPermaLink="true">https://aca-info.com/ko/articles/${a.id}</guid>
+      <link>https://aca-info.com${articlePath}</link>
+      <guid isPermaLink="true">https://aca-info.com${articlePath}</guid>
       <pubDate>${pubDate}</pubDate>${a.summary ? `
       <description>${escapeXml(a.summary)}</description>` : ''}${a.category ? `
       <category>${escapeXml(a.category)}</category>` : ''}
@@ -73,8 +75,8 @@ export async function GET() {
 
     return `    <item>
       <title>${escapeXml(p.title)}</title>
-      <link>https://aca-info.com/blog/${escapeXml(p.slug)}</link>
-      <guid isPermaLink="true">https://aca-info.com/blog/${escapeXml(p.slug)}</guid>
+      <link>https://aca-info.com/ko/blog/${escapeXml(p.slug)}</link>
+      <guid isPermaLink="true">https://aca-info.com/ko/blog/${escapeXml(p.slug)}</guid>
       <pubDate>${pubDate}</pubDate>
       <description>${escapeXml(p.description)}</description>
       <category>블로그</category>

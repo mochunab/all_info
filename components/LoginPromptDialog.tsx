@@ -47,7 +47,7 @@ export default function LoginPromptDialog({ isOpen, onClose }: LoginPromptDialog
       {/* Dialog */}
       <div
         ref={dialogRef}
-        className="relative w-full max-w-[400px] overflow-hidden dialog-enter"
+        className="relative w-full max-w-[400px] overflow-hidden dialog-enter outline-none"
         style={{
           backgroundColor: 'var(--bg-secondary)',
           borderRadius: 'var(--radius-lg)',
@@ -60,18 +60,6 @@ export default function LoginPromptDialog({ isOpen, onClose }: LoginPromptDialog
       >
         {/* Content */}
         <div className="px-6 pt-6 pb-5">
-          {/* Icon */}
-          <div
-            className="w-11 h-11 rounded-full flex items-center justify-center mb-4"
-            style={{ backgroundColor: 'var(--accent-light)' }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" />
-              <line x1="15" y1="12" x2="3" y2="12" />
-            </svg>
-          </div>
-
           <h2
             id="login-prompt-title"
             className="text-lg font-bold mb-1.5"
