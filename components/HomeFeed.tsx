@@ -404,7 +404,7 @@ export default function HomeFeed({
         onLanguageChange={setLanguage}
       />
 
-      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 transition-all duration-300 ${isChatOpen ? 'lg:pr-[460px]' : ''}`}>
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 transition-all duration-300 min-h-[calc(100vh-8rem)] ${isChatOpen ? 'lg:pr-[460px]' : ''}`}>
         <div className="mb-6 sm:mb-8">
           <FilterBar
             search={search}
