@@ -237,6 +237,7 @@ export default function SourcesPageClient({
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showBotBlockedDialog, setShowBotBlockedDialog] = useState(false);
   const [pendingRenames, setPendingRenames] = useState<{ oldName: string; newName: string }[]>([]);
+  const [pendingCategoryDeletes, setPendingCategoryDeletes] = useState<string[]>([]);
   const [orderChanged, setOrderChanged] = useState(false);
   const [showBrowseMaster, setShowBrowseMaster] = useState(false);
   const [masterData, setMasterData] = useState<{ categories: Category[]; sourcesByCategory: Record<string, SourceLink[]> } | null>(null);
@@ -354,52 +355,22 @@ export default function SourcesPageClient({
     }
   };
 
-  const handleAddCategory = async () => {
+  const handleAddCategory = () => {
     const trimmed = newCategory.trim();
     if (trimmed && !categories.some((c) => c.name === trimmed)) {
-      try {
-        // DB에 카테고리 저장
-        const response = await fetch('/api/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: trimmed }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const newCat: Category = data.category || { id: Date.now(), name: trimmed, is_default: false };
-          setCategories([...categories, newCat]);
-          if (!sourcesByCategory[trimmed]) {
-            setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
-          }
-          setActiveCategory(trimmed);
-          setPendingCategory(null);
-          try {
-            sessionStorage.removeItem('ih:home:categories');
-            sessionStorage.removeItem('ih:home:articles');
-            sessionStorage.removeItem('ih:my:categories');
-            sessionStorage.removeItem('ih:my:articles');
-            localStorage.removeItem('ih:my:category');
-            localStorage.removeItem('ih:category');
-          } catch { /* 무시 */ }
-        } else if (response.status === 409) {
-          setToastMessage(t('sources.categoryExists', { name: trimmed }));
-          setShowToast(true);
-        } else {
-          const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-          setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
-          setShowToast(true);
-        }
-      } catch (err) {
-        console.error('Error saving category:', err);
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        setToastMessage(t('toast.networkError', { error: msg }));
-        setShowToast(true);
+      const newCat: Category = { id: Date.now(), name: trimmed, is_default: false };
+      setCategories([...categories, newCat]);
+      if (!sourcesByCategory[trimmed]) {
+        setSourcesByCategory({ ...sourcesByCategory, [trimmed]: [] });
       }
-
-      setNewCategory('');
-      setIsAddingCategory(false);
+      setActiveCategory(trimmed);
+      setPendingCategory(null);
+    } else if (trimmed && categories.some((c) => c.name === trimmed)) {
+      setToastMessage(t('sources.categoryExists', { name: trimmed }));
+      setShowToast(true);
     }
+    setNewCategory('');
+    setIsAddingCategory(false);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -478,47 +449,34 @@ export default function SourcesPageClient({
     });
   };
 
-  const handleDeleteCategory = async () => {
+  const handleDeleteCategory = () => {
     if (!deletingCategory) return;
 
-    setIsDeleting(true);
-    try {
-      const response = await fetch('/api/categories', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: deletingCategory }),
-      });
-
-      if (response.ok) {
-        const newCategories = categories.filter((c) => c.name !== deletingCategory);
-        const newSourcesByCategory = { ...sourcesByCategory };
-        delete newSourcesByCategory[deletingCategory];
-
-        setCategories(newCategories);
-        setSourcesByCategory(newSourcesByCategory);
-
-        if (activeCategory === deletingCategory) {
-          setActiveCategory(newCategories[0]?.name || '');
-        }
-
-        setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
-        setShowToast(true);
-        try {
-          sessionStorage.removeItem('ih:home:categories');
-          sessionStorage.removeItem('ih:home:articles');
-          sessionStorage.removeItem('ih:my:categories');
-          sessionStorage.removeItem('ih:my:articles');
-          localStorage.removeItem('ih:my:category');
-          localStorage.removeItem('ih:category');
-        } catch { /* 무시 */ }
-        router.refresh();
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error);
-    } finally {
-      setIsDeleting(false);
-      setDeletingCategory(null);
+    const catToDelete = categories.find((c) => c.name === deletingCategory);
+    const newCategories = categories.filter((c) => c.name !== deletingCategory);
+    const newSourcesByCategory = { ...sourcesByCategory };
+    // 기존 소스의 ID를 삭제 대상에 추가
+    const existingSources = (sourcesByCategory[deletingCategory] || []).filter((s) => s.isExisting);
+    if (existingSources.length > 0) {
+      setPendingDeleteIds((prev) => [...prev, ...existingSources.map((s) => parseInt(s.id, 10))]);
     }
+    delete newSourcesByCategory[deletingCategory];
+
+    setCategories(newCategories);
+    setSourcesByCategory(newSourcesByCategory);
+
+    if (activeCategory === deletingCategory) {
+      setActiveCategory(newCategories[0]?.name || '');
+    }
+
+    // DB에 존재하는 카테고리면 삭제 대기열에 추가
+    if (catToDelete && initialCategories.some((ic) => ic.name === catToDelete.name)) {
+      setPendingCategoryDeletes((prev) => [...prev, deletingCategory]);
+    }
+
+    setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
+    setShowToast(true);
+    setDeletingCategory(null);
   };
 
   const handleSourceChange = (id: string, field: 'url' | 'name' | 'crawlerType', value: string) => {
@@ -753,6 +711,20 @@ export default function SourcesPageClient({
       setIsAddingCategory(false);
     }
 
+    // 카테고리 삭제 일괄 처리
+    if (pendingCategoryDeletes.length > 0) {
+      await Promise.allSettled(
+        pendingCategoryDeletes.map((name) =>
+          fetch('/api/categories', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          })
+        )
+      );
+      setPendingCategoryDeletes([]);
+    }
+
     // 카테고리 이름 변경 일괄 처리 (새 카테고리 생성보다 먼저 실행)
     for (const rename of pendingRenames) {
       try {
@@ -944,6 +916,12 @@ export default function SourcesPageClient({
   const hasValidSources = Object.values(sourcesByCategory).some((sources) =>
     sources.some((s) => s.url.trim())
   );
+  const hasCategoryChanges =
+    pendingCategoryDeletes.length > 0 ||
+    pendingRenames.length > 0 ||
+    orderChanged ||
+    categories.length !== initialCategories.length ||
+    categories.some((c) => !initialCategories.some((ic) => ic.name === c.name));
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] pb-24">
@@ -1235,7 +1213,7 @@ export default function SourcesPageClient({
               }
               handleSave();
             }}
-            disabled={!hasValidSources || isSaving}
+            disabled={(!hasValidSources && !hasCategoryChanges) || isSaving}
             className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
             style={{ boxShadow: 'var(--shadow-md)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
