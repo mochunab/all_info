@@ -63,7 +63,7 @@ export default async function AuthorPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '저자', href: lp('/authors') }, { label: authorName }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: '저자', href: '/authors' }, { label: authorName }]} locale={locale} />
 
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">{authorName}</h1>
       <p className="text-sm text-[var(--text-secondary)] mb-6">{articles.length}편의 아티클</p>
