@@ -979,6 +979,129 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 ## 추가 결정 기록 시 템플릿
 
 ```markdown
+## ADR-026: SeoBreadcrumb 이중 locale 버그 수정
+
+**일시**: 2026-03-10
+**상태**: 확정
+
+**결정**: `SeoBreadcrumb`에 전달하는 `href`에 `localePath()`을 적용하지 않고, locale이 없는 순수 경로(예: `'/blog'`)만 전달한다.
+
+**이유**:
+- `SeoBreadcrumb` 내부에서 이미 `localePath(locale, href)`를 호출하는데, 호출하는 쪽에서도 `lp('/blog')` → `/ko/blog`로 변환해서 넘기면 `/ko/ko/blog` 이중 locale 발생
+- blog/authors/sources/tags 4개 상세 페이지 모두 동일 버그
+
+**규칙**: `SeoBreadcrumb`의 `items[].href`에는 **locale 없는 경로**만 전달할 것. `localePath()` 적용은 컴포넌트 내부에서 처리.
+
+---
+
+## ADR-027: InsightChat 카테고리명 번역 적용
+
+**일시**: 2026-03-10
+**상태**: 확정
+
+**결정**: `InsightChat`에서 `category` prop을 `translateCat()`으로 번역하여 표시한다.
+
+**이유**:
+- 카테고리명은 DB에 한국어로 저장되어 있어서, 다른 언어에서 "인사이트 허브" 등이 번역 없이 노출
+- `FilterBar`에서는 이미 `translateCat()` 적용 중이었으나 `InsightChat`은 누락
+
+**적용 위치**: 헤더 뱃지 + `chat.contextBadge` 플레이스홀더 2곳
+
+---
+
+## ADR-028: 블로그 콘텐츠 내 다이어그램은 HTML flex 스타일 사용
+
+**일시**: 2026-03-10
+**상태**: 확정
+
+**결정**: 블로그 포스트의 플로우/워크플로우 다이어그램은 `<pre><code>` ASCII art 대신 **HTML flex + 다크 카드 스타일**을 사용한다.
+
+**이유**:
+- ASCII art는 모바일/좁은 화면에서 가로 스크롤 발생, 한글 정렬 깨짐
+- HTML flex는 `flex-wrap`으로 반응형 대응, 다크 배경 카드로 시각적 품질 높음
+- 기존 "최종 워크플로우" 섹션이 좋은 레퍼런스
+
+**패턴** (복붙용):
+```html
+<div style="background:#1e1e2e;border-radius:12px;padding:24px 20px;margin:16px 0;">
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">제목</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">설명</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <!-- 반복 -->
+  </div>
+</div>
+```
+
+---
+
+## ADR-029: router.back() 시 카테고리 필터 미갱신 버그 수정 (sessionStorage 캐시 동기화)
+
+**일시**: 2026-03-10
+**상태**: 확정
+
+**문제**: 소스 관리 페이지(`/sources/add`)에서 카테고리를 추가하고 "저장하기" 후 "돌아가기"(`router.back()`)로 마이피드(`/my-feed`)에 돌아오면 카테고리 필터 드롭다운에 새 카테고리가 나타나지 않음.
+
+**근본 원인 (3-layer)**:
+
+1. **Next.js App Router의 `router.back()` 동작**: 브라우저 뒤로가기와 동일하게 클라이언트 컴포넌트 상태를 보존. `useEffect([user])`는 의존성이 변하지 않으므로 재실행되지 않아 카테고리를 다시 불러오지 않음.
+
+2. **Dirty flag + async fetch 타이밍 이슈**: 첫 시도로 `ih:categories:dirty` 플래그를 sessionStorage에 쓰고, my-feed의 no-deps useEffect에서 감지 → API fetch하는 방식 적용. 그러나:
+   - React StrictMode에서 effect 이중 실행 → 동일 API 3회 동시 호출 (4ms 내)
+   - async fetch 완료까지 ~200ms → 사용자가 그 사이 old 카테고리를 봄
+   - **API 응답에 새 카테고리 미포함**: 소스가 0개인 빈 카테고리는 POST /api/sources 응답에 반영되지 않을 수 있어 dirty flag → fetch 패턴 자체가 불안정
+
+3. **`revalidate()` 함수가 fresh 캐시를 덮어씀**: direct cache write(아래 해결책 1단계)를 적용한 후에도, `useEffect([user])` 내 `revalidate()`가 `categoriesFresh = true`인데도 무조건 `/api/categories` fetch → API의 (아직 미반영된) 응답으로 방금 쓴 sessionStorage 캐시를 덮어써서 새 카테고리가 사라짐
+
+**해결책 (3단계)**:
+
+1. **Direct cache write**: 저장 핸들러에서 dirty flag 대신 카테고리 목록을 직접 sessionStorage에 씀
+   ```typescript
+   // SourcesPageClient.tsx — 저장 완료 시
+   const catNames = categories.map(c => c.name);
+   const catTranslations = categories.map(c => ({ id: c.id, name: c.name, ... }));
+   sessionStorage.setItem('ih:my:categories', JSON.stringify({
+     data: catNames, translations: catTranslations, timestamp: Date.now()
+   }));
+   ```
+
+2. **동기식 캐시 비교**: my-feed의 no-deps useEffect에서 async fetch 대신 sessionStorage를 직접 읽어 React state와 비교, 다를 때만 동기적으로 setState
+   ```typescript
+   // my-feed/page.tsx — no-deps useEffect
+   useEffect(() => {
+     const cached = sessionStorage.getItem('ih:my:categories');
+     const names = JSON.parse(cached).data;
+     if (JSON.stringify(names) === JSON.stringify(categories)) return;
+     setCategories(names); // 동기, 즉시 반영
+   });
+   ```
+
+3. **revalidate()에서 fresh 캐시 보호**: `categoriesFresh = true`이면 카테고리 API 호출 자체를 스킵
+   ```typescript
+   const catPromise = categoriesFresh ? null : fetch(`/api/categories?...`);
+   ```
+
+**적용 파일**:
+- `app/[locale]/sources/add/SourcesPageClient.tsx` — 저장 핸들러 2곳 (빈 소스/소스 있음)
+- `app/[locale]/my-feed/page.tsx` — no-deps useEffect + revalidate()
+- `components/HomeFeed.tsx` — 동일 패턴 적용 (홈피드도 동일 버그)
+
+**실패한 접근들**:
+| 접근 | 실패 이유 |
+|------|-----------|
+| dirty flag + async fetch | API에 새 카테고리 미반영, 타이밍 이슈, StrictMode 이중 호출 |
+| dirty flag + direct cache (revalidate 미수정) | revalidate()가 stale API 응답으로 fresh 캐시 덮어씀 |
+
+**교훈**:
+1. **`router.back()` ≠ 페이지 재마운트**: Next.js App Router에서 뒤로가기는 컴포넌트 상태를 보존하므로, 의존성 배열 기반 useEffect만으로는 데이터 갱신 불가. sessionStorage 등 외부 저장소를 통한 동기화 필요.
+2. **async fetch보다 동기 캐시가 안전**: 페이지 간 데이터 전달 시 dirty flag → API fetch는 타이밍/레이스 컨디션에 취약. 저장 시점에 이미 알고 있는 데이터는 직접 캐시에 쓰고, 소비 측에서 동기적으로 읽는 것이 확실.
+3. **캐시 보호 누락 주의**: 한 곳에서 fresh 데이터를 썼더라도, 다른 코드 경로(revalidate 등)가 stale 데이터로 덮어쓸 수 있음. 캐시 freshness를 체크하는 게이트를 모든 쓰기 경로에 적용해야 함.
+4. **React StrictMode + no-deps useEffect 주의**: StrictMode에서 effect 이중 실행 → 의도치 않은 다중 API 호출. async 작업은 cleanup/abort 고려 필수.
+
+---
+
 ## ADR-NNN: 제목
 
 **일시**: YYYY-MM-DD
