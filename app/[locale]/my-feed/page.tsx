@@ -233,28 +233,36 @@ export default function MyFeed() {
     revalidate();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // bfcache 복원 시 sessionStorage에서 최신 카테고리 반영
+  // bfcache 복원 또는 소스 관리에서 뒤로가기 시 sessionStorage 카테고리 반영
   useEffect(() => {
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (!e.persisted || !user) return;
+    const syncCategories = () => {
+      if (!user) return;
       try {
         const cached = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
-        if (cached) {
-          const raw = JSON.parse(cached);
-          const names: string[] = raw.data || [];
-          const translations = raw.translations;
-          setCategories(names);
-          if (translations && names.length > 0) setCategoryTranslations(translations);
-          const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
-          const cat = (saved && names.includes(saved)) ? saved : names[0] || '';
-          setCategory(cat);
-          if (cat) fetchArticles(1, false, cat);
-        }
+        if (!cached) return;
+        const raw = JSON.parse(cached);
+        const names: string[] = raw.data || [];
+        const translations = raw.translations;
+        setCategories(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(names)) return prev;
+          return names;
+        });
+        if (translations && names.length > 0) setCategoryTranslations(translations);
+        const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+        const cat = (saved && names.includes(saved)) ? saved : names[0] || '';
+        setCategory(cat);
       } catch { /* ignore */ }
     };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) syncCategories();
+    };
     window.addEventListener('pageshow', handlePageShow);
-    return () => window.removeEventListener('pageshow', handlePageShow);
-  }, [user, fetchArticles, setCategoryTranslations]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener('popstate', syncCategories);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', syncCategories);
+    };
+  }, [user, setCategoryTranslations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!category || !user) return;

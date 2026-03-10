@@ -59,7 +59,7 @@ export default async function TagPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '태그', href: lp('/tags') }, { label: `#${name}` }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: '태그', href: '/tags' }, { label: `#${name}` }]} locale={locale} />
 
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">#{name}</h1>
 
