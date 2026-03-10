@@ -728,13 +728,15 @@ export async function saveArticles(
   let updated = 0;
 
   try {
-    // 1단계: 배치 source_id 중복 체크
+    // 1단계: 배치 source_id 중복 체크 (유저별 스코핑)
     const sourceIds = articles.map(a => a.source_id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existingBySource } = await (supabase as any)
+    let existQuery = (supabase as any)
       .from('articles')
       .select('id, category, source_id')
       .in('source_id', sourceIds);
+    if (userId) existQuery = existQuery.eq('user_id', userId);
+    const { data: existingBySource } = await existQuery;
 
     type ExistingArticle = { id: string; category: string; source_id: string };
     const existingMap = new Map<string, ExistingArticle>(
@@ -873,13 +875,70 @@ export async function runCrawler(
     //   return result;
     // }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourceUserId = (source as any).user_id as string | undefined;
+
+    // 다른 유저의 기존 아티클 복사 (크롤링/AI 요약 스킵)
+    if (sourceUserId && !options?.dryRun) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: existingFromOthers } = await (supabase as any)
+        .from('articles')
+        .select('source_id, source_name, source_url, title, title_ko, content_preview, summary, summary_tags, author, published_at, category')
+        .eq('source_name', source.name)
+        .neq('user_id', sourceUserId)
+        .order('published_at', { ascending: false })
+        .limit(10);
+
+      if (existingFromOthers && existingFromOthers.length > 0) {
+        // 이미 유저에게 있는 아티클 제외
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: alreadyOwned } = await (supabase as any)
+          .from('articles')
+          .select('source_id')
+          .eq('user_id', sourceUserId)
+          .in('source_id', existingFromOthers.map((a: { source_id: string }) => a.source_id));
+
+        const ownedSet = new Set((alreadyOwned || []).map((a: { source_id: string }) => a.source_id));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toCopy = existingFromOthers.filter((a: any) => !ownedSet.has(a.source_id));
+
+        if (toCopy.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const copyData = toCopy.map((a: any) => ({
+            source_id: a.source_id,
+            source_name: a.source_name,
+            source_url: a.source_url,
+            title: a.title,
+            title_ko: a.title_ko,
+            content_preview: a.content_preview,
+            summary: a.summary,
+            summary_tags: a.summary_tags,
+            author: a.author,
+            published_at: a.published_at,
+            category: (source.config as { category?: string })?.category || a.category,
+            user_id: sourceUserId,
+            slug: generateArticleSlug(a.title, crypto.randomUUID()),
+          }));
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: copyError } = await (supabase as any).from('articles').insert(copyData);
+          if (!copyError) {
+            console.log(`📋 [복사] ${source.name} — 기존 아티클 ${toCopy.length}개 복사 (크롤링/AI 스킵)`);
+            result.found = toCopy.length;
+            result.new = toCopy.length;
+            return result;
+          } else {
+            console.error(`   ❌ 아티클 복사 실패:`, copyError);
+          }
+        }
+      }
+    }
+
     // 크롤러 선택 및 실행
     const crawler = getCrawler(effectiveSource);
     console.log(`\n🤖 크롤러: ${crawler.name || '전략 기반'}`);
 
     // 사전 중복 체크용 기존 아티클 source_id 조회
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sourceUserId = (source as any).user_id as string | undefined;
     if (sourceUserId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: knownArticles } = await (supabase as any)
