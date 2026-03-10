@@ -225,7 +225,7 @@ export default function SourcesPageClient({
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleting] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -917,15 +917,6 @@ export default function SourcesPageClient({
     }
   };
 
-  const hasValidSources = Object.values(sourcesByCategory).some((sources) =>
-    sources.some((s) => s.url.trim())
-  );
-  const hasCategoryChanges =
-    pendingCategoryDeletes.length > 0 ||
-    pendingRenames.length > 0 ||
-    orderChanged ||
-    categories.length !== initialCategories.length ||
-    categories.some((c) => !initialCategories.some((ic) => ic.name === c.name));
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] pb-24">
