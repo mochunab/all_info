@@ -58,9 +58,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...authors.flatMap((a) =>
       localeEntries(`/authors/${encodeURIComponent(a.name)}`, { changeFrequency: "daily", priority: 0.6 }),
     ),
-    ...blogSlugs.flatMap((s) =>
-      localeEntries(`/blog/${s.slug}`, { changeFrequency: "weekly", priority: 0.7 }),
-    ),
+    ...blogSlugs.map((s) => ({
+      url: `https://aca-info.com/${s.language}/blog/${s.slug}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
     ...articleSlugs.flatMap((s) =>
       localeEntries(`/articles/${s.slug}`, { changeFrequency: "daily", priority: 0.6 }),
     ),

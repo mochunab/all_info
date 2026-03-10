@@ -29,6 +29,7 @@ export async function GET() {
       .from('blog_posts')
       .select('slug, title, description, published_at')
       .eq('published', true)
+      .eq('language', 'ko')
       .order('published_at', { ascending: false })
       .limit(10),
   ]);
