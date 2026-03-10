@@ -240,12 +240,20 @@ async function handleCrawlRun(request: NextRequest) {
     if (totalNew > 0) {
       try {
         const { submitToIndexNow } = await import('@/lib/indexnow');
-        const indexNowUrls = ['/', '/topics', '/tags', '/sources', '/authors', '/blog'];
+        const basePaths = ['/landing', '/topics', '/tags', '/sources', '/authors', '/blog'];
+        const LOCALES = ['ko', 'en', 'vi', 'zh', 'ja'];
+        const indexNowUrls: string[] = [];
+        for (const lc of LOCALES) {
+          for (const p of basePaths) {
+            indexNowUrls.push(`/${lc}${p}`);
+          }
+        }
         const sourcesWithNew = results.filter(r => r.success && (r.new || 0) > 0);
         for (const r of sourcesWithNew) {
-          indexNowUrls.push(`/sources/${encodeURIComponent(r.source)}`);
+          for (const lc of LOCALES) {
+            indexNowUrls.push(`/${lc}/sources/${encodeURIComponent(r.source)}`);
+          }
         }
-        // 새 아티클 slug도 IndexNow 제출
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: recentSlugs } = await (supabase as any)
           .from('articles')
@@ -257,7 +265,11 @@ async function handleCrawlRun(request: NextRequest) {
           .limit(totalNew);
         if (recentSlugs) {
           for (const s of recentSlugs) {
-            if (s.slug) indexNowUrls.push(`/articles/${s.slug}`);
+            if (s.slug) {
+              for (const lc of LOCALES) {
+                indexNowUrls.push(`/${lc}/articles/${s.slug}`);
+              }
+            }
           }
         }
         const submitted = await submitToIndexNow(indexNowUrls);
