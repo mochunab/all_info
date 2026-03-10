@@ -1053,8 +1053,9 @@ export default function SourcesPageClient({
                   placeholder={
                     language === 'ko' ? '분류명 입력...' :
                     language === 'en' ? 'Enter category...' :
-                    language === 'ja' ? 'カテゴリ名を入力...' :
-                    '输入类别...'
+                    language === 'vi' ? 'Nhập danh mục...' :
+                    language === 'zh' ? '输入类别...' :
+                    'カテゴリ名を入力...'
                   }
                   className="px-3 py-2 text-sm bg-[var(--bg-secondary)] border border-[var(--accent)] rounded-full focus:outline-none w-32"
                 />
