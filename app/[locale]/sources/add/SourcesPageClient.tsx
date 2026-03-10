@@ -1018,7 +1018,24 @@ export default function SourcesPageClient({
                     isActive={activeCategory === cat.name}
                     count={sourcesByCategory[cat.name]?.length || 0}
                     onSelect={() => setActiveCategory(cat.name)}
-                    onDelete={() => setDeletingCategory(cat.name)}
+                    onDelete={() => {
+                      const sources = sourcesByCategory[cat.name] || [];
+                      if (sources.some((s) => s.url.trim())) {
+                        setDeletingCategory(cat.name);
+                      } else {
+                        // 하위 링크 없으면 다이얼로그 없이 즉시 삭제
+                        const catToDelete = categories.find((c) => c.name === cat.name);
+                        const newCategories = categories.filter((c) => c.name !== cat.name);
+                        setCategories(newCategories);
+                        const newSbc = { ...sourcesByCategory };
+                        delete newSbc[cat.name];
+                        setSourcesByCategory(newSbc);
+                        if (activeCategory === cat.name) setActiveCategory(newCategories[0]?.name || '');
+                        if (catToDelete && initialCategories.some((ic) => ic.name === catToDelete.name)) {
+                          setPendingCategoryDeletes((prev) => [...prev, cat.name]);
+                        }
+                      }
+                    }}
                     onRename={(newName) => handleRenameCategory(cat.name, newName)}
                     language={language}
                     readOnly={readOnly}
