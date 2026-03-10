@@ -1213,7 +1213,7 @@ export default function SourcesPageClient({
               }
               handleSave();
             }}
-            disabled={(!hasValidSources && !hasCategoryChanges) || isSaving}
+            disabled={isSaving}
             className="w-full py-4 bg-[var(--accent)] text-white text-base font-semibold rounded-xl hover:bg-[var(--accent-hover)] active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
             style={{ boxShadow: 'var(--shadow-md)', transition: 'all 200ms cubic-bezier(0.2, 0, 0, 1)' }}
           >
