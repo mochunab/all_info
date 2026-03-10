@@ -233,6 +233,34 @@ export default function MyFeed() {
     revalidate();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // bfcache 복원 시 캐시가 비어있으면 카테고리/아티클 재조회
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted && user && !sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES)) {
+        initialLoadDone.current = false;
+        fetch(`/api/categories?user_id=${user.id}`)
+          .then((res) => res.json())
+          .then((catData) => {
+            if (catData.categories) {
+              const names = catData.categories.map((c: { name: string }) => c.name);
+              setCategories(names);
+              if (catData.categories.length > 0) setCategoryTranslations(catData.categories);
+              const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+              const cat = (saved && names.includes(saved)) ? saved : names[0] || '';
+              setCategory(cat);
+              try {
+                sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify({ data: names, translations: catData.categories, timestamp: Date.now() }));
+              } catch { /* ignore */ }
+              if (cat) fetchArticles(1, false, cat);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [user, fetchArticles, setCategoryTranslations]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!category || !user) return;
     setPage(1);
