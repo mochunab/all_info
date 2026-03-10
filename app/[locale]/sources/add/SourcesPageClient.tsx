@@ -677,6 +677,8 @@ export default function SourcesPageClient({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     gaEvent({ action: 'save_sources', category: 'source' });
     // pending 카테고리가 있으면 먼저 DB에 생성
     if (pendingCategory && !categories.some((c) => c.name === pendingCategory)) {
@@ -812,7 +814,6 @@ export default function SourcesPageClient({
       sources.some((s) => s.url.trim() && (!s.crawlerType || s.crawlerType === 'AUTO'))
     );
 
-    setIsSaving(true);
     if (needsAnalysis) {
       startAnalysisProgress();
     }
