@@ -794,10 +794,11 @@ export default function SourcesPageClient({
 
     if (allSources.length === 0) {
       try {
-        const catNames = categories.map((c) => c.name);
-        sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+        const catNames = categories.map(c => c.name);
+        const catTranslations = categories.map(c => ({ id: c.id, name: c.name, is_default: c.is_default, translations: c.translations }));
+        sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: catTranslations, timestamp: Date.now() }));
         sessionStorage.removeItem('ih:my:articles');
-        sessionStorage.setItem('ih:home:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+        sessionStorage.removeItem('ih:home:categories');
         sessionStorage.removeItem('ih:home:articles');
       } catch { /* 무시 */ }
       setIsSaving(false);
@@ -883,10 +884,11 @@ export default function SourcesPageClient({
 
         setPendingDeleteIds([]);
         try {
-          const catNames = categories.map((c) => c.name);
-          sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+          const catNames = categories.map(c => c.name);
+          const catTranslations = categories.map(c => ({ id: c.id, name: c.name, is_default: c.is_default, translations: c.translations }));
+          sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: catTranslations, timestamp: Date.now() }));
           sessionStorage.removeItem('ih:my:articles');
-          sessionStorage.setItem('ih:home:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+          sessionStorage.removeItem('ih:home:categories');
           sessionStorage.removeItem('ih:home:articles');
         } catch { /* 무시 */ }
         setToastMessage(message);

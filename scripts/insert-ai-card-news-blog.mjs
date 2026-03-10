@@ -77,12 +77,29 @@ const content = `
 
 <p>복잡하게 느껴질 수 있지만, 사실 4단계뿐이에요. 하나씩 붙여나가면 됩니다.</p>
 
-<pre style="background:#1e1e2e;color:#cdd6f4;padding:16px;border-radius:8px;overflow-x:auto;font-size:14px;line-height:1.5;"><code>┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  1. 기획     │    │  2. 이미지   │    │  3. 조립     │    │  4. 배포     │
-│  "주제만     │ →  │  AI가 알아서 │ →  │  텍스트 +    │ →  │  인스타에    │
-│   던지면"    │    │  그려줌      │    │  이미지 합체 │    │  자동 업로드 │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-</code></pre>
+<div style="background:#1e1e2e;border-radius:12px;padding:24px 20px;margin:16px 0;">
+  <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">1. 기획</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">"주제만<br/>던지면"</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">2. 이미지</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">AI가 알아서<br/>그려줌</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">3. 조립</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">텍스트 +<br/>이미지 합체</p>
+    </div>
+    <span style="color:#6c7086;font-size:20px;align-self:center;">→</span>
+    <div style="background:#313244;border-radius:8px;padding:14px 18px;text-align:center;min-width:100px;">
+      <p style="color:#cdd6f4;font-size:14px;font-weight:700;margin:0;">4. 배포</p>
+      <p style="color:#a6adc8;font-size:12px;margin:4px 0 0;">인스타에<br/>자동 업로드</p>
+    </div>
+  </div>
+</div>
 
 <p>전부 따로따로 써도 되고, n8n으로 연결하면 <strong>"주제 하나 입력 → 10장 완성 → 인스타 자동 업로드"</strong>까지 원클릭이에요. 진짜 마법 같죠.</p>
 

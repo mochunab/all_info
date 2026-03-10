@@ -175,20 +175,20 @@ export default function MyFeed() {
       return;
     }
 
-    // 4. Parallel revalidate (categories + articles)
+    // 4. Parallel revalidate (skip fresh parts)
     async function revalidate() {
       try {
         const savedCat = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
         const defaultCat = resolvedCategory;
 
-        const catPromise = fetch(`/api/categories?user_id=${user!.id}`);
+        const catPromise = categoriesFresh ? null : fetch(`/api/categories?user_id=${user!.id}`);
         const artPromise = defaultCat
           ? fetch(`/api/articles?page=1&limit=12&user_id=${user!.id}&category=${encodeURIComponent(defaultCat)}`)
           : null;
 
         const [catRes, artRes] = await Promise.all([catPromise, artPromise]);
 
-        if (catRes.ok) {
+        if (catRes?.ok) {
           const catData = await catRes.json();
           if (catData.categories) {
             const categoryNames = catData.categories.map((c: { name: string }) => c.name);
@@ -196,34 +196,35 @@ export default function MyFeed() {
             if (catData.categories.length > 0) setCategoryTranslations(catData.categories);
             const finalCat = (savedCat && categoryNames.includes(savedCat)) ? savedCat : categoryNames[0] || '';
             setCategory(finalCat);
+            resolvedCategory = finalCat;
             try {
               sessionStorage.setItem(STORAGE_KEY.MY_CATEGORIES, JSON.stringify({ data: categoryNames, translations: catData.categories, timestamp: Date.now() }));
             } catch { /* ignore */ }
-
-            if (artRes?.ok) {
-              const artData: ArticleListResponse = await artRes.json();
-              articlesCacheRef.current.set(defaultCat, {
-                articles: artData.articles,
-                totalCount: artData.total,
-                hasMore: artData.hasMore,
-                timestamp: Date.now(),
-              });
-              if (defaultCat === finalCat) {
-                setArticles(artData.articles);
-                setHasMore(artData.hasMore);
-                setTotalCount(artData.total);
-                if (artData.articles.length > 0) setLastUpdated(artData.articles[0].crawled_at);
-                try {
-                  sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data: artData, timestamp: Date.now() }));
-                } catch { /* ignore */ }
-              }
-            }
-          } else {
-            setIsLoading(false);
           }
-        } else {
-          setIsLoading(false);
         }
+
+        const finalCat = resolvedCategory || (savedCat && categories.includes(savedCat) ? savedCat : categories[0] || '');
+
+        if (artRes?.ok) {
+          const artData: ArticleListResponse = await artRes.json();
+          articlesCacheRef.current.set(defaultCat, {
+            articles: artData.articles,
+            totalCount: artData.total,
+            hasMore: artData.hasMore,
+            timestamp: Date.now(),
+          });
+          if (defaultCat === finalCat) {
+            setArticles(artData.articles);
+            setHasMore(artData.hasMore);
+            setTotalCount(artData.total);
+            if (artData.articles.length > 0) setLastUpdated(artData.articles[0].crawled_at);
+            try {
+              sessionStorage.setItem(STORAGE_KEY.MY_ARTICLES, JSON.stringify({ data: artData, timestamp: Date.now() }));
+            } catch { /* ignore */ }
+          }
+        }
+
+        if (!catRes && !artRes) setIsLoading(false);
       } catch (error) {
         console.error('Error in revalidation:', error);
         setIsLoading(false);
@@ -233,36 +234,22 @@ export default function MyFeed() {
     revalidate();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // bfcache 복원 또는 소스 관리에서 뒤로가기 시 sessionStorage 카테고리 반영
+  // 소스 관리에서 돌아올 때 캐시 동기화 (router.back() 시 useEffect([user]) 미재실행 대응)
   useEffect(() => {
-    const syncCategories = () => {
-      if (!user) return;
-      try {
-        const cached = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
-        if (!cached) return;
-        const raw = JSON.parse(cached);
-        const names: string[] = raw.data || [];
-        const translations = raw.translations;
-        setCategories(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(names)) return prev;
-          return names;
-        });
-        if (translations && names.length > 0) setCategoryTranslations(translations);
-        const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
-        const cat = (saved && names.includes(saved)) ? saved : names[0] || '';
-        setCategory(cat);
-      } catch { /* ignore */ }
-    };
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) syncCategories();
-    };
-    window.addEventListener('pageshow', handlePageShow);
-    window.addEventListener('popstate', syncCategories);
-    return () => {
-      window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('popstate', syncCategories);
-    };
-  }, [user, setCategoryTranslations]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!user) return;
+    try {
+      const cached = sessionStorage.getItem(STORAGE_KEY.MY_CATEGORIES);
+      if (!cached) return;
+      const raw = JSON.parse(cached);
+      const names: string[] = raw.data || [];
+      if (JSON.stringify(names) === JSON.stringify(categories)) return;
+      setCategories(names);
+      if (raw.translations?.length > 0) setCategoryTranslations(raw.translations);
+      const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
+      const cat = (saved && names.includes(saved)) ? saved : names[0] || '';
+      setCategory(cat);
+    } catch { /* ignore */ }
+  });
 
   useEffect(() => {
     if (!category || !user) return;
