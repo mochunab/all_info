@@ -883,6 +883,14 @@ export default function SourcesPageClient({
         }
 
         setPendingDeleteIds([]);
+        try {
+          sessionStorage.removeItem('ih:home:categories');
+          sessionStorage.removeItem('ih:home:articles');
+          sessionStorage.removeItem('ih:my:categories');
+          sessionStorage.removeItem('ih:my:articles');
+          localStorage.removeItem('ih:my:category');
+          localStorage.removeItem('ih:category');
+        } catch { /* 무시 */ }
         setToastMessage(message);
         setShowToast(true);
       } else {
