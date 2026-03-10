@@ -148,6 +148,7 @@ export default function HomeFeed({
       if (cached) {
         const raw = JSON.parse(cached);
         if (raw.timestamp && Date.now() - raw.timestamp < CLIENT_CACHE_TTL) {
+          if (raw.data) setCategories(raw.data);
           if (raw.translations) setCategoryTranslations(raw.translations);
           return;
         }
@@ -176,6 +177,31 @@ export default function HomeFeed({
     }
     revalidateCategories();
   }, []);
+
+  // 소스 관리에서 뒤로가기 시 sessionStorage 카테고리 반영
+  useEffect(() => {
+    const syncCategories = () => {
+      try {
+        const cached = sessionStorage.getItem(STORAGE_KEY.HOME_CATEGORIES);
+        if (!cached) return;
+        const raw = JSON.parse(cached);
+        if (raw.data) setCategories(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(raw.data)) return prev;
+          return raw.data;
+        });
+        if (raw.translations) setCategoryTranslations(raw.translations);
+      } catch { /* ignore */ }
+    };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) syncCategories();
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('popstate', syncCategories);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', syncCategories);
+    };
+  }, [setCategoryTranslations]);
 
   useEffect(() => {
     if (!category) return;

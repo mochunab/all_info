@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks';
 import { event as gaEvent } from '@/lib/gtag';
 import type { Article, ChatMessage, ChatResponse, Language } from '@/types';
 import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/language-context';
 import LoginPromptDialog from './LoginPromptDialog';
 
 type InsightChatProps = {
@@ -20,6 +21,7 @@ type InsightChatProps = {
 };
 
 export default function InsightChat({ isOpen, onClose, articles, category, language, pinnedArticle, onClearPinned, isLoggedIn = false }: InsightChatProps) {
+  const { translateCat } = useLanguage();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,6 +30,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastUserMsgRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const translatedCategory = translateCat(category);
   const prevCategoryRef = useRef(category);
 
   useEffect(() => {
@@ -166,7 +169,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
             </svg>
           </div>
           <span className="font-bold text-sm text-[var(--text-primary)] truncate">{t(language, 'chat.title')}</span>
-          <span className="text-[11px] font-medium px-2.5 py-0.5 bg-[var(--accent-light)] text-[var(--accent)] rounded-full shrink-0">{category}</span>
+          <span className="text-[11px] font-medium px-2.5 py-0.5 bg-[var(--accent-light)] text-[var(--accent)] rounded-full shrink-0">{translatedCategory}</span>
         </div>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
@@ -196,7 +199,7 @@ export default function InsightChat({ isOpen, onClose, articles, category, langu
       {/* Context badge */}
       <div className="px-5 py-2.5 bg-[var(--accent-light)] shrink-0">
         <span className="text-xs font-medium text-[var(--accent)]">
-          {t(language, 'chat.contextBadge', { category, count: String(articles.length) })}
+          {t(language, 'chat.contextBadge', { category: translatedCategory, count: String(articles.length) })}
         </span>
       </div>
 

@@ -90,7 +90,7 @@ export default async function BlogPostPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: t(lang, 'blog.title'), href: lp('/blog') }, { label: post.title }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: t(lang, 'blog.title'), href: '/blog' }, { label: post.title }]} locale={locale} />
 
       {/* 하단 스티키 CTA — 본문 article 너비에만 맞춤 */}
       <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">

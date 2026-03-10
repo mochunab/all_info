@@ -59,7 +59,7 @@ export default async function SourcePage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SeoBreadcrumb items={[{ label: '소스', href: lp('/sources') }, { label: sourceName }]} locale={locale} />
+      <SeoBreadcrumb items={[{ label: '소스', href: '/sources' }, { label: sourceName }]} locale={locale} />
 
       <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">{sourceName}</h1>
 
