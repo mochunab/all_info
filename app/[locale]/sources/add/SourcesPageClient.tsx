@@ -794,12 +794,11 @@ export default function SourcesPageClient({
 
     if (allSources.length === 0) {
       try {
-        sessionStorage.removeItem('ih:home:categories');
-        sessionStorage.removeItem('ih:home:articles');
-        sessionStorage.removeItem('ih:my:categories');
+        const catNames = categories.map((c) => c.name);
+        sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
         sessionStorage.removeItem('ih:my:articles');
-        localStorage.removeItem('ih:my:category');
-        localStorage.removeItem('ih:category');
+        sessionStorage.setItem('ih:home:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+        sessionStorage.removeItem('ih:home:articles');
       } catch { /* 무시 */ }
       setIsSaving(false);
       setToastMessage(t('sources.saved'));
@@ -884,12 +883,11 @@ export default function SourcesPageClient({
 
         setPendingDeleteIds([]);
         try {
-          sessionStorage.removeItem('ih:home:categories');
-          sessionStorage.removeItem('ih:home:articles');
-          sessionStorage.removeItem('ih:my:categories');
+          const catNames = categories.map((c) => c.name);
+          sessionStorage.setItem('ih:my:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
           sessionStorage.removeItem('ih:my:articles');
-          localStorage.removeItem('ih:my:category');
-          localStorage.removeItem('ih:category');
+          sessionStorage.setItem('ih:home:categories', JSON.stringify({ data: catNames, translations: categories, timestamp: Date.now() }));
+          sessionStorage.removeItem('ih:home:articles');
         } catch { /* 무시 */ }
         setToastMessage(message);
         setShowToast(true);
