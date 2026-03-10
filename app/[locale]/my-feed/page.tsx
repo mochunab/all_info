@@ -130,12 +130,14 @@ export default function MyFeed() {
         const names: string[] = raw.timestamp ? raw.data : raw;
         const translations = raw.translations;
         const timestamp = raw.timestamp || 0;
+        setCategories(names);
+        if (translations && names.length > 0) setCategoryTranslations(translations);
         if (names.length > 0) {
-          setCategories(names);
-          if (translations) setCategoryTranslations(translations);
           const saved = localStorage.getItem(STORAGE_KEY.MY_CATEGORY);
           resolvedCategory = (saved && names.includes(saved)) ? saved : names[0];
           setCategory(resolvedCategory);
+        } else {
+          setCategory('');
         }
         if (timestamp && Date.now() - timestamp < CLIENT_CACHE_TTL) categoriesFresh = true;
       }
@@ -188,10 +190,10 @@ export default function MyFeed() {
 
         if (catRes.ok) {
           const catData = await catRes.json();
-          if (catData.categories?.length > 0) {
+          if (catData.categories) {
             const categoryNames = catData.categories.map((c: { name: string }) => c.name);
             setCategories(categoryNames);
-            setCategoryTranslations(catData.categories);
+            if (catData.categories.length > 0) setCategoryTranslations(catData.categories);
             const finalCat = (savedCat && categoryNames.includes(savedCat)) ? savedCat : categoryNames[0] || '';
             setCategory(finalCat);
             try {
