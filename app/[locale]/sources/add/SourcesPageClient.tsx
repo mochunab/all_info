@@ -474,8 +474,6 @@ export default function SourcesPageClient({
       setPendingCategoryDeletes((prev) => [...prev, deletingCategory]);
     }
 
-    setToastMessage(t('sources.categoryDeleted', { name: deletingCategory }));
-    setShowToast(true);
     setDeletingCategory(null);
   };
 
