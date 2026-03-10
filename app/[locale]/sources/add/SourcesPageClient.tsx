@@ -243,7 +243,7 @@ export default function SourcesPageClient({
   const [masterLoading, setMasterLoading] = useState(false);
   const [selectedMasterCats, setSelectedMasterCats] = useState<Set<string>>(new Set());
   const [expandedMasterCats, setExpandedMasterCats] = useState<Set<string>>(new Set());
-  const { language, t, setCategoryTranslations } = useLanguage();
+  const { language, t, translateCat, setCategoryTranslations } = useLanguage();
 
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
@@ -288,12 +288,13 @@ export default function SourcesPageClient({
         }
       }
       setMasterData({ categories: cats, sourcesByCategory: grouped });
+      setCategoryTranslations(cats);
     } catch {
       setMasterData({ categories: [], sourcesByCategory: {} });
     } finally {
       setMasterLoading(false);
     }
-  }, []);
+  }, [setCategoryTranslations]);
 
   const handleOpenBrowseMaster = useCallback(() => {
     setShowBrowseMaster(true);
@@ -1530,7 +1531,7 @@ export default function SourcesPageClient({
                             className="flex-1 flex items-center justify-between text-left cursor-pointer"
                           >
                             <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                              {cat.name}
+                              {translateCat(cat.name)}
                               <span className="ml-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>({sources.length})</span>
                             </span>
                             <svg
