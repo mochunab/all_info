@@ -680,104 +680,108 @@ export default function SourcesPageClient({
     if (isSaving) return;
     setIsSaving(true);
     gaEvent({ action: 'save_sources', category: 'source' });
-    // pending 카테고리가 있으면 먼저 DB에 생성
-    if (pendingCategory && !categories.some((c) => c.name === pendingCategory)) {
-      try {
-        const response = await fetch('/api/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: pendingCategory }),
-        });
 
-        if (response.ok) {
-          const data = await response.json();
-          const newCat: Category = data.category || { id: Date.now(), name: pendingCategory, is_default: false };
-          setCategories((prev) => [...prev, newCat]);
-        } else if (response.status !== 409) {
-          const data = await response.json().catch(() => ({ error: 'Unknown error' }));
-          setToastMessage(t('toast.error', { error: data.error || `HTTP ${response.status}` }));
-          setShowToast(true);
-          return;
-        }
-      } catch (err) {
-        console.error('Error saving pending category:', err);
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        setToastMessage(t('toast.networkError', { error: msg }));
-        setShowToast(true);
-        return;
-      }
-      setPendingCategory(null);
-      setNewCategory('');
-      setIsAddingCategory(false);
-    }
-
-    // 카테고리 삭제 일괄 처리
-    if (pendingCategoryDeletes.length > 0) {
-      await Promise.allSettled(
-        pendingCategoryDeletes.map((name) =>
+    // --- 카테고리 변경사항 병렬 처리 ---
+    // 1단계: 이름 변경 (새 카테고리 생성 전에 실행해야 충돌 방지)
+    if (pendingRenames.length > 0) {
+      const renameResults = await Promise.allSettled(
+        pendingRenames.map((rename) =>
           fetch('/api/categories', {
-            method: 'DELETE',
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name }),
+            body: JSON.stringify({ oldName: rename.oldName, newName: rename.newName }),
+          }).then(async (res) => {
+            if (!res.ok && res.status === 409) throw new Error(rename.newName);
+            return res;
           })
         )
       );
-      setPendingCategoryDeletes([]);
-    }
-
-    // 카테고리 이름 변경 일괄 처리 (새 카테고리 생성보다 먼저 실행)
-    for (const rename of pendingRenames) {
-      try {
-        const res = await fetch('/api/categories', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oldName: rename.oldName, newName: rename.newName }),
-        });
-        if (!res.ok && res.status === 409) {
-          setToastMessage(t('sources.categoryExists', { name: rename.newName }));
-          setShowToast(true);
-          setIsSaving(false);
-          return;
-        }
-      } catch (err) {
-        console.error('Error renaming category:', err);
+      const conflict = renameResults.find((r) => r.status === 'rejected');
+      if (conflict) {
+        const name = (conflict as PromiseRejectedResult).reason?.message || '';
+        setToastMessage(t('sources.categoryExists', { name }));
+        setShowToast(true);
+        setIsSaving(false);
+        return;
       }
+      setPendingRenames([]);
     }
-    if (pendingRenames.length > 0) setPendingRenames([]);
 
-    // 로컬에 있는 카테고리 중 DB에 없는 것(새 카테고리) 일괄 생성
-    // pendingRenames의 newName은 기존 카테고리 이름 변경이므로 제외
+    // 2단계: 삭제 + 생성 + pending카테고리 + 순서변경 병렬
     const renamedNewNames = new Set(pendingRenames.map((r) => r.newName));
     const newCatsToCreate = categories.filter(
       (c) => !initialCategories.some((ic) => ic.name === c.name) && c.name !== pendingCategory && !renamedNewNames.has(c.name)
     );
-    if (newCatsToCreate.length > 0) {
-      await Promise.allSettled(
-        newCatsToCreate.map((c) =>
-          fetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: c.name }),
-          })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parallel: Promise<any>[] = [];
+
+    if (pendingCategoryDeletes.length > 0) {
+      parallel.push(
+        Promise.allSettled(
+          pendingCategoryDeletes.map((name) =>
+            fetch('/api/categories', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            })
+          )
         )
       );
     }
 
-    // 카테고리 순서 변경 저장
+    if (pendingCategory && !categories.some((c) => c.name === pendingCategory)) {
+      parallel.push(
+        fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: pendingCategory }),
+        }).then(async (response) => {
+          if (response.ok) {
+            const data = await response.json();
+            const newCat: Category = data.category || { id: Date.now(), name: pendingCategory, is_default: false };
+            setCategories((prev) => [...prev, newCat]);
+          }
+        })
+      );
+    }
+
+    if (newCatsToCreate.length > 0) {
+      parallel.push(
+        Promise.allSettled(
+          newCatsToCreate.map((c) =>
+            fetch('/api/categories', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: c.name }),
+            })
+          )
+        )
+      );
+    }
+
     if (orderChanged) {
-      try {
-        await fetch('/api/categories', {
+      parallel.push(
+        fetch('/api/categories', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             categories: categories.map((cat) => ({ id: cat.id, name: cat.name })),
           }),
-        });
-      } catch (err) {
-        console.error('Error reordering categories:', err);
-      }
-      setOrderChanged(false);
+        })
+      );
     }
+
+    if (parallel.length > 0) {
+      try {
+        await Promise.all(parallel);
+      } catch (err) {
+        console.error('Error in category operations:', err);
+      }
+    }
+
+    if (pendingCategory) { setPendingCategory(null); setNewCategory(''); setIsAddingCategory(false); }
+    if (pendingCategoryDeletes.length > 0) setPendingCategoryDeletes([]);
+    if (orderChanged) setOrderChanged(false);
 
     // Collect all valid sources from all categories
     const allSources: { url: string; name: string; category: string; crawlerType: string }[] = [];
