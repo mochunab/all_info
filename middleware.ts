@@ -107,7 +107,7 @@ export async function middleware(request: NextRequest) {
     response.cookies.set('ih_visited', '1', { maxAge: 60 * 60 * 24 * 365, path: '/' });
   }
 
-  // Supabase auth
+  // Supabase auth — session refresh only (no blocking getUser() call)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -131,7 +131,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  await supabase.auth.getSession();
 
   if (isAllowedOrigin) {
     response.headers.set('Access-Control-Allow-Origin', origin);

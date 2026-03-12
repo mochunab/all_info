@@ -37,6 +37,7 @@ export const CACHE_KEYS = {
   SOURCES: 'api:sources',       // + `:${userId}`
   CATEGORIES: 'api:categories', // + `:${userId}`
   ARTICLES_PREFIX: 'api:articles:', // + `u=${userId}&` query string
+  SSR_HOME: 'ssr:home',
 } as const;
 
 // TTLs

@@ -24,7 +24,7 @@ export default function Header({
 }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isMaster } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = useCallback(async () => {
@@ -43,6 +43,7 @@ export default function Header({
     { label: t(language, 'header.home'), href: '/' },
     { label: t(language, 'header.myFeed'), href: '/my-feed' },
     { label: t(language, 'header.blog'), href: '/blog' },
+    ...(isMaster ? [{ label: '커리UP', href: '/card-news' }] : []),
   ];
 
   return (
