@@ -51,13 +51,16 @@
 ### 데이터 파이프라인
 
 ```
-크롤링 → URL 해시 비교 → 동일? → SKIP
-                          ↓ 다름
-                   DB 사전 중복 체크 → 신규만 본문 추출
-                          ↓
-         HTML 파싱 → Readability → content_preview (500자)
-         → Edge Function (Gemini 2.5 Flash Lite) → title_ko + summary + summary_tags
-           └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
+크롤링 시작 → 다른 유저의 동일 소스 아티클 존재?
+               ├─ YES → 아티클 복사 (크롤링/AI 스킵) → 완료
+               └─ NO ↓
+          URL 해시 비교 → 동일? → SKIP
+                           ↓ 다름
+                    DB 사전 중복 체크 → 신규만 본문 추출
+                           ↓
+          HTML 파싱 → Readability → content_preview (500자)
+          → Edge Function (Gemini 2.5 Flash Lite) → title_ko + summary + summary_tags
+            └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
 ```
 
 ### 멀티유저 피드 (`user_id` 스코핑)
