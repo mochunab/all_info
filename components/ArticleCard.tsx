@@ -15,9 +15,11 @@ type ArticleCardProps = {
   onDelete?: (articleId: string) => void;
   onChatReference?: (article: Article) => void;
   onCloseChat?: () => void;
+  selected?: boolean;
+  onSelect?: (article: Article) => void;
 };
 
-export default function ArticleCard({ article, language, onDelete, onChatReference, onCloseChat }: ArticleCardProps) {
+export default function ArticleCard({ article, language, onDelete, onChatReference, onCloseChat, selected, onSelect }: ArticleCardProps) {
   const sourceColor = SOURCE_COLORS[article.source_name] || DEFAULT_SOURCE_COLOR;
   const [translatedTitle, setTranslatedTitle] = useState(article.title);
   const [translatedSummary, setTranslatedSummary] = useState(article.summary || '');
@@ -94,6 +96,10 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
   }, [article, language]);
 
   const handleClick = () => {
+    if (onSelect) {
+      onSelect(article);
+      return;
+    }
     if (onChatReference) {
       gaEvent({ action: 'chat_reference', category: 'article', label: article.source_name });
       onChatReference(article);
@@ -154,13 +160,25 @@ export default function ArticleCard({ article, language, onDelete, onChatReferen
     <>
       <article
         onClick={handleClick}
-        className="card card-hover cursor-pointer group relative"
+        className={`card card-hover cursor-pointer group relative${selected ? ' ring-2 ring-[var(--accent)] bg-[var(--accent-light)]' : ''}`}
       >
+        {/* Selection Checkbox */}
+        {onSelect && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${selected ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--border-hover)] bg-white/80 group-hover:border-[var(--accent)]'}`}>
+              {selected && (
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
         <div className="p-5 sm:p-6">
           {/* Top: Source Badge + External Link + Delete */}
           <div className="flex items-center justify-between mb-3.5">
             <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-xs font-medium"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-white text-xs font-medium${onSelect ? ' ml-6' : ''}`}
               style={{ backgroundColor: sourceColor }}
             >
               {article.source_name}
