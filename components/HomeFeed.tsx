@@ -6,7 +6,6 @@ import { Header, FilterBar, ArticleGrid, Toast, Footer } from '@/components';
 import type { Article, ArticleListResponse, CrawlStatus } from '@/types';
 import { event as gaEvent } from '@/lib/gtag';
 import { useAuth } from '@/lib/auth-context';
-import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/lib/language-context';
 
 const InsightChat = dynamic(() => import('@/components/InsightChat'), { ssr: false });
@@ -59,18 +58,9 @@ export default function HomeFeed({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [pinnedArticle, setPinnedArticle] = useState<Article | null>(null);
   const { language, setLanguage, t, setCategoryTranslations } = useLanguage();
-  const { user: authUser } = useAuth();
+  const { user: authUser, isMaster } = useAuth();
   const isLoggedIn = !!authUser;
-  const [isNonMasterUser, setIsNonMasterUser] = useState(false);
-  useEffect(() => {
-    if (!authUser) { setIsNonMasterUser(false); return; }
-    const supabase = createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).from('users').select('role').eq('id', authUser.id).single()
-      .then(({ data }: { data: { role: string } | null }) => {
-        if (data && data.role !== 'master') setIsNonMasterUser(true);
-      });
-  }, [authUser]);
+  const isNonMasterUser = isLoggedIn && !isMaster;
 
   const initialLoadDone = useRef(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);

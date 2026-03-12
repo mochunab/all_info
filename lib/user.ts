@@ -11,7 +11,7 @@ export async function getMasterUserId(): Promise<string> {
   const { data, error } = await (supabase as any)
     .from('users')
     .select('id')
-    .eq('role', 'master')
+    .eq('email', 'gksruf813@daum.net')
     .single();
 
   if (error || !data) {

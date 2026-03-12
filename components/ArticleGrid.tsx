@@ -16,6 +16,8 @@ type ArticleGridProps = {
   onDelete?: (articleId: string) => void;
   onChatReference?: (article: Article) => void;
   onCloseChat?: () => void;
+  selectedIds?: Set<string>;
+  onSelect?: (article: Article) => void;
 };
 
 export default function ArticleGrid({
@@ -29,6 +31,8 @@ export default function ArticleGrid({
   onDelete,
   onChatReference,
   onCloseChat,
+  selectedIds,
+  onSelect,
 }: ArticleGridProps) {
   // Empty state
   if (!isLoading && articles.length === 0) {
@@ -78,9 +82,11 @@ export default function ArticleGrid({
             key={article.id}
             article={article}
             language={language}
-            onDelete={onDelete}
-            onChatReference={onChatReference}
-            onCloseChat={onCloseChat}
+            onDelete={onSelect ? undefined : onDelete}
+            onChatReference={onSelect ? undefined : onChatReference}
+            onCloseChat={onSelect ? undefined : onCloseChat}
+            selected={selectedIds?.has(article.id)}
+            onSelect={onSelect}
           />
         ))}
 

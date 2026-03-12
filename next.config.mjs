@@ -4,7 +4,8 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@sparticuz/chromium'],
     staleTimes: {
-      dynamic: 0,
+      dynamic: 30,
+      static: 180,
     },
   },
   async headers() {

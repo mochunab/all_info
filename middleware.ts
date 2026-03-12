@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 import { LOCALES, DEFAULT_LOCALE } from '@/lib/locale-config';
 import type { Locale } from '@/lib/locale-config';
 
@@ -107,44 +106,11 @@ export async function middleware(request: NextRequest) {
     response.cookies.set('ih_visited', '1', { maxAge: 60 * 60 * 24 * 365, path: '/' });
   }
 
-  // Supabase auth — session refresh only (no blocking getUser() call)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  await supabase.auth.getSession();
-
   if (isAllowedOrigin) {
     response.headers.set('Access-Control-Allow-Origin', origin);
   }
 
   response.headers.set('x-locale', firstSegment);
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=()'
-  );
 
   return response;
 }
