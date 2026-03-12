@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { verifySameOrigin, verifyCronAuth } from '@/lib/auth';
-import { getCache, setCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { getCache, setCache, invalidateCache, invalidateCacheByPrefix, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { getMasterUserId } from '@/lib/user';
 
 type CategoryResponse = {
@@ -309,6 +309,7 @@ export async function POST(request: NextRequest) {
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    invalidateCache(CACHE_KEYS.SSR_HOME);
     revalidatePath('/sources/add');
 
     return NextResponse.json({ category: data });
@@ -488,6 +489,7 @@ export async function PUT(request: NextRequest) {
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.CATEGORIES);
+    invalidateCache(CACHE_KEYS.SSR_HOME);
     revalidatePath('/sources/add');
 
     return NextResponse.json({ success: true });

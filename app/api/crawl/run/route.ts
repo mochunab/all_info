@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getMasterUserId } from '@/lib/user';
-import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
+import { invalidateCacheByPrefix, invalidateCache, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
 export const maxDuration = 300;
@@ -234,6 +234,7 @@ async function handleCrawlRun(request: NextRequest) {
     console.log(`✅ [AI 요약] ${summaryResult.success}/${summaryResult.processed}개 완료\n`);
 
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+    invalidateCache(CACHE_KEYS.SSR_HOME);
 
     // IndexNow: 새 콘텐츠가 있으면 검색엔진에 알림
     const totalNew = results.reduce((sum, r) => sum + (r.new || 0), 0);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getMasterUserId } from '@/lib/user';
-import { invalidateCacheByPrefix, CACHE_KEYS } from '@/lib/cache';
+import { invalidateCacheByPrefix, invalidateCache, CACHE_KEYS } from '@/lib/cache';
 import type { CrawlSource } from '@/types';
 
 export const maxDuration = 300;
@@ -219,6 +219,7 @@ export async function POST(request: NextRequest) {
 
     // 캐시 무효화
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
+    invalidateCache(CACHE_KEYS.SSR_HOME);
 
     const totalDuration = ((Date.now() - runStartTime) / 1000).toFixed(1);
     const successCount = results.filter(r => r.success).length;
