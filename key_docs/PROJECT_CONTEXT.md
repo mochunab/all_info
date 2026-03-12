@@ -63,6 +63,9 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
    ├─ runCrawler(source) 호출
    │   ├─ [URL 결정] effectiveUrl = crawl_url || base_url
    │   │
+   │   ├─ [아티클 복사] 다른 유저의 동일 소스 아티클 존재 시 (v1.8.7)
+   │   │   └─ 제목/요약/태그 등 통째 복사 → 크롤링/AI 요약 완전 스킵 → return
+   │   │
    │   ├─ [robots.txt 체크] checkRobotsTxt(effectiveUrl)
    │   │   └─ 거부 시 스킵 (에러 아닌 빈 결과 반환)
    │   │
@@ -306,6 +309,14 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.7 (2026-03-12)
+- 멀티유저 아티클 공유: 다른 유저가 이미 크롤링한 동일 소스 아티클 복사 (크롤링/AI 요약 스킵)
+  - DB: `UNIQUE(source_id)` → `UNIQUE(source_id, user_id)` (마이그레이션 017)
+  - `runCrawler`: 크롤링 전 `source_name` 기준 기존 아티클 검색 → 유저 카테고리로 매핑 복사
+  - `saveArticles`: 중복 체크에 `user_id` 스코핑 추가
+- 저장하기 버튼 즉시 비활성화: `setIsSaving(true)`를 `handleSave` 최상단으로 이동
+- 카테고리 CRUD 병렬화: 순차 await 체인 → 이름변경(1단계) + 삭제/생성/순서변경 병렬(2단계)
 
 ### v1.8.6 (2026-03-07)
 - robots.txt 체크 비활성화 (`lib/crawlers/index.ts`, 추후 재활성화 예정)

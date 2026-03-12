@@ -79,7 +79,7 @@
 
 **인덱스**:
 - `articles_pkey` - PRIMARY KEY (id)
-- `articles_source_id_key` - UNIQUE (source_id) → 중복 방지
+- `articles_source_id_user_id_key` - UNIQUE (source_id, user_id) → 유저별 중복 방지
 - `articles_published_at_idx` - (published_at DESC) → 정렬 성능
 - `articles_category_idx` - (category) → 카테고리 필터
 - `articles_is_active_idx` - (is_active) → 활성 필터
@@ -360,6 +360,18 @@ ALTER TABLE articles ADD COLUMN new_column text DEFAULT null;
 ---
 
 ## 마이그레이션 히스토리
+
+### 017_articles_unique_per_user.sql (2026-03-12)
+
+**목적**: 멀티유저 아티클 공유 지원
+- `articles_source_id_key` (UNIQUE source_id) 제거
+- `articles_source_id_user_id_key` (UNIQUE source_id, user_id) 추가
+- 같은 URL의 아티클을 서로 다른 유저가 각각 보유 가능 (기존 아티클 복사로 크롤링/AI 요약 스킵)
+
+```sql
+ALTER TABLE articles DROP CONSTRAINT articles_source_id_key;
+ALTER TABLE articles ADD CONSTRAINT articles_source_id_user_id_key UNIQUE (source_id, user_id);
+```
 
 ### 013_add_category_translations.sql (2026-03-02)
 
