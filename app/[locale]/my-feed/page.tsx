@@ -512,8 +512,8 @@ export default function MyFeed() {
     );
   }
 
-  // Loading auth state
-  if (!authChecked) {
+  // Loading auth state — only show skeleton if no cached data
+  if (!authChecked && !cached.hasCachedData) {
     return (
       <div className="min-h-screen">
         <Header language={language} onLanguageChange={setLanguage} />
@@ -574,7 +574,7 @@ export default function MyFeed() {
       {!isChatOpen && totalCount > 0 && (
         <div className="fixed bottom-6 left-0 right-0 z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pointer-events-none">
           <button
-            className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 pointer-events-auto"
+            className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 pointer-events-auto cursor-pointer"
             onClick={() => setIsChatOpen(true)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
