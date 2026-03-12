@@ -19,21 +19,55 @@ const STORAGE_KEY = {
 
 const CLIENT_CACHE_TTL = 5 * 60 * 1000;
 
+function loadCachedState() {
+  try {
+    const cachedCats = sessionStorage.getItem('ih:my:categories');
+    const cachedArts = sessionStorage.getItem('ih:my:articles');
+    const savedCat = localStorage.getItem('ih:my:category');
+    let cats: string[] = [];
+    let arts: Article[] = [];
+    let total = 0;
+    let hasMore = false;
+    let category = '';
+
+    if (cachedCats) {
+      const raw = JSON.parse(cachedCats);
+      cats = raw.data || [];
+    }
+    if (cats.length > 0) {
+      category = (savedCat && cats.includes(savedCat)) ? savedCat : cats[0];
+    }
+    if (cachedArts) {
+      const raw = JSON.parse(cachedArts);
+      const data = raw.timestamp ? raw.data : raw;
+      arts = data.articles || [];
+      total = data.total || 0;
+      hasMore = data.hasMore || false;
+    }
+    return { cats, arts, total, hasMore, category, hasCachedData: arts.length > 0 };
+  } catch {
+    return { cats: [], arts: [], total: 0, hasMore: false, category: '', hasCachedData: false };
+  }
+}
+
 export default function MyFeed() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const authChecked = !authLoading;
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [cached] = useState(loadCachedState);
+  const [articles, setArticles] = useState<Article[]>(cached.arts);
+  const [isLoading, setIsLoading] = useState(!cached.hasCachedData);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<string>('');
-  const [categories, setCategories] = useState<string[]>([]);
+  const [category, setCategory] = useState<string>(cached.category);
+  const [categories, setCategories] = useState<string[]>(cached.cats);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(cached.hasMore);
+  const [totalCount, setTotalCount] = useState(cached.total);
+  const [lastUpdated, setLastUpdated] = useState<string | undefined>(
+    cached.arts[0]?.crawled_at
+  );
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
