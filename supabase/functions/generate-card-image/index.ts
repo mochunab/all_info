@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image_prompt, width, height, aspect_ratio } = await req.json();
+    const { image_prompt, width, height, aspect_ratio, reference_image } = await req.json();
 
     if (!image_prompt) {
       return new Response(JSON.stringify({ error: 'image_prompt 필수' }), {
@@ -32,14 +32,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const fullPrompt = `${image_prompt}, no text, no letters, no words, no watermark`;
-
-    // aspect_ratio: "1:1", "4:5", "16:9", "9:16", "3:4"
     const imageConfig = {};
     if (aspect_ratio) imageConfig.aspectRatio = aspect_ratio;
 
+    const parts = [];
+
+    if (reference_image) {
+      parts.push({
+        inlineData: {
+          mimeType: 'image/png',
+          data: reference_image,
+        },
+      });
+      parts.push({
+        text: `Use the attached image as a style/tone reference. Generate a NEW image with the same visual style, color palette, lighting, and mood. Prompt: ${image_prompt}, no text, no letters, no words, no watermark`,
+      });
+    } else {
+      parts.push({ text: `${image_prompt}, no text, no letters, no words, no watermark` });
+    }
+
     const requestBody = JSON.stringify({
-      contents: [{ parts: [{ text: fullPrompt }] }],
+      contents: [{ parts }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
         ...(Object.keys(imageConfig).length > 0 && { imageConfig }),
@@ -72,9 +85,9 @@ Deno.serve(async (req: Request) => {
 
     const data = await geminiRes.json();
     console.log('[generate-card-image] Response:', JSON.stringify(data).slice(0, 500));
-    const parts = data?.candidates?.[0]?.content?.parts;
+    const responseParts = data?.candidates?.[0]?.content?.parts;
 
-    if (!parts) {
+    if (!responseParts) {
       return new Response(JSON.stringify({ error: '이미지 생성 실패: 빈 응답', debug: JSON.stringify(data).slice(0, 300) }), {
         status: 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -84,7 +97,7 @@ Deno.serve(async (req: Request) => {
     let imageBase64 = null;
     let mimeType = 'image/png';
 
-    for (const part of parts) {
+    for (const part of responseParts) {
       if (part.inlineData) {
         imageBase64 = part.inlineData.data;
         mimeType = part.inlineData.mimeType || 'image/png';

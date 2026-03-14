@@ -4,7 +4,7 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const { image_prompt, width, height, aspect_ratio } = await req.json();
+    const { image_prompt, width, height, aspect_ratio, reference_image } = await req.json();
 
     if (!image_prompt) {
       return NextResponse.json({ error: 'image_prompt 필수' }, { status: 400 });
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
-      body: JSON.stringify({ image_prompt, width, height, aspect_ratio }),
+      body: JSON.stringify({ image_prompt, width, height, aspect_ratio, ...(reference_image && { reference_image }) }),
     });
 
     const data = await res.json();
