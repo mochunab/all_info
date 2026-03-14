@@ -430,11 +430,13 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
 
       const validRecommendations = await filterValidUrls(candidates);
       const googleNews = buildGoogleNewsRecommendation(category);
-      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid (+Google News)`);
+      const existingSet = new Set(existingUrls);
+      const includeGoogleNews = !existingSet.has(googleNews.url);
+      console.log(`[recommend-sources] ${candidates.length} candidates → ${validRecommendations.length} valid${includeGoogleNews ? ' (+Google News)' : ' (Google News skipped: duplicate)'}`);
 
       return {
         success: true,
-        recommendations: [googleNews, ...validRecommendations],
+        recommendations: includeGoogleNews ? [googleNews, ...validRecommendations] : validRecommendations,
       };
     } catch {
       console.error('Failed to parse JSON. Raw output (first 500 chars):', text.substring(0, 500));
@@ -450,7 +452,10 @@ async function recommendSources(category: string, scope: 'domestic' | 'internati
               .slice(0, 5)
               .map((r: Recommendation) => ({ url: r.url, name: r.name, description: r.description || '' }));
             const validRecs = await filterValidUrls(fallbackCandidates);
-            return { success: true, recommendations: [buildGoogleNewsRecommendation(category), ...validRecs] };
+            const fbGoogleNews = buildGoogleNewsRecommendation(category);
+            const fbExistingSet = new Set(existingUrls);
+            const fbIncludeGN = !fbExistingSet.has(fbGoogleNews.url);
+            return { success: true, recommendations: fbIncludeGN ? [fbGoogleNews, ...validRecs] : validRecs };
           }
         }
       } catch {
