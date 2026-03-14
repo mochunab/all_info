@@ -90,6 +90,23 @@ function ArticlePickerModal({
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchArticles = useCallback(async (pageNum: number, searchQuery: string, feedTab: 'home' | 'my', append = false) => {
+    // 첫 페이지 + 검색 없음 → sessionStorage 캐시 활용
+    if (pageNum === 1 && !searchQuery && !append) {
+      try {
+        const cacheKey = feedTab === 'my' ? 'ih:my:articles' : 'ih:home:articles';
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const raw = JSON.parse(cached);
+          const data: ArticleListResponse = raw.timestamp ? raw.data : raw;
+          if (data.articles?.length > 0) {
+            setArticles(data.articles);
+            setHasMore(data.hasMore);
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
     setIsLoading(true);
     try {
       const params = new URLSearchParams({ page: String(pageNum), limit: '20' });
@@ -263,6 +280,24 @@ function ArticlePickerModal({
                     </div>
                   )}
                 </div>
+
+                {/* External link */}
+                {article.source_url && (
+                  <button
+                    onClick={e => { e.stopPropagation(); window.open(article.source_url, '_blank', 'noopener,noreferrer'); }}
+                    style={{
+                      background: 'none', border: 'none', padding: 4, cursor: 'pointer',
+                      color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2,
+                    }}
+                    title="원문 보기"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -275,7 +310,7 @@ function ArticlePickerModal({
 
           {hasMore && !isLoading && (
             <button
-              onClick={() => { const next = page + 1; setPage(next); fetchArticles(next, search, true); }}
+              onClick={() => { const next = page + 1; setPage(next); fetchArticles(next, search, tab, true); }}
               style={{
                 display: 'block', width: '100%', padding: '12px 0', margin: '8px 0',
                 fontSize: 13, color: 'var(--accent)', background: 'none',
@@ -348,6 +383,8 @@ export default function CardNewsPage() {
   const [images, setImages] = useState<Record<number, string>>({});
   const [imageGenerating, setImageGenerating] = useState<number | null>(null);
   const [imageProgress, setImageProgress] = useState(0);
+  const [coverApproved, setCoverApproved] = useState(false);
+  const coverBase64Ref = useRef<string | null>(null);
 
   const { language, setLanguage } = useLanguage();
   const { user: authUser } = useAuth();
@@ -421,14 +458,47 @@ export default function CardNewsPage() {
     }
   };
 
-  // ── Step 3: Generate images ──
+  // ── Step 3: Generate cover image ──
 
-  const generateImages = useCallback(async () => {
+  const generateCoverImage = useCallback(async () => {
     if (!result) return;
     setError(null);
+    const cover = result.slides[0];
+    setImageGenerating(cover.slide_number);
 
-    for (let i = 0; i < result.slides.length; i++) {
-      const slide = result.slides[i];
+    try {
+      const res = await fetch('/api/card-news/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_prompt: cover.image_prompt,
+          width: selectedAspect.width,
+          height: selectedAspect.height,
+          aspect_ratio: selectedAspect.ratio,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '이미지 생성 실패');
+      coverBase64Ref.current = data.image;
+      setImages({ [cover.slide_number]: `data:${data.mimeType};base64,${data.image}` });
+    } catch (err) {
+      console.error('Cover image error:', err);
+      setError(`커버 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
+    } finally {
+      setImageGenerating(null);
+    }
+  }, [result, selectedAspect]);
+
+  // ── Step 3b: Generate remaining images with cover as reference ──
+
+  const generateRemainingImages = useCallback(async () => {
+    if (!result || !coverBase64Ref.current) return;
+    setError(null);
+    setCoverApproved(true);
+
+    const remaining = result.slides.slice(1);
+    for (let i = 0; i < remaining.length; i++) {
+      const slide = remaining[i];
       setImageGenerating(slide.slide_number);
       setImageProgress(i);
 
@@ -441,6 +511,7 @@ export default function CardNewsPage() {
             width: selectedAspect.width,
             height: selectedAspect.height,
             aspect_ratio: selectedAspect.ratio,
+            reference_image: coverBase64Ref.current,
           }),
         });
         const data = await res.json();
@@ -451,13 +522,14 @@ export default function CardNewsPage() {
         setError(`${slide.slide_number}장 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
       }
 
-      if (i < result.slides.length - 1) await new Promise(r => setTimeout(r, 5000));
+      if (i < remaining.length - 1) await new Promise(r => setTimeout(r, 5000));
     }
 
     setImageGenerating(null);
-    setImageProgress(result.slides.length);
+    setImageProgress(remaining.length);
   }, [result, selectedAspect]);
 
+  const hasCoverImage = images[1] !== undefined;
   const allImagesReady = result ? Object.keys(images).length === result.slides.length : false;
 
   const handleDownloadAll = useCallback(() => {
@@ -748,7 +820,7 @@ export default function CardNewsPage() {
 
             {/* Proceed to Production */}
             <button
-              onClick={() => { setStep('production'); setImages({}); setImageProgress(0); }}
+              onClick={() => { setStep('production'); setImages({}); setImageProgress(0); setCoverApproved(false); coverBase64Ref.current = null; }}
               style={{
                 width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
                 background: '#10B981', border: 'none', borderRadius: 8, cursor: 'pointer',
@@ -765,10 +837,12 @@ export default function CardNewsPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
               <div>
                 <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  카드뉴스 제작
+                  {coverApproved ? '카드뉴스 제작' : '커버 이미지 확인'}
                 </h1>
                 <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                  화면 비율을 선택하고 이미지를 생성하세요
+                  {coverApproved
+                    ? '커버 스타일을 기반으로 나머지 이미지를 생성합니다'
+                    : '화면 비율을 선택하고 커버 이미지를 먼저 확인하세요'}
                 </p>
               </div>
               <button
@@ -782,122 +856,205 @@ export default function CardNewsPage() {
               </button>
             </div>
 
-            {/* Aspect Ratio */}
-            <section style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>
-                화면 비율
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-                {ASPECT_RATIOS.map(r => {
-                  const isSelected = selectedRatio === r.id;
-                  const pc = PLATFORM_COLORS[r.platform];
-                  return (
-                    <button
-                      key={r.id}
-                      onClick={() => setSelectedRatio(r.id)}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        padding: '12px 8px',
-                        border: isSelected ? `2px solid ${pc}` : '1px solid var(--border)',
-                        borderRadius: 8,
-                        background: isSelected ? `${pc}08` : 'var(--bg-secondary)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{
-                        width: r.width > r.height ? 40 : 40 * (r.width / r.height),
-                        height: r.height > r.width ? 40 : 40 * (r.height / r.width),
-                        border: `2px solid ${isSelected ? pc : 'var(--border-hover)'}`,
-                        borderRadius: 3, background: isSelected ? `${pc}15` : 'var(--bg-tertiary)',
-                      }} />
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? pc : 'var(--text-primary)' }}>
-                          {r.label}
+            {/* Aspect Ratio — only before cover approved */}
+            {!coverApproved && (
+              <section style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>
+                  화면 비율
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+                  {ASPECT_RATIOS.map(r => {
+                    const isSelected = selectedRatio === r.id;
+                    const pc = PLATFORM_COLORS[r.platform];
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => setSelectedRatio(r.id)}
+                        disabled={hasCoverImage}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                          padding: '12px 8px',
+                          border: isSelected ? `2px solid ${pc}` : '1px solid var(--border)',
+                          borderRadius: 8,
+                          background: isSelected ? `${pc}08` : 'var(--bg-secondary)',
+                          cursor: hasCoverImage ? 'default' : 'pointer',
+                          opacity: hasCoverImage && !isSelected ? 0.4 : 1,
+                        }}
+                      >
+                        <div style={{
+                          width: r.width > r.height ? 40 : 40 * (r.width / r.height),
+                          height: r.height > r.width ? 40 : 40 * (r.height / r.width),
+                          border: `2px solid ${isSelected ? pc : 'var(--border-hover)'}`,
+                          borderRadius: 3, background: isSelected ? `${pc}15` : 'var(--bg-tertiary)',
+                        }} />
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? pc : 'var(--text-primary)' }}>
+                            {r.label}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                            {r.ratio}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                          {r.ratio}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
-            {/* Slide Preview Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(auto-fill, minmax(${selectedAspect.width >= selectedAspect.height ? 200 : 150}px, 1fr))`,
-              gap: 12, marginBottom: 24,
-            }}>
-              {result.slides.map(slide => {
-                const imgSrc = images[slide.slide_number];
-                const isThisGen = imageGenerating === slide.slide_number;
-                return (
-                  <div key={slide.slide_number} style={{
-                    width: '100%', aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
-                    borderRadius: 8, overflow: 'hidden', position: 'relative',
-                    background: imgSrc ? undefined : `linear-gradient(135deg, ${slide.color_scheme}CC, ${slide.color_scheme}40)`,
+            {/* ── Phase 1: Cover Preview ── */}
+            {!coverApproved && (
+              <>
+                {/* Cover image preview */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+                  <div style={{
+                    width: '100%', maxWidth: 360,
+                    aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
+                    borderRadius: 12, overflow: 'hidden', position: 'relative',
+                    background: images[1]
+                      ? undefined
+                      : `linear-gradient(135deg, ${result.slides[0].color_scheme}CC, ${result.slides[0].color_scheme}40)`,
                     border: '1px solid var(--border)',
                   }}>
-                    {imgSrc && (
+                    {images[1] && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imgSrc} alt={`slide ${slide.slide_number}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={images[1]} alt="cover" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                     )}
-                    {isThisGen && (
+                    {imageGenerating === 1 && (
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
-                        <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                        <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                       </div>
                     )}
-                    <div style={{ position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
-                      {slide.slide_number}
+                    <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'white', textTransform: 'uppercase' }}>cover</span>
                     </div>
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 12px 12px', background: 'linear-gradient(transparent, rgba(0,0,0,0.75))', color: 'white' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{slide.headline}</div>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '28px 16px 16px', background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', color: 'white' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.3 }}>{result.slides[0].headline}</div>
+                      {result.slides[0].subtext && (
+                        <div style={{ fontSize: 13, marginTop: 6, opacity: 0.85 }}>{result.slides[0].subtext}</div>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
 
-            {/* Image Generation / Download */}
-            <div style={{ display: 'flex', gap: 10 }}>
-              {!allImagesReady ? (
-                <button
-                  onClick={generateImages}
-                  disabled={imageGenerating !== null}
-                  style={{
-                    flex: 1, padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
-                    background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
-                    border: 'none', borderRadius: 8,
-                    cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {imageGenerating !== null
-                    ? `이미지 생성 중... (${imageProgress + 1}/${result.slides.length})`
-                    : Object.keys(images).length > 0
-                      ? `나머지 이미지 생성 (${Object.keys(images).length}/${result.slides.length})`
-                      : '배경 이미지 생성하기'
-                  }
-                </button>
-              ) : (
-                <button
-                  onClick={handleDownloadAll}
-                  style={{
-                    flex: 1, padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
-                    background: 'var(--accent)', border: 'none', borderRadius: 8, cursor: 'pointer',
-                  }}
-                >
-                  전체 다운로드 ({result.slides.length}장)
-                </button>
-              )}
-            </div>
+                {/* Cover action buttons */}
+                {!hasCoverImage ? (
+                  <button
+                    onClick={generateCoverImage}
+                    disabled={imageGenerating !== null}
+                    style={{
+                      width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
+                      background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
+                      border: 'none', borderRadius: 8,
+                      cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {imageGenerating !== null ? '커버 이미지 생성 중...' : '커버 이미지 생성'}
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      onClick={() => { setImages({}); coverBase64Ref.current = null; generateCoverImage(); }}
+                      disabled={imageGenerating !== null}
+                      style={{
+                        flex: 1, padding: '14px 0', fontSize: 14, fontWeight: 600,
+                        color: 'var(--text-secondary)', background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border)', borderRadius: 8,
+                        cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 105.64-11.36L3 10" />
+                      </svg>
+                      {imageGenerating !== null ? '생성 중...' : '다시 생성'}
+                    </button>
+                    <button
+                      onClick={generateRemainingImages}
+                      disabled={imageGenerating !== null}
+                      style={{
+                        flex: 2, padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
+                        background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
+                        border: 'none', borderRadius: 8,
+                        cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      이 스타일로 전체 제작
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
-            {/* Progress Bar */}
-            {imageGenerating !== null && (
-              <div style={{ marginTop: 10, height: 4, background: 'var(--bg-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: '#10B981', width: `${((imageProgress + 1) / result.slides.length) * 100}%`, transition: 'width 0.5s ease' }} />
-              </div>
+            {/* ── Phase 2: Full production ── */}
+            {coverApproved && (
+              <>
+                {/* All slides grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${selectedAspect.width >= selectedAspect.height ? 200 : 150}px, 1fr))`,
+                  gap: 12, marginBottom: 24,
+                }}>
+                  {result.slides.map(slide => {
+                    const imgSrc = images[slide.slide_number];
+                    const isThisGen = imageGenerating === slide.slide_number;
+                    return (
+                      <div key={slide.slide_number} style={{
+                        width: '100%', aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
+                        borderRadius: 8, overflow: 'hidden', position: 'relative',
+                        background: imgSrc ? undefined : `linear-gradient(135deg, ${slide.color_scheme}CC, ${slide.color_scheme}40)`,
+                        border: '1px solid var(--border)',
+                      }}>
+                        {imgSrc && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={imgSrc} alt={`slide ${slide.slide_number}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                        )}
+                        {isThisGen && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+                            <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          </div>
+                        )}
+                        <div style={{ position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
+                          {slide.slide_number}
+                        </div>
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 12px 12px', background: 'linear-gradient(transparent, rgba(0,0,0,0.75))', color: 'white' }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{slide.headline}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Progress / Download */}
+                {!allImagesReady ? (
+                  <div style={{
+                    padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white', textAlign: 'center',
+                    background: 'var(--text-tertiary)', borderRadius: 8,
+                  }}>
+                    {imageGenerating !== null
+                      ? `이미지 생성 중... (${imageProgress + 2}/${result.slides.length})`
+                      : `생성 완료 ${Object.keys(images).length}/${result.slides.length}`
+                    }
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleDownloadAll}
+                    style={{
+                      width: '100%', padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
+                      background: 'var(--accent)', border: 'none', borderRadius: 8, cursor: 'pointer',
+                    }}
+                  >
+                    전체 다운로드 ({result.slides.length}장)
+                  </button>
+                )}
+
+                {/* Progress Bar */}
+                {imageGenerating !== null && (
+                  <div style={{ marginTop: 10, height: 4, background: 'var(--bg-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#10B981', width: `${((imageProgress + 2) / result.slides.length) * 100}%`, transition: 'width 0.5s ease' }} />
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
