@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { category, scope } = body;
+    const { category, scope, existingUrls: clientExistingUrls } = body;
 
     if (!category || !scope) {
       return NextResponse.json(
@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true)
       .filter('config->>category', 'eq', category);
 
-    const existingUrls = (existingSources || []).map((s: { base_url: string }) => s.base_url);
+    const dbUrls = (existingSources || []).map((s: { base_url: string }) => s.base_url);
+    const existingUrls = [...new Set([...dbUrls, ...(Array.isArray(clientExistingUrls) ? clientExistingUrls : [])])];
 
     console.log(`[POST /api/sources/recommend] Category: "${category}", Scope: "${scope}", Existing URLs: ${existingUrls.length}개`);
 
