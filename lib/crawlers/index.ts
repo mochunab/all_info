@@ -751,18 +751,7 @@ export async function saveArticles(
       const existing = existingMap.get(article.source_id);
 
       if (existing) {
-        const safeCategory = article.category?.substring(0, 50);
-        if (safeCategory && existing.category !== safeCategory) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase as any)
-            .from('articles')
-            .update({ category: safeCategory })
-            .eq('id', existing.id);
-          updated++;
-          console.log(`   🔄 [${idx + 1}/${articles.length}] 카테고리 업데이트: "${article.title.substring(0, 40)}..." → ${safeCategory}`);
-        } else {
-          console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (중복): "${article.title.substring(0, 40)}..."`);
-        }
+        console.log(`   ⏭️  [${idx + 1}/${articles.length}] 건너뜀 (중복): "${article.title.substring(0, 40)}..."`);
         skipped++;
         continue;
       }
