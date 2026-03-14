@@ -627,7 +627,11 @@ export default function SourcesPageClient({
       const response = await fetch('/api/sources/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: activeCategory, scope }),
+        body: JSON.stringify({
+          category: activeCategory,
+          scope,
+          existingUrls: (sourcesByCategory[activeCategory] || []).map((s) => s.url),
+        }),
       });
 
       const data = await response.json();
@@ -635,15 +639,26 @@ export default function SourcesPageClient({
       if (response.ok && data.success && data.recommendations?.length > 0) {
         stopRecommendProgress(true);
 
-        const allRecs: SourceLink[] = data.recommendations.map(
-          (rec: { url: string; name: string; description: string }, i: number) => ({
-            id: `new-rec-${Date.now()}-${i}`,
-            url: rec.url,
-            name: rec.name,
-            crawlerType: 'AUTO',
-            isExisting: false,
-          })
+        const currentLinks = sourcesByCategory[activeCategory] || [];
+        const existingUrls = new Set(currentLinks.map((s) => s.url));
+        const existingDomains = new Set(
+          currentLinks.map((s) => { try { return new URL(s.url).hostname; } catch { return ''; } }).filter(Boolean)
         );
+
+        const allRecs: SourceLink[] = data.recommendations
+          .filter((rec: { url: string }) => {
+            if (existingUrls.has(rec.url)) return false;
+            try { return !existingDomains.has(new URL(rec.url).hostname); } catch { return true; }
+          })
+          .map(
+            (rec: { url: string; name: string; description: string }, i: number) => ({
+              id: `new-rec-${Date.now()}-${i}`,
+              url: rec.url,
+              name: rec.name,
+              crawlerType: 'AUTO',
+              isExisting: false,
+            })
+          );
 
         const newLinks = allRecs.slice(0, remainingSlots);
 
@@ -932,7 +947,15 @@ export default function SourcesPageClient({
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <button
-              onClick={() => window.history.length > 1 ? router.back() : router.push(`/${language}`)}
+              onClick={() => {
+                try {
+                  if (document.referrer && new URL(document.referrer).origin === window.location.origin) {
+                    router.back();
+                    return;
+                  }
+                } catch {}
+                router.push(`/${language}`);
+              }}
               className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               <svg
