@@ -1,11 +1,13 @@
 'use client';
 
 import type { CryptoSignal } from '@/types/crypto';
+import { t } from '@/lib/i18n';
 import SentimentGauge from './SentimentGauge';
 
 type CoinCardProps = {
   signal: CryptoSignal;
   onClick?: (symbol: string) => void;
+  language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 };
 
 const SIGNAL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -16,7 +18,7 @@ const SIGNAL_COLORS: Record<string, { bg: string; text: string; label: string }>
   strong_sell: { bg: 'bg-red-500/20', text: 'text-red-500', label: 'Strong Sell' },
 };
 
-export default function CoinCard({ signal, onClick }: CoinCardProps) {
+export default function CoinCard({ signal, onClick, language = 'ko' }: CoinCardProps) {
   const badge = SIGNAL_COLORS[signal.signal_label] || SIGNAL_COLORS.neutral;
   const velocitySign = signal.mention_velocity > 0 ? '+' : '';
   const velocityPercent = (signal.mention_velocity * 100).toFixed(0);
@@ -32,7 +34,7 @@ export default function CoinCard({ signal, onClick }: CoinCardProps) {
             {signal.coin_symbol}
           </h3>
           <p className="text-xs text-[var(--text-tertiary)]">
-            {signal.mention_count}회 언급
+            {t(language, 'crypto.mentions').replace('{count}', String(signal.mention_count))}
             {signal.mention_velocity !== 0 && (
               <span className={signal.mention_velocity > 0 ? 'text-green-500' : 'text-red-400'}>
                 {' '}({velocitySign}{velocityPercent}%)
@@ -50,7 +52,7 @@ export default function CoinCard({ signal, onClick }: CoinCardProps) {
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)]">
-        <span>Score: {signal.weighted_score.toFixed(0)}/100</span>
+        <span>{t(language, 'crypto.score')}: {signal.weighted_score.toFixed(0)}/100</span>
         <span>Engagement: {signal.engagement_score.toFixed(0)}</span>
       </div>
     </button>

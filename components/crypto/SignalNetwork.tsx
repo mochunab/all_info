@@ -33,6 +33,7 @@ type Keyword = { word: string; count: number };
 type SignalNetworkProps = {
   signals: CryptoSignal[];
   onCoinSelect: (symbol: string) => void;
+  language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 };
 
 const SENTIMENT_COLORS = {
@@ -284,11 +285,11 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
           >
             {loading && nodes.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
-                네트워크 로딩 중...
+                Loading network...
               </div>
             ) : nodes.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
-                크롤링 데이터가 쌓이면 네트워크가 표시됩니다
+                Network will appear after crawling
               </div>
             ) : (
               <>

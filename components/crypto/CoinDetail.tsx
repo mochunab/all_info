@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { CryptoSignal, CryptoPost, CryptoEntity, TimeWindow } from '@/types/crypto';
+import { t } from '@/lib/i18n';
 import SentimentGauge from './SentimentGauge';
 import TimeWindowSelector from './TimeWindowSelector';
 
 type CoinDetailProps = {
   symbol: string;
   onClose: () => void;
+  language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 };
 
 type DetailData = {
@@ -18,7 +20,7 @@ type DetailData = {
   relations: any[];
 };
 
-export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
+export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
@@ -56,6 +58,7 @@ export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
   }, [fetchData]);
 
   const signal = data?.signals?.[0];
+  const dateLocale = language === 'ko' ? 'ko-KR' : language === 'ja' ? 'ja-JP' : language === 'zh' ? 'zh-CN' : language === 'vi' ? 'vi-VN' : 'en-US';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -81,28 +84,30 @@ export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
           <TimeWindowSelector selected={timeWindow} onChange={setTimeWindow} />
 
           {loading ? (
-            <div className="text-center py-8 text-[var(--text-tertiary)]">로딩 중...</div>
+            <div className="text-center py-8 text-[var(--text-tertiary)]">{t(language, 'crypto.loading')}</div>
           ) : (
             <>
               {signal && (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-[var(--bg-secondary)] rounded-lg">
-                      <p className="text-xs text-[var(--text-tertiary)]">Score</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">{t(language, 'crypto.score')}</p>
                       <p className="text-2xl font-bold text-[var(--text-primary)]">
                         {signal.weighted_score.toFixed(0)}
                         <span className="text-sm font-normal text-[var(--text-tertiary)]">/100</span>
                       </p>
                     </div>
                     <div className="p-3 bg-[var(--bg-secondary)] rounded-lg">
-                      <p className="text-xs text-[var(--text-tertiary)]">언급 수</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        {t(language, 'crypto.mentions').replace('{count}', '').trim()}
+                      </p>
                       <p className="text-2xl font-bold text-[var(--text-primary)]">
                         {signal.mention_count}
                       </p>
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs text-[var(--text-tertiary)] mb-1">센티먼트</p>
+                    <p className="text-xs text-[var(--text-tertiary)] mb-1">{t(language, 'crypto.sentiment')}</p>
                     <SentimentGauge score={signal.avg_sentiment} />
                   </div>
                 </div>
@@ -110,7 +115,7 @@ export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
 
               {data?.relations && data.relations.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">관련 엔티티</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">{t(language, 'crypto.relatedEntities')}</h3>
                   <div className="flex flex-wrap gap-2">
                     {data.relations.slice(0, 10).map((rel: { id: string; relation_type: string; source_entity?: { name: string }; target_entity?: { name: string } }) => {
                       const related = rel.source_entity?.name === symbol
@@ -131,7 +136,7 @@ export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
 
               {data?.posts && data.posts.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">관련 게시물</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">{t(language, 'crypto.relatedPosts')}</h3>
                   <div className="space-y-2">
                     {data.posts.map((post) => (
                       <a
@@ -146,7 +151,7 @@ export default function CoinDetail({ symbol, onClose }: CoinDetailProps) {
                           <span>{post.source === 'telegram' ? `t/${post.channel}` : `r/${post.channel}`}</span>
                           <span>↑{post.upvotes}</span>
                           <span>💬{post.num_comments}</span>
-                          <span>{new Date(post.posted_at).toLocaleDateString('ko-KR')}</span>
+                          <span>{new Date(post.posted_at).toLocaleDateString(dateLocale)}</span>
                         </div>
                       </a>
                     ))}
