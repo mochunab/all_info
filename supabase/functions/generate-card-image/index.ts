@@ -15,10 +15,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image_prompt, width, height, aspect_ratio, reference_image } = await req.json();
+    const { image_prompt, width, height, aspect_ratio, reference_image, slide_context } = await req.json();
 
-    if (!image_prompt) {
-      return new Response(JSON.stringify({ error: 'image_prompt 필수' }), {
+    if (!image_prompt && !slide_context) {
+      return new Response(JSON.stringify({ error: 'image_prompt 또는 slide_context 필수' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -30,6 +30,38 @@ Deno.serve(async (req: Request) => {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    let finalPrompt = image_prompt;
+
+    // slide_context가 있으면 새로운 이미지 컨셉을 직접 구상
+    if (slide_context) {
+      const { headline, body, type, topic } = slide_context;
+      const typeGuide = type === 'cover'
+        ? 'This is a COVER slide — create the most impactful, curiosity-provoking hero image that captures the core theme in one powerful scene.'
+        : type === 'cta'
+        ? 'This is a CTA (call-to-action) slide — create a warm, inviting, or empowering image that encourages engagement.'
+        : 'This is a CONTENT slide — create an image that visually represents the key message of this specific point.';
+
+      finalPrompt = `You are a creative director for social media card news. Generate a background image that looks like real editorial photography.
+
+Topic: "${topic}"
+Slide headline: "${headline}"
+${body ? `Slide body: "${body}"` : ''}
+${typeGuide}
+
+Requirements:
+- Focus on a specific, grounded scene with real people, objects, or spaces — NOT abstract or futuristic visuals
+- NO text, NO letters, NO words, NO watermarks
+
+Anti-AI style guide (CRITICAL):
+- NO robot hands, holograms, neon circuits, floating icons, glowing orbs — these are AI clichés
+- All objects must be grounded (on tables, floors, hands) — NEVER floating in mid-air
+- Avoid heavy purple+blue neon combos. Use desaturated tones and natural textures instead
+- Lighting: use "ambient lighting", "soft glow", "backlight" — NOT "glowing", "magic sparkles"
+- Background: use "depth of field", "blurred background" — NOT "mystical", "cosmic"
+- Style: editorial photography, natural lighting, subtle film grain, shot on real camera feel
+- Overall: the image should be indistinguishable from a real photograph or tasteful illustration`;
     }
 
     const imageConfig = {};
@@ -45,10 +77,11 @@ Deno.serve(async (req: Request) => {
         },
       });
       parts.push({
-        text: `Use the attached image as a style/tone reference. Generate a NEW image with the same visual style, color palette, lighting, and mood. Prompt: ${image_prompt}, no text, no letters, no words, no watermark`,
+        text: `Use the attached image as a style/tone reference. Generate a NEW image with the same visual style, color palette, lighting, and mood. ${finalPrompt}, no text, no letters, no words, no watermark`,
       });
     } else {
-      parts.push({ text: `${image_prompt}, no text, no letters, no words, no watermark` });
+      const antiAiSuffix = ', editorial photography style, natural lighting, grounded objects, no floating elements, no neon glow, no robot hands, subtle film grain, no text, no letters, no words, no watermark';
+      parts.push({ text: slide_context ? finalPrompt : `${finalPrompt}${antiAiSuffix}` });
     }
 
     const requestBody = JSON.stringify({
@@ -66,11 +99,11 @@ Deno.serve(async (req: Request) => {
     };
 
     let geminiRes;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       geminiRes = await fetch(url, { method: 'POST', headers, body: requestBody });
       if (geminiRes.status !== 429) break;
-      const wait = (attempt + 1) * 15;
-      console.log(`[generate-card-image] 429 retry ${attempt + 1}/4, waiting ${wait}s...`);
+      const wait = (attempt + 1) * 10;
+      console.log(`[generate-card-image] 429 retry ${attempt + 1}/3, waiting ${wait}s...`);
       await new Promise(r => setTimeout(r, wait * 1000));
     }
 

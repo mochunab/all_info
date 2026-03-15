@@ -1,8 +1,13 @@
 // Run migration script
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = 'https://rcjusbvzoezyyxjozzyo.supabase.co';
-const supabaseServiceKey = '***REDACTED_SERVICE_KEY***';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rcjusbvzoezyyxjozzyo.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseServiceKey) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY 환경변수를 설정하세요.');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -18,7 +23,8 @@ async function runMigration() {
   if (error) {
     console.log('Error:', error.message);
     console.log('\nPlease run the following SQL in Supabase Dashboard SQL Editor:');
-    console.log('https://supabase.com/dashboard/project/rcjusbvzoezyyxjozzyo/sql/new');
+    const ref = supabaseUrl.match(/https:\/\/(.+)\.supabase\.co/)?.[1] || '';
+    console.log(`https://supabase.com/dashboard/project/${ref}/sql/new`);
     console.log(`
 ---------------------------------------------------
 ALTER TABLE articles

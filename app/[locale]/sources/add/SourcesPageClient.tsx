@@ -199,6 +199,7 @@ type SourcesPageClientProps = {
   initialSourcesByCategory: Record<string, SourceLink[]>;
   initialActiveCategory: string;
   readOnly?: boolean;
+  userId?: string;
 };
 
 export default function SourcesPageClient({
@@ -206,6 +207,7 @@ export default function SourcesPageClient({
   initialSourcesByCategory,
   initialActiveCategory,
   readOnly = false,
+  userId,
 }: SourcesPageClientProps) {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>(initialCategories);
@@ -251,6 +253,39 @@ export default function SourcesPageClient({
   useEffect(() => {
     setCategoryTranslations(initialCategories);
   }, [initialCategories, setCategoryTranslations]);
+
+  // Revalidate categories from API to override stale Router Cache data
+  useEffect(() => {
+    if (!userId) return;
+    async function revalidate() {
+      try {
+        const res = await fetch(`/api/categories?user_id=${userId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.categories || data.categories.length === 0) return;
+        const freshCats: Category[] = data.categories;
+        const currentNames = new Set(initialCategories.map((c) => c.name));
+        const freshNames = new Set(freshCats.map((c) => c.name));
+        if (currentNames.size === freshNames.size && [...currentNames].every((n) => freshNames.has(n))) return;
+        setCategories(freshCats);
+        setCategoryTranslations(freshCats);
+        const newGrouped = { ...sourcesByCategory };
+        for (const cat of freshCats) {
+          if (!newGrouped[cat.name]) newGrouped[cat.name] = [];
+        }
+        for (const key of Object.keys(newGrouped)) {
+          if (!freshNames.has(key) && (!newGrouped[key] || newGrouped[key].length === 0)) {
+            delete newGrouped[key];
+          }
+        }
+        setSourcesByCategory(newGrouped);
+        if (!freshNames.has(activeCategory) && freshCats.length > 0) {
+          setActiveCategory(freshCats[0].name);
+        }
+      } catch { /* ignore */ }
+    }
+    revalidate();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus category input
   useEffect(() => {

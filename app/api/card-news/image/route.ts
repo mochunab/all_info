@@ -4,10 +4,10 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const { image_prompt, width, height, aspect_ratio, reference_image } = await req.json();
+    const { image_prompt, width, height, aspect_ratio, reference_image, slide_context } = await req.json();
 
-    if (!image_prompt) {
-      return NextResponse.json({ error: 'image_prompt 필수' }, { status: 400 });
+    if (!image_prompt && !slide_context) {
+      return NextResponse.json({ error: 'image_prompt 또는 slide_context 필수' }, { status: 400 });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,13 +17,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Supabase 설정이 없습니다' }, { status: 500 });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: Record<string, any> = { width, height, aspect_ratio };
+    if (image_prompt) payload.image_prompt = image_prompt;
+    if (slide_context) payload.slide_context = slide_context;
+    if (reference_image) payload.reference_image = reference_image;
+
     const res = await fetch(`${supabaseUrl}/functions/v1/generate-card-image`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseAnonKey}`,
       },
-      body: JSON.stringify({ image_prompt, width, height, aspect_ratio, ...(reference_image && { reference_image }) }),
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json();

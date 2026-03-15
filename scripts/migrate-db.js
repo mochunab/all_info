@@ -1,8 +1,13 @@
 // Direct database migration script using Supabase Management API
 const https = require('https');
 
-const projectRef = 'rcjusbvzoezyyxjozzyo';
-const serviceKey = '***REDACTED_SERVICE_KEY***';
+const projectRef = process.env.SUPABASE_PROJECT_REF || 'rcjusbvzoezyyxjozzyo';
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!serviceKey) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY 환경변수를 설정하세요.');
+  process.exit(1);
+}
 
 const migrations = [
   {

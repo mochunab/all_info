@@ -52,14 +52,16 @@ Deno.serve(async (req: Request) => {
       "headline": "후킹 제목 (15자 이내)",
       "subtext": "부제목 (20자 이내)",
       "image_prompt": "배경 이미지 프롬프트 (영문, no text/letters)",
+      "search_keyword": "Unsplash 검색 키워드 (영문 1~3단어, 슬라이드 내용에 맞는 감성적 사진 검색용)",
       "color_scheme": "#hex 메인 컬러"
     },
     {
       "slide_number": 2,
       "type": "content",
       "headline": "핵심 메시지 (15자 이내)",
-      "body": "본문 텍스트 (50자 이내)",
+      "body": "본문 텍스트 (2~3문장, 80~120자, 구체적 정보/수치/사례 포함)",
       "image_prompt": "배경 이미지 프롬프트 (영문, no text/letters)",
+      "search_keyword": "Unsplash 검색 키워드 (영문 1~3단어)",
       "color_scheme": "#hex"
     }
   ]
@@ -67,13 +69,32 @@ Deno.serve(async (req: Request) => {
 
 규칙:
 - 1장: cover (강렬한 후킹 제목)
-- 2~${count - 1}장: content (핵심 정보, 숫자/통계 활용, 각 장마다 하나의 메시지)
-- ${count}장: cta (행동 유도 — 팔로우, 저장, 공유 등)
+- 2~${count - 1}장: content (핵심 정보, 숫자/통계 활용, 각 장마다 하나의 메시지). body는 반드시 2~3문장(60~100자)으로 핵심만 간결하게. 불필요한 수식어 제거.
+- ${count}장: cta (행동 유도). headline은 질문형 한 줄 (15자 이내), subtext는 참여 유도 한 줄 (25자 이내). body 없음. 예시: headline "AI의 미래, 어떻게 생각하세요?" / subtext "댓글로 자유롭게 의견을 남겨주세요!"
 - image_prompt: 텍스트 없는 배경 이미지용, 영문으로, "no text, no letters" 포함 필수
 - 모든 카피는 한국어, image_prompt만 영문
 - color_scheme: 슬라이드별 통일감 있는 컬러 (전체적으로 조화)
 - 이미지 비율: ${width}x${height} (${ratioLabel})에 맞는 구도
+- search_keyword: 슬라이드마다 서로 다른 고유한 키워드를 사용할 것. 같은 키워드 반복 금지.
 - JSON만 반환, 마크다운/설명 없이
+
+★ 이미지 선정 전략 (image_prompt & search_keyword 작성 시 필수 적용):
+1. 주제를 관통하는 한 장면: 좋은 이미지는 주제의 핵심을 단 하나의 장면으로 압축한다. 추상적 배경이 아닌, 구체적 상황/장면을 떠올려라.
+2. 호기심 유발: 이미지만으로 "이게 뭐지?" "왜 저런 상황이지?"라는 질문이 생기게 하라.
+3. 감정 전달: 사람의 표정, 몸짓, 또는 강렬한 색감/대비로 감정을 즉시 전달하라.
+4. 구체적 피사체: "business" 같은 추상 키워드 대신 "stressed office worker at desk", "coffee cup on laptop" 처럼 구체적 장면을 묘사하라.
+5. cover 이미지: 가장 임팩트 있는 한 장면. 호기심과 감정을 동시에 자극하는 이미지.
+6. content 이미지: 해당 슬라이드의 핵심 메시지를 시각적으로 보여주는 이미지. 각 장마다 다른 장면.
+7. cta 이미지: 행동을 유도하는 따뜻하거나 긍정적인 분위기의 이미지.
+
+★ AI 티 방지 스타일 가이드 (image_prompt 작성 시 필수):
+- 로봇 손, 홀로그램, 네온 회로, 허공에 뜬 아이콘 등 AI 클리셰 장면 금지. 실제 사람/사물/공간 중심으로 묘사.
+- 허공에 떠 있는 오브젝트(floating cards, orbs) 대신 바닥/테이블/손 위 등에 안착(grounded)시켜라.
+- 과도한 보라+파랑 네온 조합 지양. 채도를 낮추거나(desaturated) 질감(texture)을 추가해 깊이감을 줘라.
+- 빛 표현: "glowing" → "ambient lighting" / "soft glow", "magic sparkles" → "cinematic dust" / "backlight"
+- 배경 정리: "mystical background" → "depth of field" / "blurred background"
+- 3D 느낌 줄이기: "3D illustration" → "clay texture" / "matte finish"
+- 전반적으로 editorial photography, natural lighting, film grain 같은 실제 사진 느낌을 지향.
 
 ★ 1장(cover) 카피 작성 시 반드시 아래 행동경제학 전략을 적용하세요:
 
