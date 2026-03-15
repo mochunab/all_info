@@ -44,7 +44,7 @@ export default function Header({
     { label: t(language, 'header.myFeed'), href: '/my-feed' },
     { label: t(language, 'header.blog'), href: '/blog' },
     ...(isMaster ? [{ label: '커리UP', href: '/card-news' }] : []),
-    { label: t(language, 'header.crypto'), href: '/crypto' },
+    ...(isMaster ? [{ label: t(language, 'header.crypto'), href: '/crypto' }] : []),
   ];
 
   return (
