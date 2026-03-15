@@ -52,7 +52,23 @@ function getNodeSize(mentions: number, maxMentions: number): number {
   return 3 + (mentions / maxMentions) * 12;
 }
 
+function useIsDark() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const check = () => document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setDark(check());
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => setDark(check());
+    mq.addEventListener('change', handler);
+    const obs = new MutationObserver(() => setDark(check()));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => { mq.removeEventListener('change', handler); obs.disconnect(); };
+  }, []);
+  return dark;
+}
+
 export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkProps) {
+  const isDark = useIsDark();
   const [nodes, setNodes] = useState<NetworkNode[]>([]);
   const [links, setLinks] = useState<NetworkLink[]>([]);
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -171,27 +187,33 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
       ctx.fillStyle = isInfluencer ? '#8b5cf6' : getSentimentColor(node.sentiment);
       ctx.fill();
 
-      ctx.strokeStyle = dimmed ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.2)';
+      ctx.strokeStyle = isDark
+        ? (dimmed ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.2)')
+        : (dimmed ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.15)');
       ctx.lineWidth = 0.5;
       ctx.stroke();
 
       // label
       if (size > 5 || (selectedChip && node.name === selectedChip)) {
-        ctx.font = `${Math.max(10, size * 0.9)}px -apple-system, system-ui, sans-serif`;
+        ctx.font = `bold ${Math.max(10, size * 0.9)}px -apple-system, system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.9)';
+        ctx.fillStyle = isDark
+          ? (dimmed ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.9)')
+          : (dimmed ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.8)');
         ctx.fillText(node.name, x, y + size + 2);
       }
 
       ctx.globalAlpha = 1;
     },
-    [maxMentions, selectedChip, neighborSet]
+    [maxMentions, selectedChip, neighborSet, isDark]
   );
 
   const linkColor = useCallback(
     (link: NetworkLink) => {
-      if (!neighborSet) return 'rgba(255,255,255,0.08)';
+      const defaultColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+      const fadedColor = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
+      if (!neighborSet) return defaultColor;
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
       if (neighborSet.has(src) && neighborSet.has(tgt)) {
@@ -199,9 +221,9 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
           ? 'rgba(59, 130, 246, 0.5)'
           : 'rgba(139, 92, 246, 0.4)';
       }
-      return 'rgba(255,255,255,0.03)';
+      return fadedColor;
     },
-    [neighborSet]
+    [neighborSet, isDark]
   );
 
   const linkWidth = useCallback(
