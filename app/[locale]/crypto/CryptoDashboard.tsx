@@ -57,7 +57,7 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t(language, 'crypto.title')}</h1>
           <p className="text-sm text-[var(--text-tertiary)]">{t(language, 'crypto.subtitle')}</p>
         </div>
-        <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} language={language} />
+        <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
       </div>
 
       <div className="mb-6">
