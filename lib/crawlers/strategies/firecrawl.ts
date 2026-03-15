@@ -108,9 +108,10 @@ export const firecrawlStrategy: CrawlStrategy = {
         })
         .filter((item: RawContentItem | null): item is RawContentItem => item !== null);
 
-      // 날짜 필터링 (최근 7일)
-      const filtered = items.filter((item) => {
-        if (!item.dateStr) return true; // 날짜 없으면 포함
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const skipDateFilter = !!(source.config as any)?._skipDateFilter;
+      const filtered = skipDateFilter ? items : items.filter((item) => {
+        if (!item.dateStr) return true;
         return isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS);
       });
 

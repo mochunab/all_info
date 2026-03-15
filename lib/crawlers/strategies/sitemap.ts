@@ -52,8 +52,10 @@ export class SitemapStrategy implements CrawlStrategy {
     console.log(`[SITEMAP] Path-filtered: ${pathFiltered.length}/${allEntries.length}`);
 
     // 3. 날짜 필터링 + 내림차순 정렬 (최신 우선)
-    const dated = pathFiltered.filter(e => {
-      if (!e.lastmod) return true; // lastmod 없으면 포함 (날짜는 페이지에서 추출)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const skipDateFilter = !!(source.config as any)?._skipDateFilter;
+    const dated = skipDateFilter ? pathFiltered : pathFiltered.filter(e => {
+      if (!e.lastmod) return true;
       return isWithinDays(e.lastmod, withinDays, e.loc);
     });
 

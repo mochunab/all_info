@@ -59,6 +59,9 @@ export class RSSStrategy implements CrawlStrategy {
       return [];
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const skipDateFilter = !!(config as any)?._skipDateFilter;
+
     for (const feedItem of feed.items) {
       try {
         const item = this.parseFeedItem(feedItem, config);
@@ -67,8 +70,7 @@ export class RSSStrategy implements CrawlStrategy {
           continue;
         }
 
-        // 7일 이내 필터링
-        if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
+        if (!skipDateFilter && !isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
           console.log(`[RSS] SKIP (too old): ${item.title.substring(0, 40)}...`);
           continue;
         }

@@ -119,8 +119,8 @@ export class NaverStrategy implements CrawlStrategy {
           // 날짜
           const dateStr = feedItem.pubDate || feedItem.isoDate || null;
 
-          // 7일 이내 필터링
-          if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(config as any)?._skipDateFilter && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
             console.log(`[NAVER] SKIP (too old): ${title.substring(0, 40)}...`);
             continue;
           }
@@ -244,8 +244,8 @@ export class NaverStrategy implements CrawlStrategy {
               $el.find('[datetime]').attr('datetime') ||
               null;
 
-            // 7일 이내 필터링
-            if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (!(config as any)?._skipDateFilter && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
               return;
             }
 

@@ -578,7 +578,8 @@ export class SPAStrategy implements CrawlStrategy {
         continue;
       }
 
-      if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, cleanedTitle)) {
+      const skipDate = Boolean(source.config && '_skipDateFilter' in (source.config as object) && (source.config as Record<string, unknown>)._skipDateFilter);
+      if (!skipDate && !isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, cleanedTitle)) {
         console.log(`[SPA] SKIP (too old): ${cleanedTitle.substring(0, 40)}...`);
         continue;
       }

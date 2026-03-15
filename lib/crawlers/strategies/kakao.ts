@@ -124,8 +124,8 @@ export class KakaoStrategy implements CrawlStrategy {
           const item = this.parseFeedItem(feedItem);
           if (!item) continue;
 
-          // 7일 이내 필터링
-          if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(config as any)?._skipDateFilter && !isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
             console.log(`[KAKAO] SKIP (too old): ${item.title.substring(0, 40)}...`);
             continue;
           }
@@ -241,8 +241,8 @@ export class KakaoStrategy implements CrawlStrategy {
           // 날짜
           const dateStr = $el.find('.publish_time, .date, time').text().trim() || null;
 
-          // 7일 이내 필터링
-          if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(config as any)?._skipDateFilter && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
             return;
           }
 
@@ -311,8 +311,8 @@ export class KakaoStrategy implements CrawlStrategy {
           // 날짜
           const dateStr = $el.find('.date, time').text().trim() || null;
 
-          // 7일 이내 필터링
-          if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(config as any)?._skipDateFilter && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
             return;
           }
 
@@ -384,8 +384,8 @@ export class KakaoStrategy implements CrawlStrategy {
           // 날짜
           const dateStr = $el.find('.date, time, .publish_time').text().trim() || null;
 
-          // 7일 이내 필터링
-          if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(config as any)?._skipDateFilter && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
             return;
           }
 

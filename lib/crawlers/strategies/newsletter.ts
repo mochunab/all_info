@@ -211,7 +211,8 @@ export class NewsletterStrategy implements CrawlStrategy {
           $date.text().trim() ||
           null;
 
-        if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
+        const skipDate = Boolean(config && '_skipDateFilter' in (config as object) && (config as Record<string, unknown>)._skipDateFilter);
+        if (!skipDate && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
           console.log(`[NEWSLETTER] SKIP (too old): ${title.substring(0, 40)}...`);
           return;
         }
