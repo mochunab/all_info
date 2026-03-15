@@ -74,19 +74,6 @@ export default function MyFeedClient({
   const fetchAbortRef = useRef<AbortController | null>(null);
   const isInitialRender = useRef(true);
 
-  // Login dialog for unauthenticated
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen">
-        <Header language={language} onLanguageChange={setLanguage} />
-        <LoginPromptDialog
-          isOpen={true}
-          onClose={() => router.push(`/${language}`)}
-        />
-      </div>
-    );
-  }
-
   const fetchArticles = useCallback(
     async (pageNum: number, append: boolean = false, options?: { signal?: AbortSignal; silent?: boolean }) => {
       const showLoader = !(pageNum === 1 && !append && articles.length > 0 && !initialLoadDone.current);
@@ -414,6 +401,18 @@ export default function MyFeedClient({
     if (category) articlesCacheRef.current.delete(category);
     try { sessionStorage.removeItem(STORAGE_KEY.MY_ARTICLES); } catch { /* ignore */ }
   }, [language, category]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen">
+        <Header language={language} onLanguageChange={setLanguage} />
+        <LoginPromptDialog
+          isOpen={true}
+          onClose={() => router.push(`/${language}`)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">

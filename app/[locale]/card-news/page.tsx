@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
-import { Header, Footer } from '@/components';
+import { Header } from '@/components';
 import { useLanguage } from '@/lib/language-context';
 import { useAuth } from '@/lib/auth-context';
 import type { Article, ArticleListResponse } from '@/types';

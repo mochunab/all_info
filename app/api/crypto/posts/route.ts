@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
 
     if (coin) {
       // 코인 멘션이 있는 게시물만 필터
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: mentionPostIds } = await (supabase as any)
         .from('crypto_mentions')
         .select('post_id')

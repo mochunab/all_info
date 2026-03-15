@@ -45,16 +45,12 @@ export default async function MyFeedPage() {
     );
   }
 
-  const [categoriesResult, articlesResult] = await Promise.all([
-    supabase
-      .from('categories')
-      .select('name, display_order')
-      .eq('user_id', user.id)
-      .order('display_order', { ascending: true, nullsFirst: false })
-      .order('name'),
-    // First fetch without category filter — will re-fetch with category below if needed
-    null as null,
-  ]);
+  const categoriesResult = await supabase
+    .from('categories')
+    .select('name, display_order')
+    .eq('user_id', user.id)
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('name');
 
   const categoryNames = categoriesResult.data?.map((c: { name: string }) => c.name) || [];
   const defaultCategory = categoryNames[0] || '';
