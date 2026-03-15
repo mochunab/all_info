@@ -8,10 +8,6 @@
     {
       "path": "/api/summarize/batch",
       "schedule": "5 0 * * *"
-    },
-    {
-      "path": "/api/crypto/crawl",
-      "schedule": "*/30 * * * *"
     }
   ],
   "functions": {
