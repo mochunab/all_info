@@ -725,7 +725,7 @@ export async function saveArticles(
 ): Promise<{ saved: number; skipped: number; updated: number }> {
   let saved = 0;
   let skipped = 0;
-  let updated = 0;
+  const updated = 0;
 
   try {
     // 1단계: 배치 source_id 중복 체크 (유저별 스코핑)

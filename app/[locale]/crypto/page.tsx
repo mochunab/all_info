@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { getMasterUserId } from '@/lib/user';
 import { Header, Footer } from '@/components';
 import CryptoDashboard from './CryptoDashboard';
 
@@ -24,7 +23,6 @@ export default async function CryptoPage({
     redirect(`/${locale}/login`);
   }
 
-  const masterUserId = await getMasterUserId();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: userRow } = await (supabase as any)
     .from('users')

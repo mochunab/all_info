@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     // 선택된 엔티티의 관계 조회
     const entityIds = entities.map((e: { id: string }) => e.id);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: relations } = await (supabase as any)
       .from('crypto_relations')
       .select(`
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
         .filter(Boolean);
 
       if (symbols.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: signalData } = await (supabase as any)
           .from('crypto_signals')
           .select('*')

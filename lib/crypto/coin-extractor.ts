@@ -1,4 +1,4 @@
-import { COIN_LIST, ALIAS_MAP, COIN_MAP } from '@/lib/crypto/config';
+import { COIN_LIST, COIN_MAP } from '@/lib/crypto/config';
 
 type MentionResult = {
   symbol: string;

@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 최신 computed_at 기준으로 필터
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: latestRow } = await (supabase as any)
       .from('crypto_signals')
       .select('computed_at')
