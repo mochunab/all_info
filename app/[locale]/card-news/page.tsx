@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import JSZip from 'jszip';
 import { Header, Footer } from '@/components';
 import { useLanguage } from '@/lib/language-context';
 import { useAuth } from '@/lib/auth-context';
@@ -15,6 +16,7 @@ type SelectedArticle = {
   summary: string | null;
   tags: string[];
   source_name: string;
+  link: string;
 };
 
 type Slide = {
@@ -24,7 +26,17 @@ type Slide = {
   subtext?: string;
   body?: string;
   image_prompt: string;
+  search_keyword?: string;
   color_scheme: string;
+};
+
+type UnsplashPhoto = {
+  id: string;
+  url: string;
+  photographer: string;
+  photographer_url: string;
+  unsplash_url: string;
+  source?: 'unsplash' | 'pexels';
 };
 
 type SlideResult = {
@@ -40,8 +52,8 @@ type ChatMessage = {
 // ── Constants ──
 
 const ASPECT_RATIOS = [
-  { id: 'ig-square', label: '인스타 피드', ratio: '1:1', width: 1080, height: 1080, platform: 'Instagram' },
   { id: 'ig-portrait', label: '인스타 피드 (세로)', ratio: '4:5', width: 1080, height: 1350, platform: 'Instagram' },
+  { id: 'ig-square', label: '인스타 피드', ratio: '1:1', width: 1080, height: 1080, platform: 'Instagram' },
   { id: 'ig-story', label: '스토리 / 릴스', ratio: '9:16', width: 1080, height: 1920, platform: 'Instagram' },
   { id: 'x-feed', label: 'X (Twitter)', ratio: '16:9', width: 1200, height: 675, platform: 'X' },
   { id: 'yt-thumb', label: 'YouTube 썸네일', ratio: '16:9', width: 1280, height: 720, platform: 'YouTube' },
@@ -143,13 +155,14 @@ function ArticlePickerModal({
       const next = new Map(prev);
       if (next.has(article.id)) {
         next.delete(article.id);
-      } else {
+      } else if (next.size < 5) {
         next.set(article.id, {
           id: article.id,
           title: article.title_ko || article.title,
           summary: article.summary,
           tags: article.summary_tags || [],
           source_name: article.source_name,
+          link: article.source_url,
         });
       }
       return next;
@@ -171,7 +184,7 @@ function ArticlePickerModal({
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--bg-primary)', borderRadius: 16,
-          width: '100%', maxWidth: 640, maxHeight: '80vh',
+          width: '100%', maxWidth: 640, height: '85vh',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           border: '1px solid var(--border)',
         }}
@@ -328,7 +341,7 @@ function ArticlePickerModal({
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            {selected.size}개 선택됨
+            {selected.size}/5개 선택됨
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -367,8 +380,9 @@ export default function CardNewsPage() {
   const [topic, setTopic] = useState('');
   const [sourceArticles, setSourceArticles] = useState<SelectedArticle[]>([]);
   const [showPicker, setShowPicker] = useState(false);
-  const [slideCount, setSlideCount] = useState<number>(10);
+  const [slideCount, setSlideCount] = useState<number>(5);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isFetchingContent, setIsFetchingContent] = useState(false);
   const [result, setResult] = useState<SlideResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -379,12 +393,15 @@ export default function CardNewsPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Production step
-  const [selectedRatio, setSelectedRatio] = useState<string>('ig-square');
+  const [selectedRatio, setSelectedRatio] = useState<string>('ig-portrait');
   const [images, setImages] = useState<Record<number, string>>({});
   const [imageGenerating, setImageGenerating] = useState<number | null>(null);
   const [imageProgress, setImageProgress] = useState(0);
   const [coverApproved, setCoverApproved] = useState(false);
   const coverBase64Ref = useRef<string | null>(null);
+  const [imageMode, setImageMode] = useState<'unsplash' | 'ai'>('unsplash');
+  const [unsplashCredits, setUnsplashCredits] = useState<Record<number, UnsplashPhoto>>({});
+  const unsplashPageRef = useRef<Record<number, number>>({});
 
   const { language, setLanguage } = useLanguage();
   const { user: authUser } = useAuth();
@@ -404,13 +421,45 @@ export default function CardNewsPage() {
     setChatMessages([]);
 
     try {
+      let enrichedTopic = topic.trim();
+
+      if (sourceArticles.length > 0) {
+        setIsFetchingContent(true);
+        let contents: Record<string, string> = {};
+        try {
+          const fetchRes = await fetch('/api/card-news/fetch-content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articleIds: sourceArticles.map(a => a.id) }),
+          });
+          if (fetchRes.ok) {
+            const fetchData = await fetchRes.json();
+            contents = fetchData.contents || {};
+          }
+        } catch { /* fallback to summary */ }
+        setIsFetchingContent(false);
+
+        const parts = sourceArticles.map(a => {
+          let text = `제목: ${a.title}\n원문: ${a.link}`;
+          if (a.tags?.length) text += `\n태그: ${a.tags.join(', ')}`;
+          const fullContent = contents[a.id];
+          if (fullContent) {
+            text += `\n본문:\n${fullContent}`;
+          } else if (a.summary) {
+            text += `\n요약: ${a.summary}`;
+          }
+          return text;
+        });
+        enrichedTopic = `다음 콘텐츠를 기반으로 카드뉴스를 만들어줘:\n\n${parts.join('\n\n---\n\n')}`;
+      }
+
       const res = await fetch('/api/card-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: topic.trim(),
+          topic: enrichedTopic,
           slideCount,
-          ratio: { id: 'ig-square', label: '인스타 피드', width: 1080, height: 1080 },
+          ratio: { id: 'ig-portrait', label: '인스타 피드 (세로)', width: 1080, height: 1350 },
         }),
       });
       const data = await res.json();
@@ -421,6 +470,7 @@ export default function CardNewsPage() {
       setError(err instanceof Error ? err.message : '알 수 없는 오류');
     } finally {
       setIsGenerating(false);
+      setIsFetchingContent(false);
     }
   };
 
@@ -442,7 +492,7 @@ export default function CardNewsPage() {
         body: JSON.stringify({
           topic: `기존 기획안:\n${currentPlan}\n\n수정 요청: ${userMsg}\n\n위 기획안을 수정 요청에 맞게 수정해줘. 슬라이드 수는 ${result.slides.length}장 유지.`,
           slideCount: result.slides.length,
-          ratio: { id: 'ig-square', label: '인스타 피드', width: 1080, height: 1080 },
+          ratio: { id: 'ig-portrait', label: '인스타 피드 (세로)', width: 1080, height: 1350 },
         }),
       });
       const data = await res.json();
@@ -460,34 +510,45 @@ export default function CardNewsPage() {
 
   // ── Step 3: Generate cover image ──
 
-  const generateCoverImage = useCallback(async () => {
+  const generateCoverImage = useCallback(async (regenerate = false) => {
     if (!result) return;
     setError(null);
     const cover = result.slides[0];
     setImageGenerating(cover.slide_number);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: Record<string, any> = {
+      width: selectedAspect.width,
+      height: selectedAspect.height,
+      aspect_ratio: selectedAspect.ratio,
+    };
+
+    if (regenerate) {
+      payload.slide_context = { headline: cover.headline, body: cover.subtext || '', type: cover.type, topic };
+      console.log('[card-news] AI cover REGENERATION with slide_context');
+    } else {
+      payload.image_prompt = cover.image_prompt;
+      console.log('[card-news] AI cover generation, prompt:', cover.image_prompt.slice(0, 80));
+    }
+
     try {
       const res = await fetch('/api/card-news/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_prompt: cover.image_prompt,
-          width: selectedAspect.width,
-          height: selectedAspect.height,
-          aspect_ratio: selectedAspect.ratio,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
+      console.log('[card-news] AI cover response:', res.status, data.image ? `base64 ${data.image.length} chars` : data.error);
       if (!res.ok) throw new Error(data.error || '이미지 생성 실패');
       coverBase64Ref.current = data.image;
-      setImages({ [cover.slide_number]: `data:${data.mimeType};base64,${data.image}` });
+      setImages(prev => ({ ...prev, [cover.slide_number]: `data:${data.mimeType};base64,${data.image}` }));
     } catch (err) {
-      console.error('Cover image error:', err);
+      console.error('[card-news] Cover image error:', err);
       setError(`커버 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
     } finally {
       setImageGenerating(null);
     }
-  }, [result, selectedAspect]);
+  }, [result, selectedAspect, topic]);
 
   // ── Step 3b: Generate remaining images with cover as reference ──
 
@@ -497,66 +558,217 @@ export default function CardNewsPage() {
     setCoverApproved(true);
 
     const remaining = result.slides.slice(1);
-    for (let i = 0; i < remaining.length; i++) {
-      const slide = remaining[i];
-      setImageGenerating(slide.slide_number);
-      setImageProgress(i);
+    const BATCH_SIZE = 3;
 
-      try {
-        const res = await fetch('/api/card-news/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image_prompt: slide.image_prompt,
-            width: selectedAspect.width,
-            height: selectedAspect.height,
-            aspect_ratio: selectedAspect.ratio,
-            reference_image: coverBase64Ref.current,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '이미지 생성 실패');
-        setImages(prev => ({ ...prev, [slide.slide_number]: `data:${data.mimeType};base64,${data.image}` }));
-      } catch (err) {
-        console.error(`Slide ${slide.slide_number} image error:`, err);
-        setError(`${slide.slide_number}장 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
+    for (let batchStart = 0; batchStart < remaining.length; batchStart += BATCH_SIZE) {
+      const batch = remaining.slice(batchStart, batchStart + BATCH_SIZE);
+      setImageGenerating(batch[0].slide_number);
+      setImageProgress(batchStart);
+
+      const results = await Promise.allSettled(
+        batch.map(async (slide) => {
+          const res = await fetch('/api/card-news/image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image_prompt: slide.image_prompt,
+              width: selectedAspect.width,
+              height: selectedAspect.height,
+              aspect_ratio: selectedAspect.ratio,
+              reference_image: coverBase64Ref.current,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '이미지 생성 실패');
+          return { slideNumber: slide.slide_number, dataUrl: `data:${data.mimeType};base64,${data.image}` };
+        })
+      );
+
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          setImages(prev => ({ ...prev, [r.value.slideNumber]: r.value.dataUrl }));
+        } else {
+          console.error('Slide image error:', r.reason);
+          setError(`이미지 실패: ${r.reason instanceof Error ? r.reason.message : '오류'}`);
+        }
       }
 
-      if (i < remaining.length - 1) await new Promise(r => setTimeout(r, 5000));
+      if (batchStart + BATCH_SIZE < remaining.length) await new Promise(r => setTimeout(r, 5000));
     }
 
     setImageGenerating(null);
     setImageProgress(remaining.length);
   }, [result, selectedAspect]);
 
+  // ── Unsplash image helpers ──
+
+  const ratioToOrientation = (ratio: string) => {
+    if (ratio === '1:1') return 'squarish';
+    const [w, h] = ratio.split(':').map(Number);
+    return w > h ? 'landscape' : 'portrait';
+  };
+
+  const fetchUnsplashImage = useCallback(async (slide: Slide, pageNum = 1) => {
+    const keyword = slide.search_keyword || slide.image_prompt.split(',')[0].trim();
+    const orientation = ratioToOrientation(selectedAspect.ratio);
+
+    // 1차: orientation 포함
+    let params = new URLSearchParams({ query: keyword, page: String(pageNum), orientation });
+    let res = await fetch(`/api/card-news/unsplash?${params}`);
+    if (res.ok) return (await res.json()) as UnsplashPhoto;
+
+    // 2차: orientation 제거
+    params = new URLSearchParams({ query: keyword, page: String(pageNum) });
+    res = await fetch(`/api/card-news/unsplash?${params}`);
+    if (res.ok) return (await res.json()) as UnsplashPhoto;
+
+    // 3차: 키워드 첫 단어만
+    const simpleKeyword = keyword.split(' ')[0];
+    if (simpleKeyword !== keyword) {
+      params = new URLSearchParams({ query: simpleKeyword, page: String(pageNum) });
+      res = await fetch(`/api/card-news/unsplash?${params}`);
+      if (res.ok) return (await res.json()) as UnsplashPhoto;
+    }
+
+    const data = await res.json();
+    throw new Error(data.error || 'Unsplash 검색 실패');
+  }, [selectedAspect]);
+
+  const generateCoverUnsplash = useCallback(async () => {
+    if (!result) return;
+    setError(null);
+    const cover = result.slides[0];
+    setImageGenerating(cover.slide_number);
+    unsplashPageRef.current[1] = (unsplashPageRef.current[1] || 0) + 1;
+
+    try {
+      const photo = await fetchUnsplashImage(cover, unsplashPageRef.current[1]);
+      setImages(prev => ({ ...prev, [cover.slide_number]: photo.url }));
+      setUnsplashCredits(prev => ({ ...prev, [cover.slide_number]: photo }));
+    } catch (err) {
+      setError(`커버 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
+    } finally {
+      setImageGenerating(null);
+    }
+  }, [result, fetchUnsplashImage]);
+
+  const generateRemainingUnsplash = useCallback(async () => {
+    if (!result) return;
+    setError(null);
+    setCoverApproved(true);
+
+    const keywordPageMap: Record<string, number> = {};
+    // cover 키워드를 이미 사용한 것으로 처리
+    const coverKw = result.slides[0].search_keyword || result.slides[0].image_prompt.split(',')[0].trim();
+    keywordPageMap[coverKw] = unsplashPageRef.current[1] || 1;
+
+    const remaining = result.slides.slice(1);
+    for (let i = 0; i < remaining.length; i++) {
+      const slide = remaining[i];
+      setImageGenerating(slide.slide_number);
+      setImageProgress(i);
+
+      const kw = slide.search_keyword || slide.image_prompt.split(',')[0].trim();
+      keywordPageMap[kw] = (keywordPageMap[kw] || 0) + 1;
+
+      try {
+        const photo = await fetchUnsplashImage(slide, keywordPageMap[kw]);
+        setImages(prev => ({ ...prev, [slide.slide_number]: photo.url }));
+        setUnsplashCredits(prev => ({ ...prev, [slide.slide_number]: photo }));
+      } catch (err) {
+        setError(`${slide.slide_number}장 이미지 실패: ${err instanceof Error ? err.message : '오류'}`);
+      }
+
+      if (i < remaining.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+
+    setImageGenerating(null);
+    setImageProgress(remaining.length);
+  }, [result, fetchUnsplashImage]);
+
+  const regenerateSlideImage = useCallback(async (slide: Slide) => {
+    if (imageGenerating !== null) return;
+    setImageGenerating(slide.slide_number);
+    setError(null);
+    console.log(`[card-news] Regenerate slide ${slide.slide_number}, mode: ${imageMode}`);
+
+    try {
+      if (imageMode === 'unsplash') {
+        unsplashPageRef.current[slide.slide_number] = (unsplashPageRef.current[slide.slide_number] || 0) + 1;
+        const photo = await fetchUnsplashImage(slide, unsplashPageRef.current[slide.slide_number]);
+        setImages(prev => ({ ...prev, [slide.slide_number]: photo.url }));
+        setUnsplashCredits(prev => ({ ...prev, [slide.slide_number]: photo }));
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const payload: Record<string, any> = {
+          slide_context: { headline: slide.headline, body: slide.body || slide.subtext || '', type: slide.type, topic },
+          width: selectedAspect.width,
+          height: selectedAspect.height,
+          aspect_ratio: selectedAspect.ratio,
+          ...(slide.slide_number !== 1 && coverBase64Ref.current ? { reference_image: coverBase64Ref.current } : {}),
+        };
+        console.log(`[card-news] Slide ${slide.slide_number} regen with slide_context`);
+        const res = await fetch('/api/card-news/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        console.log(`[card-news] Slide ${slide.slide_number} regen response:`, res.status, data.image ? 'OK' : data.error);
+        if (!res.ok) throw new Error(data.error || '이미지 생성 실패');
+        if (slide.slide_number === 1) coverBase64Ref.current = data.image;
+        setImages(prev => ({ ...prev, [slide.slide_number]: `data:${data.mimeType};base64,${data.image}` }));
+      }
+    } catch (err) {
+      setError(`${slide.slide_number}장 재생성 실패: ${err instanceof Error ? err.message : '오류'}`);
+    } finally {
+      setImageGenerating(null);
+    }
+  }, [imageMode, imageGenerating, fetchUnsplashImage, selectedAspect, topic]);
+
   const hasCoverImage = images[1] !== undefined;
   const allImagesReady = result ? Object.keys(images).length === result.slides.length : false;
 
-  const handleDownloadAll = useCallback(() => {
+  const handleDownloadAll = useCallback(async () => {
     if (!result) return;
-    result.slides.forEach(slide => {
+    const zip = new JSZip();
+    const title = result.title.replace(/[^a-zA-Z0-9가-힣\s]/g, '').trim().slice(0, 30) || 'card-news';
+
+    for (const slide of result.slides) {
       const src = images[slide.slide_number];
-      if (!src) return;
-      const a = document.createElement('a');
-      a.href = src;
-      a.download = `card-${slide.slide_number}.png`;
-      a.click();
-    });
+      if (!src) continue;
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const ext = blob.type.includes('png') ? 'png' : 'jpg';
+      zip.file(`${slide.slide_number}.${ext}`, blob);
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = `${title}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }, [result, images]);
 
   const handleArticlesSelected = (articles: SelectedArticle[]) => {
     setSourceArticles(articles);
-    const parts = articles.map(a => `- ${a.title}${a.tags?.length ? ` [${a.tags.join(', ')}]` : ''}`);
-    setTopic(`다음 콘텐츠를 기반으로 카드뉴스를 만들어줘:\n\n${parts.join('\n')}`);
+    const parts = articles.map(a => {
+      let text = `제목: ${a.title}`;
+      if (a.tags?.length) text += `\n태그: ${a.tags.join(', ')}`;
+      if (a.summary) text += `\n요약: ${a.summary}`;
+      return text;
+    });
+    setTopic(`다음 콘텐츠를 기반으로 카드뉴스를 만들어줘:\n\n${parts.join('\n\n---\n\n')}`);
   };
 
   // ── Render ──
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Header language={language} onLanguageChange={setLanguage} />
 
-      <main style={{ flex: 1, maxWidth: 720, margin: '0 auto', padding: '40px 20px', width: '100%' }}>
+      <main style={{ flex: 1, maxWidth: 720, margin: '0 auto', padding: '40px 20px', width: '100%', overflow: 'auto' }}>
 
         {/* ════ STEP 1: Input ════ */}
         {step === 'input' && (
@@ -668,15 +880,15 @@ export default function CardNewsPage() {
             {/* Generate Plan Button */}
             <button
               onClick={handleGeneratePlan}
-              disabled={!topic.trim() || isGenerating}
+              disabled={!topic.trim() || isGenerating || isFetchingContent}
               style={{
                 width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
-                background: !topic.trim() || isGenerating ? 'var(--text-tertiary)' : 'var(--accent)',
+                background: !topic.trim() || isGenerating || isFetchingContent ? 'var(--text-tertiary)' : 'var(--accent)',
                 border: 'none', borderRadius: 8,
-                cursor: !topic.trim() || isGenerating ? 'not-allowed' : 'pointer',
+                cursor: !topic.trim() || isGenerating || isFetchingContent ? 'not-allowed' : 'pointer',
               }}
             >
-              {isGenerating ? '기획안 생성 중...' : '기획안 생성하기'}
+              {isFetchingContent ? '본문 가져오는 중...' : isGenerating ? '기획안 생성 중...' : '기획안 생성하기'}
             </button>
           </>
         )}
@@ -820,7 +1032,7 @@ export default function CardNewsPage() {
 
             {/* Proceed to Production */}
             <button
-              onClick={() => { setStep('production'); setImages({}); setImageProgress(0); setCoverApproved(false); coverBase64Ref.current = null; }}
+              onClick={() => { setStep('production'); setImages({}); setImageProgress(0); setCoverApproved(false); coverBase64Ref.current = null; setUnsplashCredits({}); unsplashPageRef.current = {}; setImageMode('unsplash'); }}
               style={{
                 width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
                 background: '#10B981', border: 'none', borderRadius: 8, cursor: 'pointer',
@@ -928,10 +1140,11 @@ export default function CardNewsPage() {
                     <div style={{ position: 'absolute', top: 10, left: 10 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'white', textTransform: 'uppercase' }}>cover</span>
                     </div>
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '28px 16px 16px', background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', color: 'white' }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.3 }}>{result.slides[0].headline}</div>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', bottom: '12%', left: 0, right: 0, padding: '0 20px', color: 'white' }}>
+                      <div style={{ fontSize: result.slides[0].headline.length > 12 ? 22 : 28, fontWeight: 900, lineHeight: 1.25, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{result.slides[0].headline}</div>
                       {result.slides[0].subtext && (
-                        <div style={{ fontSize: 13, marginTop: 6, opacity: 0.85 }}>{result.slides[0].subtext}</div>
+                        <div style={{ fontSize: 14, marginTop: 10, opacity: 0.8, fontWeight: 500, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{result.slides[0].subtext}</div>
                       )}
                     </div>
                   </div>
@@ -939,48 +1152,82 @@ export default function CardNewsPage() {
 
                 {/* Cover action buttons */}
                 {!hasCoverImage ? (
-                  <button
-                    onClick={generateCoverImage}
-                    disabled={imageGenerating !== null}
-                    style={{
-                      width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
-                      background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
-                      border: 'none', borderRadius: 8,
-                      cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {imageGenerating !== null ? '커버 이미지 생성 중...' : '커버 이미지 생성'}
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <button
-                      onClick={() => { setImages({}); coverBase64Ref.current = null; generateCoverImage(); }}
+                      onClick={() => { setImageMode('unsplash'); generateCoverUnsplash(); }}
                       disabled={imageGenerating !== null}
                       style={{
-                        flex: 1, padding: '14px 0', fontSize: 14, fontWeight: 600,
-                        color: 'var(--text-secondary)', background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border)', borderRadius: 8,
-                        cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 105.64-11.36L3 10" />
-                      </svg>
-                      {imageGenerating !== null ? '생성 중...' : '다시 생성'}
-                    </button>
-                    <button
-                      onClick={generateRemainingImages}
-                      disabled={imageGenerating !== null}
-                      style={{
-                        flex: 2, padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
+                        width: '100%', padding: '16px 0', fontSize: 16, fontWeight: 700, color: 'white',
                         background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
                         border: 'none', borderRadius: 8,
                         cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      이 스타일로 전체 제작
+                      {imageGenerating !== null && imageMode === 'unsplash' ? '이미지 검색 중...' : '커버 이미지 생성'}
                     </button>
+                    <button
+                      onClick={() => { setImageMode('ai'); generateCoverImage(); }}
+                      disabled={imageGenerating !== null}
+                      style={{
+                        width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 500,
+                        color: 'var(--text-tertiary)', background: 'none',
+                        border: 'none', cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {imageGenerating !== null && imageMode === 'ai' ? 'AI 이미지 생성 중...' : '또는 AI로 이미지 생성'}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {imageMode === 'unsplash' && unsplashCredits[1] && (
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                        Photo by{' '}
+                        <a href={`${unsplashCredits[1].photographer_url}?utm_source=insighthub&utm_medium=referral`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>
+                          {unsplashCredits[1].photographer}
+                        </a>
+                        {' '}on{' '}
+                        <a href={unsplashCredits[1].source === 'pexels' ? 'https://www.pexels.com' : 'https://unsplash.com/?utm_source=insighthub&utm_medium=referral'} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>
+                          {unsplashCredits[1].source === 'pexels' ? 'Pexels' : 'Unsplash'}
+                        </a>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={() => {
+                          if (imageMode === 'unsplash') { generateCoverUnsplash(); }
+                          else { coverBase64Ref.current = null; generateCoverImage(true); }
+                        }}
+                        disabled={imageGenerating !== null}
+                        style={{
+                          flex: 1, padding: '14px 0', fontSize: 14, fontWeight: 600,
+                          color: 'var(--text-secondary)', background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border)', borderRadius: 8,
+                          cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 105.64-11.36L3 10" />
+                        </svg>
+                        {imageGenerating !== null ? '생성 중...' : '다시 생성'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (imageMode === 'unsplash') generateRemainingUnsplash();
+                          else generateRemainingImages();
+                        }}
+                        disabled={imageGenerating !== null}
+                        style={{
+                          flex: 2, padding: '14px 0', fontSize: 15, fontWeight: 700, color: 'white',
+                          background: imageGenerating !== null ? 'var(--text-tertiary)' : '#10B981',
+                          border: 'none', borderRadius: 8,
+                          cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        이 스타일로 전체 제작
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
@@ -999,12 +1246,16 @@ export default function CardNewsPage() {
                     const imgSrc = images[slide.slide_number];
                     const isThisGen = imageGenerating === slide.slide_number;
                     return (
-                      <div key={slide.slide_number} style={{
-                        width: '100%', aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
-                        borderRadius: 8, overflow: 'hidden', position: 'relative',
-                        background: imgSrc ? undefined : `linear-gradient(135deg, ${slide.color_scheme}CC, ${slide.color_scheme}40)`,
-                        border: '1px solid var(--border)',
-                      }}>
+                      <div
+                        key={slide.slide_number}
+                        className="slide-card"
+                        style={{
+                          width: '100%', aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
+                          borderRadius: 8, overflow: 'hidden', position: 'relative',
+                          background: imgSrc ? undefined : `linear-gradient(135deg, ${slide.color_scheme}CC, ${slide.color_scheme}40)`,
+                          border: '1px solid var(--border)',
+                        }}
+                      >
                         {imgSrc && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={imgSrc} alt={`slide ${slide.slide_number}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1017,9 +1268,79 @@ export default function CardNewsPage() {
                         <div style={{ position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
                           {slide.slide_number}
                         </div>
-                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 12px 12px', background: 'linear-gradient(transparent, rgba(0,0,0,0.75))', color: 'white' }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{slide.headline}</div>
-                        </div>
+                        {imgSrc && !isThisGen && (
+                          <button
+                            className="slide-regen-btn"
+                            onClick={() => regenerateSlideImage(slide)}
+                            disabled={imageGenerating !== null}
+                            title="이미지 재생성"
+                            style={{
+                              position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: '50%',
+                              background: 'rgba(0,0,0,0.55)', border: 'none', cursor: imageGenerating !== null ? 'not-allowed' : 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              opacity: 0, transition: 'opacity 0.2s',
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 105.64-11.36L3 10" />
+                            </svg>
+                          </button>
+                        )}
+
+                        {/* Cover: large headline, left-bottom lifted */}
+                        {slide.type === 'cover' && (
+                          <>
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', bottom: '12%', left: 0, right: 0, padding: '0 12px', color: 'white' }}>
+                              <div style={{ fontSize: slide.headline.length > 12 ? 13 : 15, fontWeight: 900, lineHeight: 1.2, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{slide.headline}</div>
+                              {slide.subtext && (
+                                <div style={{ fontSize: 9, marginTop: 4, opacity: 0.75, fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{slide.subtext}</div>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Content: image top + dark text area bottom */}
+                        {slide.type === 'content' && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
+                            <div style={{ flex: '1 1 55%' }} />
+                            <div style={{ flex: '0 0 45%', background: 'rgba(0,0,0,0.65)', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                              <div style={{ fontSize: slide.headline.length > 12 ? 9 : 10, fontWeight: 800, lineHeight: 1.3, color: 'white', marginBottom: 4, wordBreak: 'keep-all' }}>
+                                {slide.headline}
+                              </div>
+                              {slide.body && (
+                                <div style={{ fontSize: slide.body.length > 100 ? 6.5 : 7, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>
+                                  {slide.body}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CTA: centered bold message + source links */}
+                        {slide.type === 'cta' && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', padding: '16px', textAlign: 'center', pointerEvents: 'none' }}>
+                            <div style={{ fontSize: slide.headline.length > 12 ? 14 : 16, fontWeight: 900, color: 'white', lineHeight: 1.3, letterSpacing: '-0.01em', wordBreak: 'keep-all' }}>
+                              {slide.headline}
+                            </div>
+                            {slide.subtext && (
+                              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 8, fontWeight: 500 }}>
+                                {slide.subtext}
+                              </div>
+                            )}
+                            {sourceArticles.length > 0 && (
+                              <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, textAlign: 'left' }}>
+                                <div style={{ fontSize: 6, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
+                                  {sourceArticles.map((a, i) => (
+                                    <div key={i} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      출처: {a.link}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1054,6 +1375,38 @@ export default function CardNewsPage() {
                     <div style={{ height: '100%', background: '#10B981', width: `${((imageProgress + 2) / result.slides.length) * 100}%`, transition: 'width 0.5s ease' }} />
                   </div>
                 )}
+
+                {/* Unsplash credits */}
+                {imageMode === 'unsplash' && Object.keys(unsplashCredits).length > 0 && allImagesReady && (() => {
+                  const credits = Object.values(unsplashCredits);
+                  const unsplashPhotos = credits.filter(c => c.source !== 'pexels');
+                  const pexelsPhotos = credits.filter(c => c.source === 'pexels');
+                  return (
+                    <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.8 }}>
+                      {unsplashPhotos.length > 0 && (<>
+                        Photos by{' '}
+                        {unsplashPhotos.map((c, i, arr) => (
+                          <span key={c.id}>
+                            <a href={`${c.photographer_url}?utm_source=insighthub&utm_medium=referral`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>{c.photographer}</a>
+                            {i < arr.length - 1 ? ', ' : ''}
+                          </span>
+                        ))}
+                        {' '}on <a href="https://unsplash.com/?utm_source=insighthub&utm_medium=referral" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>Unsplash</a>
+                      </>)}
+                      {unsplashPhotos.length > 0 && pexelsPhotos.length > 0 && ' · '}
+                      {pexelsPhotos.length > 0 && (<>
+                        Photos by{' '}
+                        {pexelsPhotos.map((c, i, arr) => (
+                          <span key={c.id}>
+                            <a href={c.photographer_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>{c.photographer}</a>
+                            {i < arr.length - 1 ? ', ' : ''}
+                          </span>
+                        ))}
+                        {' '}on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)' }}>Pexels</a>
+                      </>)}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </>
@@ -1070,20 +1423,22 @@ export default function CardNewsPage() {
         )}
       </main>
 
-      <Footer language={language} />
 
       {/* Article Picker Modal */}
       <ArticlePickerModal
         isOpen={showPicker}
         onClose={() => setShowPicker(false)}
         onConfirm={handleArticlesSelected}
-        initialSelected={sourceArticles}
+        initialSelected={[]}
         userId={authUser?.id}
       />
 
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        .slide-card:hover .slide-regen-btn {
+          opacity: 1 !important;
         }
       `}</style>
     </div>

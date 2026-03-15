@@ -8,6 +8,10 @@
     {
       "path": "/api/summarize/batch",
       "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/crypto/crawl",
+      "schedule": "*/30 * * * *"
     }
   ],
   "functions": {
@@ -21,6 +25,9 @@
       "maxDuration": 300
     },
     "app/api/sources/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/crypto/crawl/route.ts": {
       "maxDuration": 300
     }
   },

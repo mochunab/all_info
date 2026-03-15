@@ -100,6 +100,7 @@ export default async function AddSourcePage({
       initialSourcesByCategory={grouped}
       initialActiveCategory={cats[0]?.name || ''}
       readOnly={readOnly}
+      userId={effectiveUserId}
     />
   );
 }

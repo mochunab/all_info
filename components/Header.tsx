@@ -44,6 +44,7 @@ export default function Header({
     { label: t(language, 'header.myFeed'), href: '/my-feed' },
     { label: t(language, 'header.blog'), href: '/blog' },
     ...(isMaster ? [{ label: '커리UP', href: '/card-news' }] : []),
+    ...(isMaster ? [{ label: '밈코인 예측기', href: '/crypto' }] : []),
   ];
 
   return (
