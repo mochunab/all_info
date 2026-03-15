@@ -420,6 +420,33 @@ async function crawlWithStrategy(source: CrawlSource): Promise<CrawledArticle[]>
         clearTimeout(timeoutId!);
       }
 
+      // 0건이면 날짜 필터 스킵 재시도 (오래된 콘텐츠만 있는 소스 대응)
+      if (rawItemsAll.length === 0) {
+        console.log(`   🔄 날짜 필터 스킵 재시도...`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (source.config as any)._skipDateFilter = true;
+        try {
+          let retryTimeoutId: ReturnType<typeof setTimeout>;
+          const retryTimeout = new Promise<RawContentItem[]>((_, reject) => {
+            retryTimeoutId = setTimeout(() => reject(new Error('retry timeout')), 15000);
+          });
+          try {
+            const retryItems = await Promise.race([strategy.crawlList(source), retryTimeout]);
+            if (retryItems.length > 0) {
+              console.log(`   ✅ 날짜 필터 스킵 성공: ${retryItems.length}개 발견`);
+              rawItemsAll = retryItems;
+            }
+          } finally {
+            clearTimeout(retryTimeoutId!);
+          }
+        } catch {
+          // retry 실패 무시
+        } finally {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          delete (source.config as any)._skipDateFilter;
+        }
+      }
+
       // 최신 3개만 유지 (사이트 당 제한)
       const rawItems = rawItemsAll.slice(0, 3);
 

@@ -59,13 +59,20 @@ async function fetchSubredditPosts(
   return posts;
 }
 
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 function redditPostToRow(post: RedditPost, subreddit: string) {
   return {
     source: 'reddit' as const,
     source_id: `reddit_${post.name}`,
     channel: subreddit,
-    title: post.title,
-    body: post.selftext || null,
+    title: sanitizeText(post.title),
+    body: post.selftext ? sanitizeText(post.selftext) : null,
     author: post.author,
     permalink: `https://reddit.com${post.permalink}`,
     upvotes: post.ups,
@@ -146,7 +153,7 @@ export async function crawlSubreddit(
       const dbId = sourceIdToDbId.get(`reddit_${post.name}`);
       if (!dbId) continue;
 
-      const mentions = extractCoinMentions(post.title, post.selftext);
+      const mentions = extractCoinMentions(sanitizeText(post.title), post.selftext ? sanitizeText(post.selftext) : null);
       for (const m of mentions) {
         mentionRows.push({
           post_id: dbId,

@@ -578,7 +578,6 @@ export class SPAStrategy implements CrawlStrategy {
         continue;
       }
 
-      // 7일 이내 체크
       if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, cleanedTitle)) {
         console.log(`[SPA] SKIP (too old): ${cleanedTitle.substring(0, 40)}...`);
         continue;

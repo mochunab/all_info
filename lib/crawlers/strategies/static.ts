@@ -126,7 +126,6 @@ export class StaticStrategy implements CrawlStrategy {
           const item = this.parseItem($, $el, selectors, baseUrl, config);
 
           if (item && item.title && item.link) {
-            // 7일 이내 필터링
             if (!isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
               console.log(`[STATIC] SKIP (too old): ${item.title.substring(0, 40)}...`);
               return;

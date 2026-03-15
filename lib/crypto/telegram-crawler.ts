@@ -80,8 +80,10 @@ async function fetchChannelPage(channelUsername: string, before?: number): Promi
 }
 
 function sanitizeText(text: string): string {
-  // null bytes 및 제어 문자 제거 (JSON 파싱 에러 방지)
-  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  return text
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
 }
 
 function telegramWebPostToRow(post: TelegramWebPost, channelUsername: string) {
@@ -162,8 +164,9 @@ export async function crawlTelegramChannel(
       const dbId = sourceIdToDbId.get(sourceId);
       if (!dbId) continue;
 
-      const title = post.text.slice(0, 200);
-      const body = post.text.length > 200 ? post.text : null;
+      const cleanText = sanitizeText(post.text);
+      const title = cleanText.slice(0, 200);
+      const body = cleanText.length > 200 ? cleanText : null;
       const mentions = extractCoinMentions(title, body);
 
       for (const m of mentions) {

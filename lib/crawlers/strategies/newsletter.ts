@@ -211,7 +211,6 @@ export class NewsletterStrategy implements CrawlStrategy {
           $date.text().trim() ||
           null;
 
-        // 7일 이내 필터링
         if (!isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
           console.log(`[NEWSLETTER] SKIP (too old): ${title.substring(0, 40)}...`);
           return;
