@@ -1,4 +1,4 @@
-import type { SubredditConfig, TelegramChannelConfig, CoinEntry } from '@/types/crypto';
+import type { SubredditConfig, TelegramChannelConfig, CoinEntry, ThreadsSearchKeyword } from '@/types/crypto';
 
 export const CRYPTO_SUBREDDITS: readonly SubredditConfig[] = [
   { name: 'CryptoCurrency', weight: 1.0, minScore: 10 },
@@ -43,6 +43,26 @@ export const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
 export const TELEGRAM_FETCH_LIMIT = 100;
 export const TELEGRAM_RATE_LIMIT_MS = 500;
 
+// ── Threads 설정 ──
+
+export const THREADS_API_BASE = 'https://graph.threads.net/v1.0';
+
+export const THREADS_SEARCH_KEYWORDS: readonly ThreadsSearchKeyword[] = [
+  { keyword: 'memecoin', weight: 1.2 },
+  { keyword: 'meme coin', weight: 1.2 },
+  { keyword: '$DOGE', weight: 1.0 },
+  { keyword: '$PEPE', weight: 1.0 },
+  { keyword: '$SHIB', weight: 1.0 },
+  { keyword: '$BONK', weight: 1.0 },
+  { keyword: '$WIF', weight: 1.0 },
+  { keyword: 'crypto pump', weight: 1.1 },
+  { keyword: 'altcoin', weight: 0.9 },
+  { keyword: 'to the moon crypto', weight: 1.1 },
+] as const;
+
+export const THREADS_SEARCH_LIMIT = 50;
+export const THREADS_RATE_LIMIT_MS = 500;
+
 export const CRAWL_CONCURRENCY = 2;
 export const SENTIMENT_CONCURRENCY = 5;
 export const SENTIMENT_MAX_RETRIES = 3;
@@ -57,6 +77,16 @@ export const TIME_WINDOW_MS: Record<string, number> = {
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
+
+// Self-Continue (타임아웃 방지)
+export const SELF_CONTINUE = {
+  SAFE_LIMIT_MS: 250_000,
+  MAX_COUNT: 3,
+  SIGNAL_KG_RESERVE_MS: 30_000,
+} as const;
+
+// 시그널 신뢰도 최소 멘션 수 (미만이면 점수 감쇠)
+export const MIN_MENTION_CONFIDENCE = 5;
 
 // 시그널 가중치
 export const SIGNAL_WEIGHTS = {

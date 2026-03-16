@@ -2,7 +2,7 @@
 
 // ── DB Row Types ──
 
-export type CryptoSource = 'reddit' | 'telegram';
+export type CryptoSource = 'reddit' | 'telegram' | 'threads';
 
 export type CryptoPost = {
   id: string;
@@ -146,6 +146,30 @@ export type TelegramUpdate = {
   update_id: number;
   channel_post?: TelegramMessage;
   message?: TelegramMessage;
+};
+
+// ── Threads API Types ──
+
+export type ThreadsSearchPost = {
+  id: string;
+  text: string;
+  media_type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'CAROUSEL';
+  permalink: string;
+  timestamp: string;
+  username: string;
+};
+
+export type ThreadsSearchResponse = {
+  data: ThreadsSearchPost[];
+  paging?: {
+    cursors: { before: string; after: string };
+    next?: string;
+  };
+};
+
+export type ThreadsSearchKeyword = {
+  keyword: string;
+  weight: number;
 };
 
 // ── Sentiment Analysis Types ──

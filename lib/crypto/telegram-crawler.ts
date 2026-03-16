@@ -206,11 +206,18 @@ export async function crawlTelegramChannel(
 
 export async function crawlAllTelegramChannels(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<CryptoCrawlResult[]> {
+  supabase: SupabaseClient<any>,
+  timeBudgetMs?: number
+): Promise<{ results: CryptoCrawlResult[]; completed: boolean }> {
   const results: CryptoCrawlResult[] = [];
+  const callStart = Date.now();
 
   for (const config of TELEGRAM_CHANNELS) {
+    if (timeBudgetMs && (Date.now() - callStart) > timeBudgetMs) {
+      console.log(`⏰ [Telegram] 시간 제한 도달 — 남은 ${TELEGRAM_CHANNELS.length - results.length}개 채널 다음 실행으로 연기`);
+      return { results, completed: false };
+    }
+
     console.log(`\n📌 [크립토] t/${config.username} 크롤링 시작`);
     const result = await crawlTelegramChannel(supabase, config.username);
 
@@ -224,5 +231,5 @@ export async function crawlAllTelegramChannels(
     await sleep(TELEGRAM_RATE_LIMIT_MS);
   }
 
-  return results;
+  return { results, completed: true };
 }

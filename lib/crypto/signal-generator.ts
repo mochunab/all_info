@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SignalLabel, TimeWindow, SignalComputeResult, TopPostSummary } from '@/types/crypto';
-import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS } from '@/lib/crypto/config';
+import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS, MIN_MENTION_CONFIDENCE } from '@/lib/crypto/config';
 
 function computeSignalLabel(score: number): SignalLabel {
   if (score >= 80) return 'strong_buy';
@@ -122,7 +122,7 @@ export async function generateSignalsForWindow(
     const prevCount = prevCounts.get(symbol) || 0;
     const velocity = prevCount > 0
       ? (agg.mentions - prevCount) / prevCount
-      : agg.mentions > 0 ? 1 : 0;
+      : 0;
 
     const avgSentiment = agg.sentiments.length > 0
       ? agg.sentiments.reduce((a, b) => a + b, 0) / agg.sentiments.length
@@ -141,14 +141,16 @@ export async function generateSignalsForWindow(
     const engagementNorm = clamp(Math.log10(engagementPerMention + 1) * 25, 0, 100);
     const fomoNorm = clamp(avgFomo * 100, 0, 100);
 
-    const weightedScore = clamp(
+    const mentionConfidence = clamp(agg.mentions / MIN_MENTION_CONFIDENCE, 0, 1);
+
+    const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +
       sentimentNorm * SIGNAL_WEIGHTS.AVG_SENTIMENT +
       trendNorm * SIGNAL_WEIGHTS.SENTIMENT_TREND +
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
-      fomoNorm * SIGNAL_WEIGHTS.FOMO_AVG,
-      0, 100
-    );
+      fomoNorm * SIGNAL_WEIGHTS.FOMO_AVG;
+
+    const weightedScore = clamp(rawScore * mentionConfidence, 0, 100);
 
     agg.posts.sort((a, b) => b.score - a.score);
 
