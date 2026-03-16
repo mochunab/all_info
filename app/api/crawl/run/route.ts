@@ -224,14 +224,29 @@ async function handleCrawlRun(request: NextRequest) {
       console.log(`🔄 [직렬 처리 완료]`);
     }
 
-    // AI 배치 요약 — 크롤링 직후 실행
+    // AI 배치 요약 — 크롤링 직후 실행 (Self-Continue: 시간 제한 시 자기 재호출)
     console.log(`\n${'='.repeat(80)}`);
     console.log(`🤖 [AI 요약] 배치 요약 시작...`);
     console.log(`${'='.repeat(80)}`);
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const summaryResult = await processPendingSummaries(supabase as any, 30, supabaseKey);
+    const summaryResult = await processPendingSummaries(supabase as any, 200, supabaseKey, runStartTime);
     console.log(`✅ [AI 요약] ${summaryResult.success}/${summaryResult.processed}개 완료\n`);
+
+    // Self-Continue: 시간 제한으로 중단된 경우 /api/summarize/batch 재호출
+    if (summaryResult.stoppedByTimeLimit) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+      const cronSecret = process.env.CRON_SECRET;
+      console.log(`🔄 [Self-Continue] 남은 요약 처리를 위해 /api/summarize/batch 재호출...`);
+      fetch(`${siteUrl}/api/summarize/batch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cronSecret}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ selfContinue: true }),
+      }).catch(err => console.error('❌ [Self-Continue] 재호출 실패:', err));
+    }
 
     invalidateCacheByPrefix(CACHE_KEYS.ARTICLES_PREFIX);
     invalidateCache(CACHE_KEYS.SSR_HOME);
@@ -287,7 +302,7 @@ async function handleCrawlRun(request: NextRequest) {
     console.log(`🎉 [전체 완료] ${totalDuration}초`);
     console.log(`   소스: ${sources.length}개 (성공 ${successCount}, 실패 ${failCount})`);
     console.log(`   아티클: ${totalFound}개 발견 → ${totalNew}개 저장`);
-    console.log(`   AI 요약: ${summaryResult.success}/${summaryResult.processed}개`);
+    console.log(`   AI 요약: ${summaryResult.success}/${summaryResult.processed}개${summaryResult.stoppedByTimeLimit ? ' (Self-Continue 발동)' : ''}`);
     console.log(`${'='.repeat(80)}\n`);
 
     return NextResponse.json({
@@ -300,6 +315,7 @@ async function handleCrawlRun(request: NextRequest) {
         processed: summaryResult.processed,
         success: summaryResult.success,
         failed: summaryResult.failed,
+        selfContinue: summaryResult.stoppedByTimeLimit || false,
       },
     });
   } catch (error) {

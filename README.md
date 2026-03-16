@@ -168,8 +168,9 @@ Vercel Dashboard > Settings > Environment Variables에서 `.env.local`과 동일
 ### Cron Job
 
 `vercel.json`에 설정됨:
-- `/api/crawl/run` - 매일 00:00 UTC (09:00 KST)
-- maxDuration: 300초 (크롤링 + 요약)
+- `/api/crawl/run` - 매일 00:00 UTC (09:00 KST) — 크롤링 + AI 요약 (Self-Continue)
+- `/api/summarize/batch` - 매일 00:30 UTC (09:30 KST) — 요약 안전망
+- maxDuration: 300초, Self-Continue로 타임아웃 시 자동 재호출
 
 ---
 

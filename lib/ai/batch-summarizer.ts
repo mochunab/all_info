@@ -10,6 +10,7 @@ type BatchResult = {
   success: number;
   failed: number;
   errors: string[];
+  stoppedByTimeLimit?: boolean;
 };
 
 type ArticleRow = {
@@ -25,6 +26,9 @@ const USE_EDGE_FUNCTION = process.env.USE_EDGE_FUNCTION !== 'false';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+
+// Self-Continue: Vercel 300초 타임아웃 대비 안전 마진
+const SAFE_EXECUTION_MS = 250_000;
 
 // 재시도 래퍼 (최대 3회, 1초 간격)
 async function withRetry<T>(
@@ -122,21 +126,24 @@ async function generateAISummaryViaEdgeFunction(
   }
 }
 
-// Process pending summaries in batches (1회 호출로 summary + ai_summary + tags 생성)
+// Process pending summaries — summary IS NULL인 아티클을 전부 처리 (5개씩 병렬)
+// startTime을 전달받으면 Vercel 300초 타임아웃 대비 Self-Continue 패턴 적용
 export async function processPendingSummaries(
   supabase: SupabaseClient<Database>,
-  batchSize = 20,
-  supabaseKey?: string
+  batchSize = 50,
+  supabaseKey?: string,
+  startTime?: number
 ): Promise<BatchResult> {
   const result: BatchResult = {
     processed: 0,
     success: 0,
     failed: 0,
     errors: [],
+    stoppedByTimeLimit: false,
   };
 
   try {
-    // 요약 없는 게시글 조회 (summary가 없는 것들)
+    // 요약 없는 게시글 전체 조회
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: articlesData, error } = await (supabase as any)
       .from('articles')
@@ -162,8 +169,15 @@ export async function processPendingSummaries(
     const CONCURRENCY = 5;
     console.log(`\n📊 [AI 요약] ${articles.length}개 아티클 처리 시작 (${CONCURRENCY}개 동시 처리)\n`);
 
-    // 5개씩 청크로 나누어 병렬 처리
     for (let i = 0; i < articles.length; i += CONCURRENCY) {
+      // Self-Continue: 시간 제한 체크
+      if (startTime && (Date.now() - startTime) > SAFE_EXECUTION_MS) {
+        const remaining = articles.length - i;
+        console.log(`⏰ [AI 요약] ${((Date.now() - startTime) / 1000).toFixed(0)}초 경과 — 안전 종료 (남은 ${remaining}개)`);
+        result.stoppedByTimeLimit = true;
+        break;
+      }
+
       const chunk = articles.slice(i, i + CONCURRENCY);
       const batchNum = Math.floor(i / CONCURRENCY) + 1;
       const totalBatches = Math.ceil(articles.length / CONCURRENCY);
@@ -177,7 +191,6 @@ export async function processPendingSummaries(
             return { article, skipped: true } as const;
           }
 
-          // Edge Function 우선, 실패 시 로컬 fallback (최대 3회 재시도)
           const aiResult = await withRetry(async () => {
             let res;
             if (USE_EDGE_FUNCTION && supabaseKey) {
@@ -203,12 +216,10 @@ export async function processPendingSummaries(
             return res;
           }, article.title.substring(0, 40));
 
-          // hook_title + detailed_summary → summary 컬럼에 합쳐서 저장
           const combinedSummary = aiResult.hook_title
             ? `${aiResult.hook_title}\n\n${aiResult.detailed_summary}`
             : aiResult.detailed_summary || null;
 
-          // DB 업데이트
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: updateError } = await (supabase as any)
             .from('articles')
@@ -229,7 +240,6 @@ export async function processPendingSummaries(
         })
       );
 
-      // 청크 결과 집계
       for (const settled of chunkResults) {
         result.processed++;
         if (settled.status === 'fulfilled') {

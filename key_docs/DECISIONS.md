@@ -1128,6 +1128,34 @@ SITEMAP 전략은 사이트 표준 규격(sitemap.xml)을 활용하므로 사이
 
 ---
 
+## ADR-031: AI 요약 Self-Continue 패턴 (Vercel 타임아웃 대비)
+
+**일시**: 2026-03-15
+**상태**: 확정
+
+**문제**: AI 요약이 `batchSize=30`으로 제한되어 크롤링 100개 시 첫날 60개만 처리, 나머지 40개는 다음날까지 대기. Vercel Serverless 300초 제한 때문에 한 번에 전부 처리 불가.
+
+**결정**: nadaunse 프로젝트의 Self-Continue 패턴을 차용하여, 시간 초과 시 자기 재호출로 남은 요약을 이어서 처리한다.
+
+**구현**:
+1. `processPendingSummaries`에 `startTime` 파라미터 추가, 250초(안전 마진 50초) 초과 시 `stoppedByTimeLimit=true` 반환
+2. `crawl/run`: 시간 초과 시 `/api/summarize/batch`를 fire-and-forget으로 재호출
+3. `summarize/batch`: `selfContinueCount` 트래킹, 최대 5회 체이닝 (총 ~25분)
+4. 09:30 KST cron을 최종 안전망으로 유지
+
+**대안 검토**:
+- batchSize 확대만: 300초 내 처리 가능한 수량에 여전히 상한 존재
+- cron 횟수 추가 (09:05, 09:10, ...): 고정 시간 간격, 유연하지 않음
+- 별도 워커 서버: 인프라 추가 부담, 오버엔지니어링
+
+**트레이드오프**:
+- fire-and-forget이므로 재호출 실패 시 다음 cron(09:30)까지 대기
+- 최대 5회 제한으로 무한 루프 방지 (200건 × 5회 = 최대 1000건 처리 가능)
+
+**참고**: nadaunse `generate-content-answers` Edge Function의 Self-Continue 패턴 (100초 실행 + 자기 재호출, 최대 5회)
+
+---
+
 ## ADR-NNN: 제목
 
 **일시**: YYYY-MM-DD

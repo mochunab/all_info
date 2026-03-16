@@ -61,6 +61,11 @@
           HTML 파싱 → Readability → content_preview (500자)
           → Edge Function (Gemini 2.5 Flash Lite) → title_ko + summary + summary_tags
             └→ 실패 시 → 로컬 OpenAI (gpt-4.1-mini), 최대 3회 재시도
+
+AI 요약 (Self-Continue):
+  크롤링 직후 → summary IS NULL 전체 조회 (최대 200건)
+  → 5개씩 병렬 처리 → 250초 도달 시 /api/summarize/batch 자기 재호출
+  → 최대 5회 체이닝 (총 ~25분) → 09:30 KST cron 안전망
 ```
 
 ### 멀티유저 피드 (`user_id` 스코핑)

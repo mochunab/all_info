@@ -33,6 +33,7 @@
 
 별도 백엔드 서버 없이 **Vercel Serverless Functions**로 모든 서버 로직 처리.
 Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
+Cron: 매일 00:30 UTC (09:30 KST) → `POST /api/summarize/batch` 안전망 (Self-Continue 미완료분 처리).
 
 ---
 
@@ -119,11 +120,11 @@ Cron: 매일 00:00 UTC (09:00 KST) → `POST /api/crawl/run` 자동 호출.
 
 ---
 
-## 2. AI 요약 플로우
+## 2. AI 요약 플로우 (Self-Continue 패턴)
 
 ```
-processPendingSummaries()
-  ├─ ai_summary IS NULL인 아티클 최대 30건 조회
+크롤링 완료 후 → processPendingSummaries(batchSize=200, startTime)
+  ├─ summary IS NULL인 아티클 전체 조회 (최대 200건)
   ├─ 5개씩 병렬 (Promise.allSettled), 실패 시 최대 3회 재시도 (1s→2s→3s)
   │
   ├─ USE_EDGE_FUNCTION=true (기본):
@@ -132,7 +133,12 @@ processPendingSummaries()
   └─ USE_EDGE_FUNCTION=false:
       └─ 로컬 OpenAI (GPT-4.1-mini) 직접 호출
   │
-  └─ DB UPDATE: title_ko (한국어 번역 제목), ai_summary (1줄 80자), summary_tags (3개), summary (레거시)
+  ├─ DB UPDATE: title_ko, summary_tags (3개), summary (hook_title + detailed_summary)
+  │
+  └─ [Self-Continue] 250초 도달 시 안전 종료
+      → /api/summarize/batch fire-and-forget 재호출 (selfContinueCount + 1)
+      → 재호출된 batch도 동일하게 200건 조회 + 250초 체크 + 재호출
+      → 최대 5회 체이닝 (총 ~25분, 09:30 KST cron이 최종 안전망)
 ```
 
 ---
@@ -283,7 +289,8 @@ const SOURCE_COLORS: Record<string, string> = {
 |------|-----|
 | 크롤링 전체 | ~30-60초 (제한 병렬, 변경 감지 스킵 적용) |
 | AI 요약 1건 | ~2-3초 |
-| 배치 요약 20건 | ~12초 (5개 병렬 × 4청크) |
+| 배치 요약 50건 | ~30초 (5개 병렬 × 10청크) |
+| AI 요약 Self-Continue | 250초/회 × 최대 5회 체이닝 (~25분) |
 | Vercel maxDuration | 300초 |
 | fetch 타임아웃 | 15초 |
 | 페이지당 아티클 | 12개 (최대 50) |
@@ -309,6 +316,14 @@ const SOURCE_COLORS: Record<string, string> = {
 ---
 
 ## 버전 히스토리
+
+### v1.8.8 (2026-03-15)
+- AI 요약 Self-Continue 패턴 도입: Vercel 300초 타임아웃 대비 자기 재호출
+  - `processPendingSummaries`: batchSize 30→200, `startTime` 파라미터 추가, 250초 초과 시 안전 종료
+  - `crawl/run`: 크롤링 후 요약 시간 초과 시 `/api/summarize/batch` fire-and-forget 재호출
+  - `summarize/batch`: Self-Continue 지원 (최대 5회 체이닝, 총 ~25분)
+  - 크롤링 수량과 무관하게 모든 아티클 AI 요약 완료 보장
+- Cron 안전망 시간 변경: 09:05 → 09:30 KST
 
 ### v1.8.7 (2026-03-12)
 - 멀티유저 아티클 공유: 다른 유저가 이미 크롤링한 동일 소스 아티클 복사 (크롤링/AI 요약 스킵)
