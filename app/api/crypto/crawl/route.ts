@@ -88,13 +88,16 @@ async function handleCrawl(request: NextRequest) {
     }
 
     // ── Phase 1b: Telegram ──
+    console.log(`⏱️ [타이밍] Phase 1b 진입: ${(elapsed() / 1000).toFixed(1)}초 경과, 남은: ${(remaining() / 1000).toFixed(1)}초`);
     if (remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS + 10_000) {
       try {
         const { crawlAllTelegramChannels } = await import('@/lib/crypto/telegram-crawler');
         const crawlBudget = remaining() - SELF_CONTINUE.SIGNAL_KG_RESERVE_MS - 10_000;
+        console.log(`⏱️ [타이밍] Telegram 예산: ${(crawlBudget / 1000).toFixed(1)}초`);
         const { results: telegramResults, completed } = await crawlAllTelegramChannels(supabase, crawlBudget);
         allResults.push(...telegramResults);
         if (!completed) needsContinue = true;
+        console.log(`⏱️ [타이밍] Telegram 완료: ${(elapsed() / 1000).toFixed(1)}초 경과`);
       } catch (e) {
         console.warn(`[Telegram] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
       }
@@ -125,13 +128,14 @@ async function handleCrawl(request: NextRequest) {
     const errors = allResults.flatMap((r) => r.errors);
 
     // ── Phase 2: 센티먼트 + 시그널 (항상 실행 시도) ──
+    console.log(`⏱️ [타이밍] Phase 2 진입: ${(elapsed() / 1000).toFixed(1)}초 경과, 남은: ${(remaining() / 1000).toFixed(1)}초`);
     let sentimentResult = { processed: 0, success: 0, failed: 0 };
 
     if (remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS) {
       try {
         const { processCryptoSentiments } = await import('@/lib/crypto/batch-sentiment');
         const sentimentBudget = remaining() - SELF_CONTINUE.SIGNAL_KG_RESERVE_MS;
-        const result = await processCryptoSentiments(supabase, 100, sentimentBudget);
+        const result = await processCryptoSentiments(supabase, 30, sentimentBudget);
         sentimentResult = { processed: result.processed, success: result.success, failed: result.failed };
         if (!result.completed) needsContinue = true;
         console.log(`[센티먼트] ${result.success}/${result.processed}개 완료${!result.completed ? ' (시간 제한)' : ''}`);

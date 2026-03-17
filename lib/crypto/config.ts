@@ -80,8 +80,8 @@ export const TIME_WINDOW_MS: Record<string, number> = {
 
 // Self-Continue (타임아웃 방지)
 export const SELF_CONTINUE = {
-  SAFE_LIMIT_MS: 250_000,
-  MAX_COUNT: 3,
+  SAFE_LIMIT_MS: 200_000,
+  MAX_COUNT: 5,
   SIGNAL_KG_RESERVE_MS: 30_000,
 } as const;
 

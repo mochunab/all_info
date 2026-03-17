@@ -31,13 +31,19 @@ async function fetchChannelPage(channelUsername: string, before?: number): Promi
     ? `https://t.me/s/${channelUsername}?before=${before}`
     : `https://t.me/s/${channelUsername}`;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'InsightHub/1.0 (Crypto Monitor)',
       'Accept': 'text/html',
       'Accept-Language': 'en-US,en;q=0.9',
     },
+    signal: controller.signal,
   });
+
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     throw new Error(`Telegram web preview error: ${response.status} for t/${channelUsername}`);
