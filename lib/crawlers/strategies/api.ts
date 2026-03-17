@@ -65,12 +65,15 @@ export class APIStrategy implements CrawlStrategy {
     try {
       const items: RawContentItem[] = [];
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const skipDateFilter = !!(config as any)?._skipDateFilter;
+
       // 페이지네이션 처리
       if (apiConfig.pagination) {
-        const pageItems = await this.fetchWithPagination(apiUrl, apiConfig, source.base_url);
+        const pageItems = await this.fetchWithPagination(apiUrl, apiConfig, source.base_url, skipDateFilter);
         items.push(...pageItems);
       } else {
-        const pageItems = await this.fetchSinglePage(apiUrl, apiConfig, source.base_url);
+        const pageItems = await this.fetchSinglePage(apiUrl, apiConfig, source.base_url, skipDateFilter);
         items.push(...pageItems);
       }
 
@@ -97,17 +100,19 @@ export class APIStrategy implements CrawlStrategy {
   private async fetchSinglePage(
     apiUrl: string,
     apiConfig: APIConfig,
-    sourceBaseUrl: string
+    sourceBaseUrl: string,
+    skipDateFilter = false
   ): Promise<RawContentItem[]> {
     const url = this.buildUrl(apiUrl, apiConfig.queryParams);
     const response = await this.makeRequest(url, apiConfig);
-    return this.parseResponse(response, apiConfig, sourceBaseUrl);
+    return this.parseResponse(response, apiConfig, sourceBaseUrl, skipDateFilter);
   }
 
   private async fetchWithPagination(
     apiUrl: string,
     apiConfig: APIConfig,
-    sourceBaseUrl: string
+    sourceBaseUrl: string,
+    skipDateFilter = false
   ): Promise<RawContentItem[]> {
     const items: RawContentItem[] = [];
     const pagination = apiConfig.pagination!;
@@ -142,7 +147,7 @@ export class APIStrategy implements CrawlStrategy {
 
       try {
         const response = await this.makeRequest(url, apiConfig);
-        const pageItems = this.parseResponse(response, apiConfig, sourceBaseUrl);
+        const pageItems = this.parseResponse(response, apiConfig, sourceBaseUrl, skipDateFilter);
 
         if (pageItems.length === 0) {
           console.log('[API] No more items, stopping pagination');
@@ -222,7 +227,8 @@ export class APIStrategy implements CrawlStrategy {
   private parseResponse(
     response: Record<string, unknown>,
     apiConfig: APIConfig,
-    baseUrl: string
+    baseUrl: string,
+    skipDateFilter = false
   ): RawContentItem[] {
     const items: RawContentItem[] = [];
     const mapping = apiConfig.responseMapping || this.getDefaultMapping();
@@ -321,7 +327,7 @@ export class APIStrategy implements CrawlStrategy {
           dateStr = (this.getNestedValue(item, mapping.date) as string) || null;
         }
 
-        const skipDate = Boolean(source.config && '_skipDateFilter' in (source.config as object) && (source.config as Record<string, unknown>)._skipDateFilter);
+        const skipDate = skipDateFilter;
         if (!skipDate && !isWithinDays(dateStr, MAX_ARTICLE_AGE_DAYS, title)) {
           console.log(`[API] SKIP (too old): ${title.substring(0, 40)}...`);
           continue;

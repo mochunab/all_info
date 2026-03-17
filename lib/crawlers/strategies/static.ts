@@ -126,7 +126,8 @@ export class StaticStrategy implements CrawlStrategy {
           const item = this.parseItem($, $el, selectors, baseUrl, config);
 
           if (item && item.title && item.link) {
-            const skipDate = Boolean(source.config && '_skipDateFilter' in (source.config as object) && (source.config as Record<string, unknown>)._skipDateFilter);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const skipDate = !!(config as any)?._skipDateFilter;
             if (!skipDate && !isWithinDays(item.dateStr, MAX_ARTICLE_AGE_DAYS, item.title)) {
               console.log(`[STATIC] SKIP (too old): ${item.title.substring(0, 40)}...`);
               return;
