@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { SELF_CONTINUE } from '@/lib/crypto/config';
 import type { CryptoCrawlResult } from '@/types/crypto';
 
 export const maxDuration = 300;
@@ -23,20 +22,20 @@ export async function POST(request: NextRequest) {
   return handleCrawl(request);
 }
 
-async function parseSelfContinueCount(request: NextRequest): Promise<number> {
+async function parsePhase(request: NextRequest): Promise<string> {
   try {
     const body = await request.clone().json();
-    return typeof body.selfContinueCount === 'number' ? body.selfContinueCount : 0;
+    return body.phase || 'crawl';
   } catch {
-    return 0;
+    return 'crawl';
   }
 }
 
-async function triggerSelfContinue(nextCount: number): Promise<void> {
+async function triggerNextPhase(phase: string): Promise<void> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://aca-info.com';
   const cronSecret = process.env.CRON_SECRET;
 
-  console.log(`🔄 [selfContinue] 자기 재호출 시작 (#${nextCount})`);
+  console.log(`🔄 다음 페이즈 트리거: ${phase}`);
 
   fetch(`${siteUrl}/api/crypto/crawl`, {
     method: 'POST',
@@ -44,193 +43,143 @@ async function triggerSelfContinue(nextCount: number): Promise<void> {
       'Authorization': `Bearer ${cronSecret}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ selfContinueCount: nextCount }),
-  }).catch((err) => console.error('❌ [selfContinue] 재호출 실패:', err));
+    body: JSON.stringify({ phase }),
+  }).catch((err) => console.error(`❌ ${phase} 트리거 실패:`, err));
 
-  // 네트워크 전송 보장
   await new Promise((r) => setTimeout(r, 2000));
 }
 
 async function handleCrawl(request: NextRequest) {
   const startTime = Date.now();
-  const elapsed = () => Date.now() - startTime;
-  const remaining = () => SELF_CONTINUE.SAFE_LIMIT_MS - elapsed();
 
   try {
     if (!verifyCronSecret(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const selfContinueCount = await parseSelfContinueCount(request);
+    const phase = await parsePhase(request);
+    const supabase = createServiceClient();
 
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`[크립토 크롤링] 시작 — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}${selfContinueCount > 0 ? ` (selfContinue #${selfContinueCount})` : ''}`);
+    console.log(`[크립토] Phase: ${phase} — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    const supabase = createServiceClient();
-    const allResults: CryptoCrawlResult[] = [];
-    let needsContinue = false;
+    // ── Phase 1: 크롤링만 (Telegram/Reddit/Threads) ──
+    if (phase === 'crawl') {
+      const allResults: CryptoCrawlResult[] = [];
 
-    // ── Phase 1a: Reddit ──
-    if (process.env.REDDIT_CLIENT_ID && remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS + 10_000) {
-      try {
-        const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
-        const redditResults = await crawlAllSubreddits(supabase);
-        allResults.push(...redditResults);
-      } catch (e) {
-        console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+      if (process.env.REDDIT_CLIENT_ID) {
+        try {
+          const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
+          const results = await crawlAllSubreddits(supabase);
+          allResults.push(...results);
+        } catch (e) {
+          console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+        }
       }
-    } else if (process.env.REDDIT_CLIENT_ID) {
-      console.log('[Reddit] 시간 부족 — 다음 실행으로 연기');
-      needsContinue = true;
-    } else {
-      console.log('[Reddit] REDDIT_CLIENT_ID 미설정 — 스킵');
-    }
 
-    // ── Phase 1b: Telegram ──
-    console.log(`⏱️ [타이밍] Phase 1b 진입: ${(elapsed() / 1000).toFixed(1)}초 경과, 남은: ${(remaining() / 1000).toFixed(1)}초`);
-    if (remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS + 10_000) {
       try {
         const { crawlAllTelegramChannels } = await import('@/lib/crypto/telegram-crawler');
-        const crawlBudget = remaining() - SELF_CONTINUE.SIGNAL_KG_RESERVE_MS - 10_000;
-        console.log(`⏱️ [타이밍] Telegram 예산: ${(crawlBudget / 1000).toFixed(1)}초`);
-        const { results: telegramResults, completed } = await crawlAllTelegramChannels(supabase, crawlBudget);
-        allResults.push(...telegramResults);
-        if (!completed) needsContinue = true;
-        console.log(`⏱️ [타이밍] Telegram 완료: ${(elapsed() / 1000).toFixed(1)}초 경과`);
+        const { results } = await crawlAllTelegramChannels(supabase);
+        allResults.push(...results);
       } catch (e) {
         console.warn(`[Telegram] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
       }
-    } else {
-      console.log('[Telegram] 시간 부족 — 다음 실행으로 연기');
-      needsContinue = true;
-    }
 
-    // ── Phase 1c: Threads ──
-    if (process.env.THREADS_ACCESS_TOKEN && remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS + 10_000) {
-      try {
-        const { crawlAllThreadsKeywords } = await import('@/lib/crypto/threads-crawler');
-        const threadsResults = await crawlAllThreadsKeywords(supabase);
-        allResults.push(...threadsResults);
-      } catch (e) {
-        console.warn(`[Threads] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+      if (process.env.THREADS_ACCESS_TOKEN) {
+        try {
+          const { crawlAllThreadsKeywords } = await import('@/lib/crypto/threads-crawler');
+          const results = await crawlAllThreadsKeywords(supabase);
+          allResults.push(...results);
+        } catch (e) {
+          console.warn(`[Threads] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+        }
       }
-    } else if (process.env.THREADS_ACCESS_TOKEN) {
-      console.log('[Threads] 시간 부족 — 다음 실행으로 연기');
-      needsContinue = true;
-    } else {
-      console.log('[Threads] THREADS_ACCESS_TOKEN 미설정 — 스킵');
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const totalNew = allResults.reduce((s, r) => s + r.postsNew, 0);
+      const totalMentions = allResults.reduce((s, r) => s + r.mentionsExtracted, 0);
+      console.log(`[크롤링 완료] ${elapsed}초, 신규: ${totalNew}개, 멘션: ${totalMentions}개`);
+
+      // 크롤링 끝나면 센티먼트 페이즈 트리거
+      await triggerNextPhase('sentiment');
+
+      return NextResponse.json({
+        success: true,
+        phase: 'crawl',
+        crawl: {
+          totalChannels: allResults.length,
+          postsNew: totalNew,
+          mentionsExtracted: totalMentions,
+        },
+        elapsed: `${elapsed}s`,
+        nextPhase: 'sentiment',
+      });
     }
 
-    const totalFound = allResults.reduce((s, r) => s + r.postsFound, 0);
-    const totalNew = allResults.reduce((s, r) => s + r.postsNew, 0);
-    const totalMentions = allResults.reduce((s, r) => s + r.mentionsExtracted, 0);
-    const errors = allResults.flatMap((r) => r.errors);
+    // ── Phase 2: 센티먼트 분석 ──
+    if (phase === 'sentiment') {
+      let sentimentResult = { processed: 0, success: 0, failed: 0 };
 
-    // ── Phase 2: 센티먼트 + 시그널 (항상 실행 시도) ──
-    console.log(`⏱️ [타이밍] Phase 2 진입: ${(elapsed() / 1000).toFixed(1)}초 경과, 남은: ${(remaining() / 1000).toFixed(1)}초`);
-    let sentimentResult = { processed: 0, success: 0, failed: 0 };
-
-    if (remaining() > SELF_CONTINUE.SIGNAL_KG_RESERVE_MS) {
       try {
         const { processCryptoSentiments } = await import('@/lib/crypto/batch-sentiment');
-        const sentimentBudget = remaining() - SELF_CONTINUE.SIGNAL_KG_RESERVE_MS;
-        const result = await processCryptoSentiments(supabase, 30, sentimentBudget);
+        const result = await processCryptoSentiments(supabase, 30, 200_000);
         sentimentResult = { processed: result.processed, success: result.success, failed: result.failed };
-        if (!result.completed) needsContinue = true;
-        console.log(`[센티먼트] ${result.success}/${result.processed}개 완료${!result.completed ? ' (시간 제한)' : ''}`);
+
+        if (!result.completed) {
+          console.log(`[센티먼트] 시간 제한 — 추가 호출 트리거`);
+          await triggerNextPhase('sentiment');
+        } else {
+          await triggerNextPhase('signals');
+        }
       } catch (e) {
-        console.warn(`[센티먼트] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[센티먼트] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+        await triggerNextPhase('signals');
       }
-    } else {
-      console.log('[센티먼트] 시간 부족 — 다음 실행으로 연기');
-      needsContinue = true;
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[센티먼트 완료] ${elapsed}초, ${sentimentResult.success}/${sentimentResult.processed}개`);
+
+      return NextResponse.json({
+        success: true,
+        phase: 'sentiment',
+        sentiment: sentimentResult,
+        elapsed: `${elapsed}s`,
+      });
     }
 
-    // ── Phase 3: 시그널 생성 (빠름, 항상 실행) ──
-    let signalResult = { generated: 0 };
+    // ── Phase 3: 시그널 + 지식그래프 ──
+    if (phase === 'signals') {
+      let signalResult = { generated: 0 };
 
-    if (remaining() > 5_000) {
       try {
         const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
         signalResult = await generateAllSignals(supabase);
         console.log(`[시그널] ${signalResult.generated}개 생성`);
       } catch (e) {
-        console.warn(`[시그널] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[시그널] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
-    }
 
-    // ── Phase 4: 지식그래프 (빠름, 항상 실행) ──
-    if (remaining() > 5_000) {
       try {
         const { updateKnowledgeGraph } = await import('@/lib/crypto/knowledge-graph');
         await updateKnowledgeGraph(supabase);
         console.log(`[지식그래프] 업데이트 완료`);
       } catch (e) {
-        console.warn(`[지식그래프] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[지식그래프] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
-    }
 
-    const elapsedSec = (elapsed() / 1000).toFixed(1);
-
-    const sourceSummary = allResults.reduce((acc, r) => {
-      const key = r.source;
-      if (!acc[key]) acc[key] = { channels: 0, posts: 0, new: 0 };
-      acc[key].channels++;
-      acc[key].posts += r.postsFound;
-      acc[key].new += r.postsNew;
-      return acc;
-    }, {} as Record<string, { channels: number; posts: number; new: number }>);
-
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`[크립토 크롤링 완료] ${elapsedSec}초`);
-    for (const [src, info] of Object.entries(sourceSummary)) {
-      console.log(`   ${src}: ${info.channels}개 채널, ${info.posts}개 발견 → ${info.new}개 저장`);
-    }
-    console.log(`   멘션: ${totalMentions}개 추출`);
-    console.log(`   센티먼트: ${sentimentResult.success}/${sentimentResult.processed}개`);
-    console.log(`   시그널: ${signalResult.generated}개`);
-    if (errors.length > 0) console.log(`   오류: ${errors.length}건`);
-    if (needsContinue) console.log(`   ⏰ 시간 제한으로 미완료 작업 있음`);
-    console.log(`${'='.repeat(60)}\n`);
-
-    // ── Self-Continue ──
-    if (needsContinue && selfContinueCount < SELF_CONTINUE.MAX_COUNT) {
-      await triggerSelfContinue(selfContinueCount + 1);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[시그널+KG 완료] ${elapsed}초`);
 
       return NextResponse.json({
         success: true,
-        selfContinue: true,
-        selfContinueCount: selfContinueCount + 1,
-        crawl: {
-          sources: sourceSummary,
-          totalChannels: allResults.length,
-          postsFound: totalFound,
-          postsNew: totalNew,
-          mentionsExtracted: totalMentions,
-        },
-        sentiment: sentimentResult,
+        phase: 'signals',
         signals: signalResult,
-        errors: errors.length > 0 ? errors : undefined,
-        elapsed: `${elapsedSec}s`,
-        message: '시간 제한으로 자동 이어하기 실행됨',
+        elapsed: `${elapsed}s`,
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      crawl: {
-        sources: sourceSummary,
-        totalChannels: allResults.length,
-        postsFound: totalFound,
-        postsNew: totalNew,
-        mentionsExtracted: totalMentions,
-      },
-      sentiment: sentimentResult,
-      signals: signalResult,
-      errors: errors.length > 0 ? errors : undefined,
-      elapsed: `${elapsedSec}s`,
-    });
+    return NextResponse.json({ error: `Unknown phase: ${phase}` }, { status: 400 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[CRYPTO CRAWL ERROR]:', message);
