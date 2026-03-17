@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import JSZip from 'jszip';
+import { toPng } from 'html-to-image';
 import { Header } from '@/components';
 import { useLanguage } from '@/lib/language-context';
 import { useAuth } from '@/lib/auth-context';
@@ -402,6 +403,7 @@ export default function CardNewsPage() {
   const [imageMode, setImageMode] = useState<'unsplash' | 'ai'>('unsplash');
   const [unsplashCredits, setUnsplashCredits] = useState<Record<number, UnsplashPhoto>>({});
   const unsplashPageRef = useRef<Record<number, number>>({});
+  const slideRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const { language, setLanguage } = useLanguage();
   const { user: authUser } = useAuth();
@@ -735,12 +737,24 @@ export default function CardNewsPage() {
     const title = result.title.replace(/[^a-zA-Z0-9가-힣\s]/g, '').trim().slice(0, 30) || 'card-news';
 
     for (const slide of result.slides) {
-      const src = images[slide.slide_number];
-      if (!src) continue;
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const ext = blob.type.includes('png') ? 'png' : 'jpg';
-      zip.file(`${slide.slide_number}.${ext}`, blob);
+      const el = slideRefs.current[slide.slide_number];
+      if (!el) continue;
+      try {
+        const dataUrl = await toPng(el, {
+          pixelRatio: 6,
+          cacheBust: true,
+          style: { border: 'none' },
+          filter: (node) => !(node instanceof HTMLElement && (node.classList.contains('slide-ui-only') || node.classList.contains('slide-regen-btn'))),
+        });
+        const base64 = dataUrl.split(',')[1];
+        zip.file(`${slide.slide_number}.png`, base64, { base64: true });
+      } catch {
+        const src = images[slide.slide_number];
+        if (src) {
+          const res = await fetch(src);
+          zip.file(`${slide.slide_number}.jpg`, await res.blob());
+        }
+      }
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
@@ -1140,11 +1154,11 @@ export default function CardNewsPage() {
                     <div style={{ position: 'absolute', top: 10, left: 10 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.5)', color: 'white', textTransform: 'uppercase' }}>cover</span>
                     </div>
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', background: 'linear-gradient(transparent 0%, rgba(0,0,0,0.75) 100%)', pointerEvents: 'none' }} />
                     <div style={{ position: 'absolute', bottom: '12%', left: 0, right: 0, padding: '0 20px', color: 'white' }}>
-                      <div style={{ fontSize: result.slides[0].headline.length > 12 ? 22 : 28, fontWeight: 900, lineHeight: 1.25, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{result.slides[0].headline}</div>
+                      <div style={{ fontSize: result.slides[0].headline.length > 12 ? 22 : 28, fontWeight: 900, lineHeight: 1.25, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 2px 6px rgba(0,0,0,0.7)' }}>{result.slides[0].headline}</div>
                       {result.slides[0].subtext && (
-                        <div style={{ fontSize: 14, marginTop: 10, opacity: 0.8, fontWeight: 500, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{result.slides[0].subtext}</div>
+                        <div style={{ fontSize: 14, marginTop: 10, opacity: 0.85, fontWeight: 500, textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>{result.slides[0].subtext}</div>
                       )}
                     </div>
                   </div>
@@ -1248,6 +1262,7 @@ export default function CardNewsPage() {
                     return (
                       <div
                         key={slide.slide_number}
+                        ref={el => { slideRefs.current[slide.slide_number] = el; }}
                         className="slide-card"
                         style={{
                           width: '100%', aspectRatio: `${selectedAspect.width} / ${selectedAspect.height}`,
@@ -1265,7 +1280,7 @@ export default function CardNewsPage() {
                             <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                           </div>
                         )}
-                        <div style={{ position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
+                        <div className="slide-ui-only" style={{ position: 'absolute', top: 8, left: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
                           {slide.slide_number}
                         </div>
                         {imgSrc && !isThisGen && (
@@ -1290,11 +1305,11 @@ export default function CardNewsPage() {
                         {/* Cover: large headline, left-bottom lifted */}
                         {slide.type === 'cover' && (
                           <>
-                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))', pointerEvents: 'none' }} />
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', background: 'linear-gradient(transparent 0%, rgba(0,0,0,0.75) 100%)', pointerEvents: 'none' }} />
                             <div style={{ position: 'absolute', bottom: '12%', left: 0, right: 0, padding: '0 12px', color: 'white' }}>
-                              <div style={{ fontSize: slide.headline.length > 12 ? 13 : 15, fontWeight: 900, lineHeight: 1.2, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{slide.headline}</div>
+                              <div style={{ fontSize: slide.headline.length > 12 ? 13 : 15, fontWeight: 900, lineHeight: 1.2, letterSpacing: '-0.02em', wordBreak: 'keep-all', textShadow: '0 2px 6px rgba(0,0,0,0.7)' }}>{slide.headline}</div>
                               {slide.subtext && (
-                                <div style={{ fontSize: 9, marginTop: 4, opacity: 0.75, fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{slide.subtext}</div>
+                                <div style={{ fontSize: 9, marginTop: 4, opacity: 0.85, fontWeight: 500, textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>{slide.subtext}</div>
                               )}
                             </div>
                           </>
@@ -1303,8 +1318,8 @@ export default function CardNewsPage() {
                         {/* Content: image top + dark text area bottom */}
                         {slide.type === 'content' && (
                           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
-                            <div style={{ flex: '1 1 55%' }} />
-                            <div style={{ flex: '0 0 45%', background: 'rgba(0,0,0,0.65)', padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <div style={{ flex: '1 1 65%' }} />
+                            <div style={{ flex: '0 0 35%', background: 'rgba(0,0,0,0.65)', padding: '8px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                               <div style={{ fontSize: slide.headline.length > 12 ? 9 : 10, fontWeight: 800, lineHeight: 1.3, color: 'white', marginBottom: 4, wordBreak: 'keep-all' }}>
                                 {slide.headline}
                               </div>
@@ -1366,6 +1381,36 @@ export default function CardNewsPage() {
                     }}
                   >
                     전체 다운로드 ({result.slides.length}장)
+                  </button>
+                )}
+
+                {allImagesReady && (
+                  <button
+                    onClick={() => {
+                      setStep('input');
+                      setTopic('');
+                      setSourceArticles([]);
+                      setSlideCount(5);
+                      setResult(null);
+                      setError(null);
+                      setChatMessages([]);
+                      setChatInput('');
+                      setImages({});
+                      setImageGenerating(null);
+                      setImageProgress(0);
+                      setCoverApproved(false);
+                      setImageMode('unsplash');
+                      setUnsplashCredits({});
+                      coverBase64Ref.current = null;
+                      unsplashPageRef.current = {};
+                    }}
+                    style={{
+                      width: '100%', marginTop: 10, padding: '14px 0', fontSize: 15, fontWeight: 700,
+                      color: 'var(--accent)', background: 'transparent',
+                      border: '2px solid var(--accent)', borderRadius: 8, cursor: 'pointer',
+                    }}
+                  >
+                    새 카드뉴스 만들기
                   </button>
                 )}
 
