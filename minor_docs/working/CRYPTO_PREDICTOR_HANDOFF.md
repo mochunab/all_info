@@ -90,6 +90,16 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - Threads 앱 ID: `744117611965629`
     - 리디렉션 콜백 URL: `https://localhost/` 설정 완료
 
+**Phase 7 — 타임아웃 방지 + 시그널 보정 (2026-03-17)**
+34. **3-Phase 파이프라인 분리** — 단일 호출 전체 실행 → crawl/sentiment/signals 3개 독립 호출
+    - 각 페이즈 완료 후 fire-and-forget으로 다음 페이즈 트리거
+    - 센티먼트: 200초 시간 예산, 미완료 시 자기 재호출
+    - Vercel 300초 타임아웃 근본 해결
+35. **시그널 점수 멘션 신뢰도 감쇠** — `mentionConfidence = clamp(mentions / 5, 0, 1)`
+    - 1회 언급 = ×0.2, 3회 = ×0.6, 5회+ = ×1.0
+    - 신규 코인(이전 데이터 없음) velocity = 0 (만점 방지)
+36. **Telegram fetch 타임아웃** — 개별 채널 fetch에 15초 AbortController 추가
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -120,36 +130,39 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 
 ## 개발 플로우
 
-### 데이터 파이프라인
+### 데이터 파이프라인 (3-Phase 분리, 2026-03-17)
+
+> **타임아웃 방지**: 단일 호출에서 전체 파이프라인 실행 시 Vercel 300초 제한 초과 → 3개 독립 HTTP 호출로 분리.
+> 각 페이즈 완료 후 fire-and-forget으로 다음 페이즈 트리거.
+
 ```
-GitHub Actions Cron (30분마다) → /api/crypto/crawl (Bearer auth)
+GitHub Actions Cron (30분마다) → POST /api/crypto/crawl {phase: "crawl"}
+
+Phase 1 (crawl): 크롤링만 — 완료 후 자동으로 Phase 2 트리거
+  ├─ Reddit (REDDIT_CLIENT_ID 필요, 승인 대기 중)
+  │   → OAuth2 토큰 획득/갱신 (55분 캐시)
+  │   → 서브레딧별 hot + new fetch (limit=100, 최대 3페이지)
+  │   → crypto_posts upsert → coin-extractor → crypto_mentions
   │
-  ├─ Phase 1a: Reddit 크롤링 (REDDIT_CLIENT_ID 필요, 승인 대기 중)
-  │   → Reddit OAuth2 토큰 획득/갱신 (55분 캐시)
-  │   → 서브레딧별 hot + new 게시물 fetch (limit=100, 최대 3페이지)
-  │   → crypto_posts upsert (source_id 기준 중복 방지)
-  │   → coin-extractor로 멘션 추출 → crypto_mentions 저장
+  ├─ Telegram (API 키 불필요, ✅ 동작 중)
+  │   → 11개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
+  │   → Cheerio HTML 파싱 → crypto_posts upsert → crypto_mentions
   │
-  ├─ Phase 1b: Telegram 크롤링 (API 키 불필요, ✅ 동작 중)
-  │   → 11개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/)
-  │   → Cheerio HTML 파싱 → crypto_posts upsert
-  │   → coin-extractor로 멘션 추출 → crypto_mentions 저장
-  │
-  ├─ Phase 1c: Threads 크롤링 (THREADS_ACCESS_TOKEN 필요, 토큰 미발급)
-  │   → 10개 키워드 검색 → crypto_posts upsert
-  │   → coin-extractor로 멘션 추출 → crypto_mentions 저장
-  │
-  ├─ Phase 2: 센티먼트 + 시그널
-  │   → crypto_sentiments에 없는 crypto_posts 조회
-  │   → analyze-crypto-sentiment Edge Function (Gemini 2.5 Flash Lite)
-  │   → 5개 동시 처리 (Promise.allSettled), 3회 재시도
-  │   → 시간 윈도우별(1h/6h/24h/7d) 시그널 생성 → crypto_signals upsert
-  │
-  └─ Phase 3: 지식그래프
-      → 코인 엔티티 upsert (24시간 내 멘션 기준)
-      → 인플루언서 엔티티 upsert (7일 내 고점수 3회+ 작성자)
-      → 코인 상관관계 (동시 언급 3회+ → correlates_with)
-      → 인플루언서→코인 관계 (고점수 게시물 → mentions)
+  └─ Threads (THREADS_ACCESS_TOKEN 필요, 토큰 미발급)
+      → 10개 키워드 검색 → crypto_posts upsert → crypto_mentions
+  ↓ fire-and-forget: {phase: "sentiment"}
+
+Phase 2 (sentiment): 센티먼트 분석 — 미완료 시 자기 재호출, 완료 시 Phase 3 트리거
+  → crypto_sentiments 없는 crypto_posts 조회 (최대 30건)
+  → analyze-crypto-sentiment Edge Function (Gemini 2.5 Flash Lite)
+  → 5개 동시 처리, 3회 재시도, 200초 시간 예산
+  → 미완료 시 자기 재호출 {phase: "sentiment"}, 완료 시 ↓
+  ↓ fire-and-forget: {phase: "signals"}
+
+Phase 3 (signals): 시그널 + 지식그래프
+  → 시간 윈도우별(1h/6h/24h/7d) 시그널 생성 → crypto_signals upsert
+  → 코인/인플루언서 엔티티 upsert
+  → 코인 상관관계 + 인플루언서→코인 관계 업데이트
 ```
 
 ### 프론트엔드 플로우
@@ -359,14 +372,22 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 - **DOGE** (저신뢰): ALL-CAPS 단어 매칭, 80+ 단어 블랙리스트 (THE, BUY, HODL, FOMO 등)
 - 문맥 추출: 멘션 전후 30자 캡처 → crypto_mentions.context
 
-### 시그널 가중치 공식
+### 시그널 가중치 공식 (2026-03-17 보정)
 ```
-weighted_score (0~100) =
+rawScore (0~100) =
   mention_velocity_norm × 25% +
   avg_sentiment_norm × 30% +
   sentiment_trend_norm × 15% +
   engagement_norm × 20% +
   fomo_avg_norm × 10%
+
+mentionConfidence = clamp(mention_count / MIN_MENTION_CONFIDENCE, 0, 1)
+  → MIN_MENTION_CONFIDENCE = 5 (config.ts)
+  → 1회 언급 = ×0.2, 3회 = ×0.6, 5회+ = ×1.0
+
+weighted_score = rawScore × mentionConfidence
+
+velocity: 이전 윈도우 데이터 없으면 0 (신규 코인 과대평가 방지)
 
 signal_label:
   ≥80 → strong_buy
@@ -406,7 +427,8 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - RLS 정책: 모든 테이블 읽기 전체 허용, 쓰기는 service_role 사용 (createServiceClient)
 - **린터 주의**: SignalNetwork.tsx 수정 시 린터가 `useIsDark` 훅/language prop 등을 되돌리는 경향 있음. 수정 후 즉시 커밋 필요.
 - **sanitizeText**: 각 크롤러(telegram/reddit/threads)에 `sanitizeText` 함수 적용. 제어 문자 + lone surrogate 제거. 멘션 추출 시에도 sanitized text 사용해야 `invalid input syntax for type json` 에러 방지됨 (2026-03-15 수정 완료)
-- **504 타임아웃**: Hobby 플랜 maxDuration 제한으로 간헐적 FUNCTION_INVOCATION_TIMEOUT 발생. 크롤링 196초 소요 시 성공, 300초 초과 시 실패. Telegram 채널 수 증가 시 주의
+- **504 타임아웃 해결 (2026-03-17)**: 3-Phase 분리로 근본 해결. 각 페이즈가 독립적으로 300초 확보. 센티먼트는 200초 시간 예산 + 미완료 시 자기 재호출.
+- **Telegram fetch 타임아웃**: 개별 채널 fetch에 15초 AbortController 적용 (`fetchChannelPage`)
 
 ---
 
