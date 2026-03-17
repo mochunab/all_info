@@ -373,11 +373,10 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
                   backgroundColor={bgColor}
                   showNavInfo={false}
                   controlType="orbit"
-                  enableNodeDrag={true}
+                  enableNodeDrag={false}
                   enableNavigationControls={true}
-                  cooldownTicks={80}
-                  d3AlphaDecay={0.04}
-                  d3VelocityDecay={0.25}
+                  warmupTicks={100}
+                  cooldownTicks={0}
                 />
 
                 {/* Node name overlay for large nodes */}
