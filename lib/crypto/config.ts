@@ -23,7 +23,7 @@ export const OAUTH_TOKEN_TTL_MS = 55 * 60 * 1000; // 55분
 // ── Telegram 설정 ──
 
 export const TELEGRAM_CHANNELS: readonly TelegramChannelConfig[] = [
-  // 대형 (10만+)
+  // 대형 — 거래소/뉴스 (10만+)
   { username: 'binance_announcements', weight: 0.7, language: 'en' },
   { username: 'OKXannouncements', weight: 0.7, language: 'en' },
   { username: 'cryptoVIPsignalTA', weight: 1.1, language: 'en' },
@@ -31,12 +31,29 @@ export const TELEGRAM_CHANNELS: readonly TelegramChannelConfig[] = [
   { username: 'whale_alert_io', weight: 1.2, language: 'en' },
   { username: 'Bitcoin', weight: 1.0, language: 'en' },
   { username: 'crypto', weight: 1.0, language: 'en' },
-  // 중형 (1천~10만)
+  // 대형 — 트레이딩 시그널 (10만+)
+  { username: 'BinanceKillers', weight: 1.0, language: 'en' },
+  { username: 'WallstreetQueenOfficial', weight: 1.0, language: 'en' },
+  { username: 'WolfOfTrading', weight: 1.0, language: 'en' },
+  { username: 'BitcoinBullets', weight: 1.0, language: 'en' },
+  { username: 'defimillion', weight: 1.3, language: 'en' },
+  { username: 'icospeaksnews', weight: 1.1, language: 'en' },
+  // 중형 — 뉴스/마켓 (1만~10만)
   { username: 'coincodecap', weight: 0.9, language: 'en' },
   { username: 'CryptoSignals', weight: 1.1, language: 'en' },
   { username: 'CryptoSignalAlert', weight: 1.0, language: 'en' },
-  // 소형 (밈코인 특화)
+  { username: 'memecoinz', weight: 1.1, language: 'en' },
+  { username: 'memecoinx', weight: 1.1, language: 'en' },
+  { username: 'ICODrops', weight: 0.9, language: 'en' },
+  { username: 'CryptoWorldNews', weight: 0.9, language: 'en' },
+  { username: 'cryptoevolution', weight: 0.9, language: 'en' },
+  { username: 'cryptorank_news', weight: 0.9, language: 'en' },
+  // 밈코인 특화
   { username: 'Memecoins_Calls', weight: 1.2, language: 'en' },
+  { username: 'DEXTOOLSPUMPS', weight: 1.3, language: 'en' },
+  { username: 'SolanaMemeCoinss', weight: 1.2, language: 'en' },
+  // 한국어
+  { username: 'memecokr', weight: 1.2, language: 'ko' },
 ] as const;
 
 export const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
