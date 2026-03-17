@@ -69,60 +69,6 @@ function useIsDark() {
   return dark;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const THREE_MOD = typeof window !== 'undefined' ? require('three') : null;
-
-function createGlowSprite(color: string, size: number, isInfluencer: boolean): any {
-  const THREE = THREE_MOD;
-  if (!THREE) return null;
-
-  const canvas = document.createElement('canvas');
-  const s = 128;
-  canvas.width = s;
-  canvas.height = s;
-  const ctx = canvas.getContext('2d')!;
-
-  // glow
-  const gradient = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-  gradient.addColorStop(0, color);
-  gradient.addColorStop(0.3, color + 'AA');
-  gradient.addColorStop(0.6, color + '44');
-  gradient.addColorStop(1, color + '00');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, s, s);
-
-  // core
-  ctx.beginPath();
-  const coreR = s * 0.18;
-  if (isInfluencer) {
-    ctx.save();
-    ctx.translate(s / 2, s / 2);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = color;
-    ctx.fillRect(-coreR, -coreR, coreR * 2, coreR * 2);
-    ctx.restore();
-  } else {
-    ctx.arc(s / 2, s / 2, coreR, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(s / 2, s / 2, coreR, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.85;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-  });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(size, size, 1);
-  return sprite;
-}
 
 export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkProps) {
   const isDark = useIsDark();
@@ -221,32 +167,27 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
 
   const bgColor = useMemo(() => isDark ? '#111827' : '#FAFAFA', [isDark]);
 
-  const nodeThreeObject = useCallback(
+  const nodeColorFn = useCallback(
+    (node: NetworkNode) => {
+      const dimmed = neighborSet && !neighborSet.has(node.id);
+      if (dimmed) return isDark ? 'rgba(100,100,100,0.2)' : 'rgba(180,180,180,0.3)';
+      if (node.type === 'influencer') return '#8b5cf6';
+      if (selectedChip && node.name === selectedChip) return '#2563EB';
+      return getSentimentColor(node.sentiment);
+    },
+    [neighborSet, selectedChip, isDark]
+  );
+
+  const nodeValFn = useCallback(
     (node: NetworkNode) => {
       const size = getNodeSize(node.mentions, maxMentions);
-      const isInfluencer = node.type === 'influencer';
       const dimmed = neighborSet && !neighborSet.has(node.id);
       const isSelected = selectedChip && node.name === selectedChip;
-
-      let color: string;
-      if (isInfluencer) {
-        color = '#8b5cf6';
-      } else if (isSelected) {
-        color = '#2563EB';
-      } else {
-        color = getSentimentColor(node.sentiment);
-      }
-
-      const scale = dimmed ? size * 0.5 : (isSelected ? size * 1.5 : size);
-      const sprite = createGlowSprite(color, scale, isInfluencer);
-
-      if (dimmed) {
-        sprite.material.opacity = 0.2;
-      }
-
-      return sprite;
+      if (dimmed) return size * 0.3;
+      if (isSelected) return size * 2;
+      return size;
     },
-    [maxMentions, selectedChip, neighborSet]
+    [maxMentions, neighborSet, selectedChip]
   );
 
   const nodeLabel = useCallback(
@@ -363,8 +304,10 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
                   width={graphWidth}
                   height={dimensions.height}
                   graphData={{ nodes, links }}
-                  nodeThreeObject={nodeThreeObject as any}
+                  nodeColor={nodeColorFn as any}
+                  nodeVal={nodeValFn as any}
                   nodeLabel={nodeLabel as any}
+                  nodeOpacity={0.9}
                   linkColor={linkColorFn as any}
                   linkWidth={linkWidthFn as any}
                   linkOpacity={0.6}
