@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function parsePhase(request: NextRequest): Promise<string> {
+  const qp = new URL(request.url).searchParams.get('phase');
+  if (qp) return qp;
   try {
     const body = await request.clone().json();
     return body.phase || 'crawl';
@@ -109,6 +111,14 @@ async function handleCrawl(request: NextRequest) {
           totalChannels: allResults.length,
           postsNew: totalNew,
           mentionsExtracted: totalMentions,
+          details: allResults.map((r) => ({
+            source: r.source,
+            channel: r.channel,
+            found: r.postsFound,
+            new: r.postsNew,
+            mentions: r.mentionsExtracted,
+            errors: r.errors,
+          })),
         },
         elapsed: `${elapsed}s`,
         nextPhase: 'sentiment',
@@ -169,10 +179,44 @@ async function handleCrawl(request: NextRequest) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[시그널+KG 완료] ${elapsed}초`);
 
+      await triggerNextPhase('prices');
+
       return NextResponse.json({
         success: true,
         phase: 'signals',
         signals: signalResult,
+        elapsed: `${elapsed}s`,
+        nextPhase: 'prices',
+      });
+    }
+
+    // ── Phase 4: 코인 동기화 + 가격 수집 ──
+    if (phase === 'prices') {
+      let syncResult = { synced: 0 };
+      let priceResult = { fetched: 0, stored: 0 };
+
+      try {
+        const { syncCoinList } = await import('@/lib/crypto/coin-sync');
+        syncResult = await syncCoinList(supabase);
+      } catch (e) {
+        console.warn(`[코인싱크] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      try {
+        const { fetchAndStorePrices } = await import('@/lib/crypto/price-fetcher');
+        priceResult = await fetchAndStorePrices(supabase);
+      } catch (e) {
+        console.warn(`[가격] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[가격 완료] ${elapsed}초, 동기화: ${syncResult.synced}개, 가격: ${priceResult.stored}개`);
+
+      return NextResponse.json({
+        success: true,
+        phase: 'prices',
+        sync: syncResult,
+        prices: priceResult,
         elapsed: `${elapsed}s`,
       });
     }
