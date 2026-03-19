@@ -68,14 +68,12 @@ async function handleCrawl(request: NextRequest) {
     if (phase === 'crawl') {
       const allResults: CryptoCrawlResult[] = [];
 
-      if (process.env.REDDIT_CLIENT_ID) {
-        try {
-          const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
-          const results = await crawlAllSubreddits(supabase);
-          allResults.push(...results);
-        } catch (e) {
-          console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
-        }
+      try {
+        const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
+        const results = await crawlAllSubreddits(supabase);
+        allResults.push(...results);
+      } catch (e) {
+        console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
       try {
