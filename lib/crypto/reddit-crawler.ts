@@ -42,9 +42,7 @@ async function fetchSubredditPosts(
     }
 
     const data = (await response.json()) as RedditListingResponse;
-    const children = data.data.children
-      .filter((c) => c.data.is_self)
-      .map((c) => c.data);
+    const children = data.data.children.map((c) => c.data);
 
     posts.push(...children);
     after = data.data.after;
