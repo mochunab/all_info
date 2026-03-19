@@ -95,10 +95,17 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
     return () => obs.disconnect();
   }, []);
 
-  // center camera on graph after layout stabilizes
+  // configure forces & center camera after layout stabilizes
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
+
+    // tighten layout: strong center pull + limited repulsion + shorter links
+    fg.d3Force('center')?.strength(1);
+    fg.d3Force('charge')?.strength(-30).distanceMax(100);
+    fg.d3Force('link')?.distance(20);
+    fg.d3ReheatSimulation();
+
     const timer = setTimeout(() => {
       fg.zoomToFit(400, 40);
     }, 1500);

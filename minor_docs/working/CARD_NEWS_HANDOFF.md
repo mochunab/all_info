@@ -1,6 +1,6 @@
 # AI 카드뉴스 메이커 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-15
+> 최종 작업일: 2026-03-17
 > 경로: `/ko/card-news` (Header "커리UP" 메뉴)
 
 ---
@@ -21,12 +21,12 @@
 11. **AI 이미지 3장 병렬 생성** — 나머지 슬라이드 이미지를 3장씩 `Promise.allSettled` 배치 병렬 처리 (배치 간 5초 대기)
 12. **슬라이드 프리뷰 차별화** — cover(대형 헤드라인, 좌하단), content(헤드라인 하이라이트 + body 표시), cta(중앙 강조)
 13. **개별 슬라이드 이미지 재생성** — 슬라이드별 새로고침 버튼 (hover 시 표시), slide_context 기반 재생성
-14. **다운로드** — 전체 이미지 생성 완료 시 "전체 다운로드" 버튼
+14. **다운로드** — 전체 이미지 생성 완료 시 "전체 다운로드" 버튼 (html-to-image DOM 캡처 → 텍스트 오버레이 포함 PNG)
 15. **Header 메뉴** — "커리UP" 추가 (`/card-news`)
 16. **화면 비율 7종** — 기본값 인스타 피드 (세로) 4:5
 
 ### 미완료 (다음 단계)
-1. **이미지 + 텍스트 합성** — 현재 이미지와 텍스트가 분리. HTML 템플릿 + Puppeteer 스크린샷으로 최종 카드뉴스 PNG 합성 필요
+1. ~~**이미지 + 텍스트 합성**~~ — ✅ 완료 (html-to-image DOM 캡처, pixelRatio: 6)
 2. **n8n 워크플로우 연결** — 자동 스케줄 실행, Instagram Graph API 자동 업로드
 3. **Google Drive 자동 저장**
 4. **i18n** — "커리UP" 라벨 다국어 키 등록 (현재 하드코딩)
@@ -139,11 +139,17 @@ supabase functions deploy generate-card-image --project-ref tcpvxihjswauwrmcxhhh
 - search_keyword 중복 금지 규칙
 
 ### 슬라이드 프리뷰 디자인
-- **Phase 1 커버**: 28px/900 weight 헤드라인, bottom 12% 배치, drop-shadow, 하단 50% gradient 분리
+- **Phase 1 커버**: 28px/900 weight 헤드라인, bottom 12% 배치, drop-shadow, 하단 65% gradient dim
 - **Phase 2 그리드**:
-  - cover: 15px/900 weight, bottom 12%, gradient 분리
-  - content: 헤드라인에 color_scheme 하이라이트 배경 + body 3줄 clamp
+  - cover: 15px/900 weight, bottom 12%, 65% gradient dim
+  - content: 이미지 65% + 텍스트 영역 35% (rgba(0,0,0,0.65))
   - cta: 중앙 정렬, 16px/900 weight, 반투명 오버레이
+
+### 다운로드 (html-to-image DOM 캡처)
+- `html-to-image` (`toPng`) — 각 슬라이드 DOM을 pixelRatio: 6으로 캡처 (~1200px 출력)
+- `.slide-ui-only` (번호 뱃지), `.slide-regen-btn` (재생성 버튼)은 filter로 제외
+- base64 → JSZip → zip 다운로드 (CSP data: URL fetch 차단 우회)
+- 캡처 실패 시 원본 이미지로 fallback
 
 ### 이미지 생성 API (Gemini 2.5 Flash Image)
 - 모델: `gemini-2.5-flash-image`
