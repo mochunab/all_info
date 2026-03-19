@@ -1,37 +1,34 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RedditListingResponse, RedditPost, CryptoCrawlResult } from '@/types/crypto';
-import { getRedditAccessToken } from '@/lib/crypto/reddit-auth';
 import { extractCoinMentions } from '@/lib/crypto/coin-extractor';
 import {
   CRYPTO_SUBREDDITS,
-  REDDIT_API_BASE,
   REDDIT_RATE_LIMIT_MS,
   REDDIT_MAX_PAGES,
   REDDIT_PAGE_LIMIT,
 } from '@/lib/crypto/config';
+
+const REDDIT_PUBLIC_BASE = 'https://www.reddit.com';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchSubredditPosts(
   subreddit: string,
   sort: 'hot' | 'new',
-  token: string,
   maxPages: number = REDDIT_MAX_PAGES
 ): Promise<RedditPost[]> {
-  const userAgent = process.env.REDDIT_USER_AGENT || 'InsightHub:MemePredictor:1.0';
   const posts: RedditPost[] = [];
   let after: string | null = null;
 
   for (let page = 0; page < maxPages; page++) {
-    const url = new URL(`${REDDIT_API_BASE}/r/${subreddit}/${sort}`);
+    const url = new URL(`${REDDIT_PUBLIC_BASE}/r/${subreddit}/${sort}.json`);
     url.searchParams.set('limit', String(REDDIT_PAGE_LIMIT));
     url.searchParams.set('raw_json', '1');
     if (after) url.searchParams.set('after', after);
 
     const response = await fetch(url.toString(), {
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': userAgent,
+        'User-Agent': 'InsightHub:MemePredictor:1.0 (by /u/insighthub)',
       },
     });
 
@@ -102,11 +99,9 @@ export async function crawlSubreddit(
   };
 
   try {
-    const token = await getRedditAccessToken();
-
     const [hotPosts, newPosts] = await Promise.all([
-      fetchSubredditPosts(subredditName, 'hot', token, 2),
-      fetchSubredditPosts(subredditName, 'new', token, 1),
+      fetchSubredditPosts(subredditName, 'hot', 2),
+      fetchSubredditPosts(subredditName, 'new', 1),
     ]);
 
     const seen = new Set<string>();

@@ -13,12 +13,9 @@ export const CRYPTO_SUBREDDITS: readonly SubredditConfig[] = [
   { name: 'CryptoCurrencies', weight: 0.7, minScore: 5 },
 ] as const;
 
-export const REDDIT_API_BASE = 'https://oauth.reddit.com';
-export const REDDIT_AUTH_URL = 'https://www.reddit.com/api/v1/access_token';
 export const REDDIT_RATE_LIMIT_MS = 1000;
 export const REDDIT_MAX_PAGES = 3;
 export const REDDIT_PAGE_LIMIT = 100;
-export const OAUTH_TOKEN_TTL_MS = 55 * 60 * 1000; // 55분
 
 // ── Telegram 설정 ──
 

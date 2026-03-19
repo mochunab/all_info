@@ -1,6 +1,10 @@
-import { getCache, setCache } from '@/lib/cache';
-import { REDDIT_AUTH_URL, OAUTH_TOKEN_TTL_MS } from '@/lib/crypto/config';
+// Reddit OAuth2 인증 — 현재 미사용 (공개 JSON 엔드포인트 사용 중)
+// Reddit API 승인 후 복귀 시 reddit-crawler.ts에서 다시 import
 
+import { getCache, setCache } from '@/lib/cache';
+
+const REDDIT_AUTH_URL = 'https://www.reddit.com/api/v1/access_token';
+const OAUTH_TOKEN_TTL_MS = 55 * 60 * 1000;
 const CACHE_KEY = 'reddit:oauth_token';
 
 type RedditTokenResponse = {
