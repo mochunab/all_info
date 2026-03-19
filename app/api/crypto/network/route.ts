@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
 
     const { data: entities } = await sb
       .from('crypto_entities')
-      .select('id, entity_type, name, symbol, mention_count')
-      .in('entity_type', ['coin', 'influencer'])
+      .select('id, entity_type, name, symbol, mention_count, metadata')
+      .in('entity_type', ['coin', 'influencer', 'narrative', 'event'])
       .order('mention_count', { ascending: false })
       .limit(limit);
 
@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
       .from('crypto_relations')
       .select('source_entity_id, target_entity_id, relation_type, weight')
       .or(`source_entity_id.in.(${entityIds.join(',')}),target_entity_id.in.(${entityIds.join(',')})`)
+      .gt('weight', 0)
       .limit(300);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,10 +38,10 @@ export async function GET(request: NextRequest) {
     const { data: signals } = await sb
       .from('crypto_signals')
       .select('coin_symbol, avg_sentiment, weighted_score, signal_label, mention_velocity')
-      .in('coin_symbol', coinSymbols)
+      .in('coin_symbol', coinSymbols.length > 0 ? coinSymbols : ['__none__'])
       .eq('time_window', '24h')
       .order('computed_at', { ascending: false })
-      .limit(coinSymbols.length);
+      .limit(coinSymbols.length || 1);
 
     let keywords: { word: string; count: number }[] = [];
 
@@ -81,9 +82,11 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const signalMap = new Map((signals || []).map((s: any) => [s.coin_symbol, s]));
 
-    const nodes = entities.map((e: { id: string; entity_type: string; name: string; symbol: string | null; mention_count: number }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nodes = entities.map((e: any) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sig = e.symbol ? signalMap.get(e.symbol) as any : null;
+      const meta = e.metadata || {};
       return {
         id: e.id,
         name: e.symbol || e.name,
@@ -94,6 +97,7 @@ export async function GET(request: NextRequest) {
         score: sig?.weighted_score ?? 0,
         label: sig?.signal_label ?? 'neutral',
         velocity: sig?.mention_velocity ?? 0,
+        confidence: meta.confidence ?? 1.0,
       };
     });
 

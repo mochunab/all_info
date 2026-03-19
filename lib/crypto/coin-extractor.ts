@@ -1,4 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { COIN_LIST, COIN_MAP } from '@/lib/crypto/config';
+import type { CoinEntry } from '@/types/crypto';
 
 type MentionResult = {
   symbol: string;
@@ -7,11 +10,9 @@ type MentionResult = {
   context: string | null;
 };
 
-// $DOGE, #PEPE, DOGE 등의 패턴 매칭
 const TICKER_PATTERN = /(?:\$|#)([A-Z]{2,10})\b/gi;
 const WORD_BOUNDARY_PATTERN = /\b([A-Z]{2,10})\b/g;
 
-// 오탐 방지용 일반 영단어 블랙리스트
 const BLACKLIST = new Set([
   'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER',
   'WAS', 'ONE', 'OUR', 'OUT', 'HAS', 'HIS', 'HOW', 'MAN', 'NEW', 'NOW',
@@ -27,17 +28,72 @@ const BLACKLIST = new Set([
   'PUMP', 'DUMP', 'MOON', 'BEAR', 'BULL', 'WHALE', 'RUG', 'GAS',
 ]);
 
+// DB 코인 목록 캐시 (프로세스 수명 동안 유지, 최대 1시간)
+let cachedCoinList: CoinEntry[] | null = null;
+let cachedCoinMap: Map<string, CoinEntry> | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+async function loadCoinList(supabase?: SupabaseClient<any>): Promise<{ list: CoinEntry[]; map: Map<string, CoinEntry> }> {
+  if (cachedCoinList && cachedCoinMap && Date.now() - cacheTimestamp < CACHE_TTL_MS) {
+    return { list: cachedCoinList, map: cachedCoinMap };
+  }
+
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('crypto_coins')
+        .select('symbol, name')
+        .eq('is_active', true);
+
+      if (data && data.length > 0) {
+        const list: CoinEntry[] = data.map((c: any) => ({
+          symbol: c.symbol.toUpperCase(),
+          name: c.name,
+          aliases: [c.name.toLowerCase(), c.symbol.toLowerCase()],
+        }));
+        const map = new Map<string, CoinEntry>(list.map((c) => [c.symbol, c]));
+        cachedCoinList = list;
+        cachedCoinMap = map;
+        cacheTimestamp = Date.now();
+        return { list, map };
+      }
+    } catch {
+      // fallback to hardcoded
+    }
+  }
+
+  return { list: COIN_LIST, map: COIN_MAP };
+}
+
 export function extractCoinMentions(title: string, body: string | null): MentionResult[] {
+  return extractWithMaps(title, body, COIN_LIST, COIN_MAP);
+}
+
+export async function extractCoinMentionsFromDB(
+  title: string,
+  body: string | null,
+  supabase: SupabaseClient<any>
+): Promise<MentionResult[]> {
+  const { list, map } = await loadCoinList(supabase);
+  return extractWithMaps(title, body, list, map);
+}
+
+function extractWithMaps(
+  title: string,
+  body: string | null,
+  coinList: CoinEntry[],
+  coinMap: Map<string, CoinEntry>
+): MentionResult[] {
   const text = `${title}\n${body || ''}`;
   const counts = new Map<string, number>();
   const contexts = new Map<string, string>();
 
-  // 1. $TICKER / #TICKER 패턴 (고신뢰)
   let match: RegExpExecArray | null;
   TICKER_PATTERN.lastIndex = 0;
   while ((match = TICKER_PATTERN.exec(text)) !== null) {
     const symbol = match[1].toUpperCase();
-    if (COIN_MAP.has(symbol)) {
+    if (coinMap.has(symbol)) {
       counts.set(symbol, (counts.get(symbol) || 0) + 1);
       if (!contexts.has(symbol)) {
         const start = Math.max(0, match.index - 30);
@@ -47,11 +103,10 @@ export function extractCoinMentions(title: string, body: string | null): Mention
     }
   }
 
-  // 2. 풀네임 / alias 매칭 (대소문자 무시)
   const lowerText = text.toLowerCase();
-  for (const coin of COIN_LIST) {
+  for (const coin of coinList) {
     for (const alias of coin.aliases) {
-      if (alias.length < 3) continue; // 2글자 alias는 오탐 방지를 위해 스킵
+      if (alias.length < 3) continue;
       const idx = lowerText.indexOf(alias);
       if (idx !== -1) {
         const sym = coin.symbol;
@@ -65,13 +120,12 @@ export function extractCoinMentions(title: string, body: string | null): Mention
     }
   }
 
-  // 3. ALL-CAPS 단어 매칭 (저신뢰 — 블랙리스트 필터링)
   WORD_BOUNDARY_PATTERN.lastIndex = 0;
   while ((match = WORD_BOUNDARY_PATTERN.exec(title)) !== null) {
     const word = match[1];
     if (word.length < 3 || word.length > 6) continue;
     if (BLACKLIST.has(word)) continue;
-    if (COIN_MAP.has(word)) {
+    if (coinMap.has(word)) {
       if (!counts.has(word)) {
         counts.set(word, 1);
         const start = Math.max(0, match.index - 30);
@@ -83,7 +137,7 @@ export function extractCoinMentions(title: string, body: string | null): Mention
 
   return Array.from(counts.entries()).map(([symbol, count]) => ({
     symbol,
-    name: COIN_MAP.get(symbol)?.name || null,
+    name: coinMap.get(symbol)?.name || null,
     count,
     context: contexts.get(symbol) || null,
   }));

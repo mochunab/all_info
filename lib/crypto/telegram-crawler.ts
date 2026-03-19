@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CryptoCrawlResult } from '@/types/crypto';
-import { extractCoinMentions } from '@/lib/crypto/coin-extractor';
+import { extractCoinMentionsFromDB } from '@/lib/crypto/coin-extractor';
 import {
   TELEGRAM_CHANNELS,
   TELEGRAM_RATE_LIMIT_MS,
@@ -173,7 +173,7 @@ export async function crawlTelegramChannel(
       const cleanText = sanitizeText(post.text);
       const title = cleanText.slice(0, 200);
       const body = cleanText.length > 200 ? cleanText : null;
-      const mentions = extractCoinMentions(title, body);
+      const mentions = await extractCoinMentionsFromDB(title, body, supabase);
 
       for (const m of mentions) {
         mentionRows.push({

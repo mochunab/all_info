@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-15
+> 최종 작업일: 2026-03-20
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -33,7 +33,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 2. **Reddit OAuth2** — client_credentials grant, in-memory 캐시 55분 TTL
 3. **Reddit 크롤러** — 10개 서브레딧 × hot/new × 최대 3페이지, 서브레딧 간 1초 딜레이, minScore 필터
 4. **코인 멘션 추출** — 3단계 패턴 매칭: $TICKER/#TICKER(고신뢰) → 풀네임/alias(중신뢰) → ALL-CAPS(저신뢰, 블랙리스트 필터)
-5. **코인 목록** — 144개 코인 (BTC~SOL, 밈코인 23+, AI토큰 7, DeFi 9, L2 7) + alias 역조회 맵
+5. **코인 목록** — ~~144개 하드코딩~~ → DB 기반 (`crypto_coins` 테이블, CoinGecko 동기화 66개) + 하드코딩 fallback
 6. **Cron 엔드포인트** — `/api/crypto/crawl` (Bearer auth, 300s maxDuration, 30분 간격)
 7. **게시물 조회 API** — `/api/crypto/posts` (coin/subreddit 필터, 페이지네이션)
 
@@ -100,6 +100,39 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - 신규 코인(이전 데이터 없음) velocity = 0 (만점 방지)
 36. **Telegram fetch 타임아웃** — 개별 채널 fetch에 15초 AbortController 추가
 
+**Phase 8 — CoinGecko 실시간 가격 연동 + 코인 목록 DB화 (2026-03-20)**
+37. **DB 마이그레이션 `021_crypto_prices.sql`** — 2개 테이블 추가
+    - `crypto_coins`: CoinGecko 코인 마스터 (coingecko_id UNIQUE, symbol, name, image_url, market_cap_rank, is_active)
+    - `crypto_prices`: 가격 스냅샷 (coingecko_id FK, price_usd, market_cap, volume_24h, price_change_24h, price_change_pct_24h, circulating_supply, fetched_at)
+38. **CoinGecko 코인 동기화** — `lib/crypto/coin-sync.ts`
+    - CoinGecko `/coins/list` (15,000+ 코인) → 기존 COIN_LIST와 심볼+이름 매칭 → `crypto_coins` upsert
+    - 66개 코인 매칭 성공 (COIN_LIST 73개 중 symbol 중복 제거 후)
+39. **CoinGecko 가격 수집** — `lib/crypto/price-fetcher.ts`
+    - `/coins/markets` API → active 코인만 조회 (250개/페이지, 현재 66개 = 단일 호출)
+    - `current_price == null` 코인 자동 스킵 (가격 미제공 코인 대응)
+    - `crypto_coins`에 image_url, market_cap_rank 메타데이터도 함께 업데이트
+40. **Phase 4 (prices) 파이프라인 추가** — `app/api/crypto/crawl/route.ts`
+    - signals Phase 완료 후 자동 트리거: crawl → sentiment → signals → **prices**
+    - `parsePhase`가 URL query param도 지원 (Vercel cron GET 대응)
+    - 코인 동기화 → 가격 수집 순차 실행
+41. **30분 주기 가격 cron** — `vercel.json`에 `*/30 * * * *` → `/api/crypto/crawl?phase=prices`
+    - CoinGecko 무료 한도 (10-30 req/min) 내에서 안전 (2 API 호출/30분)
+    - 선택적 `COINGECKO_API_KEY` 지원 (x-cg-demo-key 헤더)
+42. **코인 멘션 추출 DB 전환** — `lib/crypto/coin-extractor.ts`
+    - 기존: 하드코딩 `COIN_LIST`/`COIN_MAP` 직접 참조
+    - 변경: `extractCoinMentionsFromDB(title, body, supabase)` — DB `crypto_coins` 조회 (1시간 인메모리 캐시)
+    - DB 조회 실패 시 하드코딩 fallback 유지 (무중단)
+    - 3개 크롤러(reddit, telegram, threads) 모두 `extractCoinMentionsFromDB`로 전환
+43. **가격 조회 API** — `app/api/crypto/prices/route.ts`
+    - GET, coin/limit 필터, 최신 fetched_at 기준 자동 선택
+    - `crypto_coins` inner join (symbol, name, image_url, market_cap_rank)
+44. **CoinCard UI 가격 표시** — `components/crypto/CoinCard.tsx`
+    - 코인 아이콘 (CoinGecko image_url), 현재 가격 (formatPrice: $1+ → 소수점2, $0.01+ → 4자리, 마이크로캡 → 8자리)
+    - 24h 변동률 (초록/빨강 색상)
+45. **CryptoDashboard 가격 연동** — `app/[locale]/crypto/CryptoDashboard.tsx`
+    - `/api/crypto/prices` fetch → priceMap(symbol → price/change/image) 구성
+    - CoinCard에 price prop 전달
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -121,7 +154,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 14. **AI 채팅 개선** — 현재 chat-insight Edge Function에 systemPromptOverride 전달 → 크립토 전용 Edge Function 분리 고려
 
 #### 우선순위 낮음 (확장)
-15. **가격 데이터 연동** — CoinGecko/CoinMarketCap API로 실시간 가격 + 시그널 비교
+15. ~~**가격 데이터 연동**~~ — ✅ CoinGecko Free API 연동 완료 (2026-03-20). 30분 cron + Phase 4 파이프라인. 66개 코인 가격/시총/24h변동률 수집. CoinCard UI 반영.
 16. **알림 시스템** — trending 알림 (velocity > 2.0 AND score ≥ 60) → 이메일/푸시
 17. **백테스팅** — 과거 시그널 대비 실제 가격 변동 검증
 18. **크립토 전용 플랫폼 분리** — 피벗 시 독립 도메인/앱으로 분리
@@ -163,6 +196,15 @@ Phase 3 (signals): 시그널 + 지식그래프
   → 시간 윈도우별(1h/6h/24h/7d) 시그널 생성 → crypto_signals upsert
   → 코인/인플루언서 엔티티 upsert
   → 코인 상관관계 + 인플루언서→코인 관계 업데이트
+  ↓ fire-and-forget: {phase: "prices"}
+
+Phase 4 (prices): CoinGecko 코인 동기화 + 가격 수집 (2026-03-20)
+  → syncCoinList: CoinGecko /coins/list → crypto_coins upsert (66개)
+  → fetchAndStorePrices: /coins/markets → crypto_prices insert (65개, null 가격 스킵)
+  → crypto_coins에 image_url, market_cap_rank 메타데이터 업데이트
+
+별도 Cron (30분마다): /api/crypto/crawl?phase=prices
+  → 파이프라인 전체를 안 거치고 가격만 독립 갱신
 ```
 
 ### 프론트엔드 플로우
@@ -193,12 +235,14 @@ Header "밈코인 예측기" (master 계정만 노출, i18n 적용)
 ### 새로 생성한 파일
 ```
 lib/crypto/
-  config.ts                 서브레딧 10개 + 텔레그램 11개 + Threads 키워드 10개, 코인 목록(144개), 상수/가중치
+  config.ts                 서브레딧 10개 + 텔레그램 25개 + Threads 키워드 10개, 코인 목록(73개 하드코딩 fallback), 상수/가중치
+  coin-sync.ts              CoinGecko /coins/list → crypto_coins 동기화 (1일 1회 or Phase 4)
+  price-fetcher.ts          CoinGecko /coins/markets → crypto_prices 가격 스냅샷 (30분 cron)
   reddit-auth.ts            Reddit OAuth2 토큰 관리 (cache.ts 활용)
   reddit-crawler.ts         Reddit API 크롤러 (hot+new, 중복 제거, upsert)
   telegram-crawler.ts       Telegram 웹 프리뷰 스크래핑 (t.me/s/, Cheerio 파싱)
   threads-crawler.ts        Threads API 키워드 검색 크롤러 (10개 키워드, since 필터)
-  coin-extractor.ts         3단계 코인 멘션 추출 ($TICKER, 풀네임, ALL-CAPS)
+  coin-extractor.ts         3단계 코인 멘션 추출 ($TICKER, 풀네임, ALL-CAPS) — DB 기반 (extractCoinMentionsFromDB) + 하드코딩 fallback
   batch-sentiment.ts        배치 센티먼트 처리 (소스별 Edge Function 라우팅, 5 concurrent)
   signal-generator.ts       시간 윈도우별 가중 시그널 계산
   knowledge-graph.ts        엔티티/관계 자동 생성 (coin, influencer, correlates_with)
@@ -206,6 +250,7 @@ lib/crypto/
 types/crypto.ts             크립토 전체 TypeScript 타입 (DB Row, API, Reddit, Telegram, Threads, Signal)
 
 supabase/migrations/018_crypto_tables.sql    6개 테이블 + RLS + 트리거
+supabase/migrations/021_crypto_prices.sql    crypto_coins + crypto_prices 테이블 + RLS
 supabase/functions/analyze-crypto-sentiment/index.ts   Reddit/Telegram 센티먼트 분석 Edge Function
 supabase/functions/analyze-threads-sentiment/index.ts  Threads 전용 센티먼트 분석 Edge Function (미배포)
 
@@ -215,6 +260,7 @@ app/api/crypto/
   signals/route.ts          시그널 조회 API (window/coin 필터)
   coins/route.ts            코인 엔티티 + 관계 + 시그널 조회 API
   network/route.ts          그래프 데이터 API (nodes + links + keywords)
+  prices/route.ts           코인 가격 조회 API (coin/limit 필터, 최신 fetched_at)
   chat/route.ts             AI 채팅 API (시그널 컨텍스트 주입)
 
 app/[locale]/crypto/
@@ -239,10 +285,19 @@ components/crypto/
 ### 수정한 기존 파일
 ```
 components/Header.tsx       NAV_ITEMS에 밈코인 예측기 추가 (master 계정만, isMaster 조건, i18n: header.crypto)
-vercel.json                 /api/crypto/crawl maxDuration 300 (cron은 GitHub Actions로 실행)
+vercel.json                 /api/crypto/crawl maxDuration 300 + */30 cron (phase=prices)
 .github/workflows/crypto-crawl.yml   30분마다 /api/crypto/crawl POST 호출 (Hobby 플랜 대응)
 lib/i18n.ts                 crypto.* 번역 키 22개 × 5개 언어 + subtitle "Reddit · Threads · Telegram" 반영
-package.json                react-force-graph-2d 의존성 추가
+package.json                react-force-graph-2d → react-force-graph-3d 의존성
+types/crypto.ts             CryptoCoin, CryptoPrice, CryptoPricesResponse 타입 추가 (2026-03-20)
+components/crypto/CoinCard.tsx        가격/변동률/코인아이콘 표시 (2026-03-20)
+components/crypto/SignalNetwork.tsx    2D→3D 전환 + d3 force 튜닝 (center/charge/link 강화)
+app/[locale]/crypto/CryptoDashboard.tsx  가격 fetch + priceMap 구성 + CoinCard에 price prop 전달
+lib/crypto/coin-extractor.ts          extractCoinMentionsFromDB (DB 기반 + 1시간 캐시 + fallback)
+lib/crypto/reddit-crawler.ts          extractCoinMentionsFromDB로 전환
+lib/crypto/telegram-crawler.ts        extractCoinMentionsFromDB로 전환
+lib/crypto/threads-crawler.ts         extractCoinMentionsFromDB로 전환
+app/api/crypto/crawl/route.ts         Phase 4 (prices) 추가 + parsePhase query param 지원
 ```
 
 ---
@@ -273,6 +328,7 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 | `google_API_KEY` | Supabase Secrets | Gemini API (analyze-crypto-sentiment) | 기존 등록됨 |
 | `THREADS_ACCESS_TOKEN` | `.env.local` + Vercel | Threads API 장기 액세스 토큰 (60일) | **미설정** (테스터 등록 + OAuth 필요) |
 | `CRON_SECRET` | `.env.local` + Vercel | 크롤링 Bearer 인증 | 기존 등록됨 |
+| `COINGECKO_API_KEY` | `.env.local` + Vercel | CoinGecko Demo API 키 (선택, 없어도 동작) | 미설정 (무료 한도 충분) |
 
 ### Reddit API 키 발급 방법
 1. ~~https://www.reddit.com/prefs/apps 접속~~ — 2026년 기준 앱 생성 전 API Access Request 필수
@@ -418,6 +474,8 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | crypto_signals | id | (coin_symbol, time_window, computed_at) | — |
 | crypto_entities | id | (entity_type, name) | — |
 | crypto_relations | id | — | source/target_entity_id → crypto_entities |
+| crypto_coins | id (uuid) | coingecko_id | — |
+| crypto_prices | id (uuid) | — | coingecko_id → crypto_coins |
 
 ### 주의사항
 - `batch-sentiment.ts`의 NOT IN 서브쿼리가 Supabase JS에서 직접 지원 안 될 수 있음 → fallback으로 RPC 함수 또는 LEFT JOIN 방식 구현 필요 (코드에 fallback 분기 있음)
@@ -481,3 +539,15 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - [ ] `analyze-threads-sentiment` Edge Function 배포
 - [ ] 크롤링 테스트 후 Threads 소스 게시물 DB 확인
 - [ ] **앱 시크릿 재발급** (노출됨, Meta 개발자 대시보드에서 리셋 필수)
+
+### Phase 8 — CoinGecko 가격 연동 (2026-03-20)
+- [x] DB 마이그레이션 `021_crypto_prices.sql` 적용 (crypto_coins + crypto_prices)
+- [x] CoinGecko 코인 동기화 — 66개 매칭/저장 확인
+- [x] CoinGecko 가격 수집 — 65개 코인 가격 저장 확인 (null 가격 1개 자동 스킵)
+- [x] Phase 4 (prices) 파이프라인 — signals → prices 자동 체이닝 동작
+- [x] 30분 cron `vercel.json` 등록 (`*/30 * * * *`, phase=prices)
+- [x] coin-extractor DB 전환 — 3개 크롤러 모두 `extractCoinMentionsFromDB` 사용
+- [x] `/api/crypto/prices` API — BTC $69,840 등 정상 응답 확인
+- [x] CoinCard UI — 코인 아이콘 + 가격 + 24h 변동률 표시
+- [ ] Vercel 배포 후 프로덕션 가격 표시 확인
+- [ ] 30분 cron 프로덕션 동작 확인

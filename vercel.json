@@ -8,6 +8,10 @@
     {
       "path": "/api/summarize/batch",
       "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/crypto/crawl?phase=prices",
+      "schedule": "*/30 * * * *"
     }
   ],
   "functions": {

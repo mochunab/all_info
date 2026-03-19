@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CryptoCrawlResult, ThreadsSearchPost, ThreadsSearchResponse } from '@/types/crypto';
-import { extractCoinMentions } from '@/lib/crypto/coin-extractor';
+import { extractCoinMentionsFromDB } from '@/lib/crypto/coin-extractor';
 import {
   THREADS_API_BASE,
   THREADS_SEARCH_KEYWORDS,
@@ -134,7 +134,7 @@ export async function crawlThreadsKeyword(
       const text = sanitizeText(post.text || '');
       const title = text.slice(0, 200);
       const body = text.length > 200 ? text : null;
-      const mentions = extractCoinMentions(title, body);
+      const mentions = await extractCoinMentionsFromDB(title, body, supabase);
 
       for (const m of mentions) {
         mentionRows.push({

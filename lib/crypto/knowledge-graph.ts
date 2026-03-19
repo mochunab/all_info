@@ -1,56 +1,180 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { COIN_MAP } from '@/lib/crypto/config';
+import type { EntityType, RelationType } from '@/types/crypto';
+import {
+  COIN_MAP,
+  META_EDGES,
+  NARRATIVE_CLUSTERS,
+  EVENT_KEYWORDS,
+  RELATION_DECAY_DAYS,
+  ENTITY_DECAY_DAYS,
+} from '@/lib/crypto/config';
 
-// 최근 24시간 내 멘션된 코인 → 엔티티 upsert
-async function upsertCoinEntities(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<number> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SB = SupabaseClient<any>;
+
+// ── Step 1: 메타엣지 검증 ──
+
+function validateRelation(
+  sourceType: EntityType,
+  targetType: EntityType,
+  relationType: RelationType
+): boolean {
+  const rule = META_EDGES[relationType];
+  if (!rule) return false;
+  return rule.source === sourceType && rule.target === targetType;
+}
+
+// ── Step 4: Active Metadata 생성 ──
+
+function buildQualityMetadata(opts: {
+  sourceCount?: number;
+  confidence?: number;
+  mentionCount?: number;
+}): Record<string, unknown> {
+  const now = new Date().toISOString();
+  return {
+    confidence: opts.confidence ?? (opts.mentionCount && opts.mentionCount >= 5 ? 0.9 : opts.mentionCount && opts.mentionCount >= 2 ? 0.6 : 0.3),
+    source_count: opts.sourceCount ?? 1,
+    last_validated_at: now,
+  };
+}
+
+// ── 엔티티 upsert 헬퍼 ──
+
+async function upsertEntity(
+  supabase: SB,
+  entityType: EntityType,
+  name: string,
+  mentionCount: number,
+  extra: { symbol?: string; metadata?: Record<string, unknown> } = {}
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('crypto_entities')
+    .upsert({
+      entity_type: entityType,
+      name,
+      symbol: extra.symbol,
+      mention_count: mentionCount,
+      metadata: extra.metadata || buildQualityMetadata({ mentionCount }),
+      last_seen_at: new Date().toISOString(),
+    }, { onConflict: 'entity_type,name' })
+    .select('id')
+    .single();
+
+  if (error || !data) return null;
+  return data.id;
+}
+
+// ── 관계 upsert 헬퍼 (메타엣지 검증 포함) ──
+
+async function upsertRelation(
+  supabase: SB,
+  sourceId: string,
+  targetId: string,
+  sourceType: EntityType,
+  targetType: EntityType,
+  relationType: RelationType,
+  weight: number,
+  context?: string
+): Promise<boolean> {
+  if (!validateRelation(sourceType, targetType, relationType)) {
+    console.warn(`   ⚠️  메타엣지 규칙 위반: ${sourceType}→${targetType} (${relationType})`);
+    return false;
+  }
+
+  const { data: existing } = await supabase
+    .from('crypto_relations')
+    .select('id, weight')
+    .eq('source_entity_id', sourceId)
+    .eq('target_entity_id', targetId)
+    .eq('relation_type', relationType)
+    .single();
+
+  if (existing) {
+    await supabase
+      .from('crypto_relations')
+      .update({ weight, context, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+  } else {
+    await supabase
+      .from('crypto_relations')
+      .insert({
+        source_entity_id: sourceId,
+        target_entity_id: targetId,
+        relation_type: relationType,
+        weight,
+        context,
+      });
+  }
+  return true;
+}
+
+// ── 코인 엔티티 (기존 + Active Metadata 추가) ──
+
+async function upsertCoinEntities(supabase: SB): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const { data: mentions } = await supabase
     .from('crypto_mentions')
-    .select('coin_symbol, mention_count')
+    .select('coin_symbol, mention_count, post_id')
     .gte('created_at', since);
 
   if (!mentions || mentions.length === 0) return 0;
 
-  // 코인별 총 멘션 수 집계
   const coinCounts = new Map<string, number>();
+  const coinSources = new Map<string, Set<string>>();
+
   for (const m of mentions) {
     coinCounts.set(m.coin_symbol, (coinCounts.get(m.coin_symbol) || 0) + m.mention_count);
+    if (!coinSources.has(m.coin_symbol)) coinSources.set(m.coin_symbol, new Set());
+    coinSources.get(m.coin_symbol)!.add(m.post_id);
+  }
+
+  // 소스 다양성 확인 (reddit/telegram/threads)
+  const postIds = [...new Set(mentions.map((m: { post_id: string }) => m.post_id))];
+  const { data: posts } = await supabase
+    .from('crypto_posts')
+    .select('id, source')
+    .in('id', postIds.slice(0, 500));
+
+  const postSourceMap = new Map<string, string>();
+  for (const p of posts || []) {
+    postSourceMap.set(p.id, p.source);
   }
 
   let upserted = 0;
   for (const [symbol, count] of coinCounts) {
     const coinInfo = COIN_MAP.get(symbol);
-    const { error } = await supabase
-      .from('crypto_entities')
-      .upsert({
-        entity_type: 'coin',
-        name: coinInfo?.name || symbol,
-        symbol,
-        mention_count: count,
-        last_seen_at: new Date().toISOString(),
-      }, { onConflict: 'entity_type,name' });
+    const postIdsForCoin = coinSources.get(symbol) || new Set();
+    const sources = new Set<string>();
+    for (const pid of postIdsForCoin) {
+      const src = postSourceMap.get(pid);
+      if (src) sources.add(src);
+    }
 
-    if (!error) upserted++;
+    const id = await upsertEntity(supabase, 'coin', coinInfo?.name || symbol, count, {
+      symbol,
+      metadata: buildQualityMetadata({
+        mentionCount: count,
+        sourceCount: sources.size,
+        confidence: Math.min(0.3 + (count / 10) * 0.3 + sources.size * 0.2, 1.0),
+      }),
+    });
+
+    if (id) upserted++;
   }
 
   return upserted;
 }
 
-// 고빈도 작성자 → influencer 엔티티
-async function upsertInfluencerEntities(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<number> {
+// ── 인플루언서 엔티티 (기존 + Active Metadata 추가) ──
+
+async function upsertInfluencerEntities(supabase: SB): Promise<number> {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // 최근 7일간 3개 이상 고점수 게시물을 작성한 저자
   const { data: authors } = await supabase
     .from('crypto_posts')
-    .select('author')
+    .select('author, source')
     .gte('posted_at', since)
     .gte('score', 50)
     .not('author', 'is', null)
@@ -59,39 +183,159 @@ async function upsertInfluencerEntities(
   if (!authors || authors.length === 0) return 0;
 
   const authorCounts = new Map<string, number>();
+  const authorSources = new Map<string, Set<string>>();
   for (const row of authors) {
-    if (row.author) {
-      authorCounts.set(row.author, (authorCounts.get(row.author) || 0) + 1);
-    }
+    if (!row.author) continue;
+    authorCounts.set(row.author, (authorCounts.get(row.author) || 0) + 1);
+    if (!authorSources.has(row.author)) authorSources.set(row.author, new Set());
+    authorSources.get(row.author)!.add(row.source || 'reddit');
   }
 
   let upserted = 0;
   for (const [author, count] of authorCounts) {
     if (count < 3) continue;
+    const sources = authorSources.get(author) || new Set();
 
-    const { error } = await supabase
-      .from('crypto_entities')
-      .upsert({
-        entity_type: 'influencer',
-        name: author,
-        mention_count: count,
-        last_seen_at: new Date().toISOString(),
-      }, { onConflict: 'entity_type,name' });
+    const id = await upsertEntity(supabase, 'influencer', author, count, {
+      metadata: buildQualityMetadata({
+        mentionCount: count,
+        sourceCount: sources.size,
+        confidence: Math.min(0.4 + (count / 10) * 0.3 + sources.size * 0.15, 1.0),
+      }),
+    });
 
-    if (!error) upserted++;
+    if (id) upserted++;
   }
 
   return upserted;
 }
 
-// 같은 게시물에 동시 언급된 코인 쌍 → correlates_with 관계
-async function updateCoinCorrelations(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<number> {
+// ── Step 3: 내러티브 엔티티 자동 생성 ──
+
+async function upsertNarrativeEntities(supabase: SB): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  // 게시물별 멘션된 코인 심볼 그룹
+  const { data: mentions } = await supabase
+    .from('crypto_mentions')
+    .select('coin_symbol')
+    .gte('created_at', since);
+
+  if (!mentions || mentions.length === 0) return 0;
+
+  const activeCoins = new Set(mentions.map((m: { coin_symbol: string }) => m.coin_symbol));
+  let created = 0;
+
+  for (const cluster of NARRATIVE_CLUSTERS) {
+    const activeInCluster = cluster.coins.filter((c) => activeCoins.has(c));
+    if (activeInCluster.length < 2) continue;
+
+    const narrativeId = await upsertEntity(supabase, 'narrative', cluster.name, activeInCluster.length, {
+      metadata: {
+        ...buildQualityMetadata({
+          mentionCount: activeInCluster.length,
+          confidence: Math.min(0.5 + activeInCluster.length * 0.1, 1.0),
+        }),
+        active_coins: activeInCluster,
+      },
+    });
+
+    if (!narrativeId) continue;
+    created++;
+
+    for (const coinSymbol of activeInCluster) {
+      const coinInfo = COIN_MAP.get(coinSymbol);
+      const { data: coinEntity } = await supabase
+        .from('crypto_entities')
+        .select('id')
+        .eq('entity_type', 'coin')
+        .eq('symbol', coinSymbol)
+        .single();
+
+      if (!coinEntity) continue;
+
+      await upsertRelation(
+        supabase, coinEntity.id, narrativeId,
+        'coin', 'narrative', 'part_of', 1,
+        `${coinInfo?.name || coinSymbol} → ${cluster.name}`
+      );
+    }
+  }
+
+  return created;
+}
+
+// ── Step 5: 이벤트 엔티티 자동 생성 ──
+
+async function upsertEventEntities(supabase: SB): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: sentiments } = await supabase
+    .from('crypto_sentiments')
+    .select('post_id, key_phrases, mentioned_coins')
+    .gte('created_at', since);
+
+  if (!sentiments || sentiments.length === 0) return 0;
+
+  const eventCoinMap = new Map<string, Set<string>>();
+
+  for (const s of sentiments) {
+    if (!s.key_phrases || !s.mentioned_coins) continue;
+
+    for (const phrase of s.key_phrases as string[]) {
+      const lower = phrase.toLowerCase();
+      for (const keyword of EVENT_KEYWORDS) {
+        if (lower.includes(keyword)) {
+          const eventName = phrase.trim();
+          if (!eventCoinMap.has(eventName)) eventCoinMap.set(eventName, new Set());
+          for (const coin of s.mentioned_coins as string[]) {
+            eventCoinMap.get(eventName)!.add(coin);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  let created = 0;
+  for (const [eventName, coins] of eventCoinMap) {
+    if (coins.size === 0) continue;
+
+    const eventId = await upsertEntity(supabase, 'event', eventName, coins.size, {
+      metadata: {
+        ...buildQualityMetadata({ mentionCount: coins.size, confidence: 0.6 }),
+        affected_coins: [...coins],
+      },
+    });
+
+    if (!eventId) continue;
+    created++;
+
+    for (const coinSymbol of coins) {
+      const { data: coinEntity } = await supabase
+        .from('crypto_entities')
+        .select('id')
+        .eq('entity_type', 'coin')
+        .eq('symbol', coinSymbol)
+        .single();
+
+      if (!coinEntity) continue;
+
+      await upsertRelation(
+        supabase, eventId, coinEntity.id,
+        'event', 'coin', 'impacts', 1,
+        `${eventName} → ${coinSymbol}`
+      );
+    }
+  }
+
+  return created;
+}
+
+// ── 코인 상관관계 (기존, 메타엣지 검증 적용) ──
+
+async function updateCoinCorrelations(supabase: SB): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
   const { data: mentions } = await supabase
     .from('crypto_mentions')
     .select('post_id, coin_symbol')
@@ -105,7 +349,6 @@ async function updateCoinCorrelations(
     postCoins.get(m.post_id)!.add(m.coin_symbol);
   }
 
-  // 코인 쌍별 동시 출현 횟수
   const pairCounts = new Map<string, number>();
   for (const coins of postCoins.values()) {
     if (coins.size < 2) continue;
@@ -124,7 +367,6 @@ async function updateCoinCorrelations(
 
     const [symA, symB] = key.split(':');
 
-    // 엔티티 ID 조회
     const { data: entityA } = await supabase
       .from('crypto_entities')
       .select('id')
@@ -141,42 +383,20 @@ async function updateCoinCorrelations(
 
     if (!entityA || !entityB) continue;
 
-    // 기존 관계 확인 후 upsert
-    const { data: existing } = await supabase
-      .from('crypto_relations')
-      .select('id')
-      .eq('source_entity_id', entityA.id)
-      .eq('target_entity_id', entityB.id)
-      .eq('relation_type', 'correlates_with')
-      .single();
-
-    if (existing) {
-      await supabase
-        .from('crypto_relations')
-        .update({ weight: count, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
-    } else {
-      await supabase
-        .from('crypto_relations')
-        .insert({
-          source_entity_id: entityA.id,
-          target_entity_id: entityB.id,
-          relation_type: 'correlates_with',
-          weight: count,
-          context: `${count}개 게시물에서 동시 언급`,
-        });
-    }
-    created++;
+    const ok = await upsertRelation(
+      supabase, entityA.id, entityB.id,
+      'coin', 'coin', 'correlates_with', count,
+      `${count}개 게시물에서 동시 언급`
+    );
+    if (ok) created++;
   }
 
   return created;
 }
 
-// influencer → coin 관계: 고점수 게시물에서 코인을 언급한 경우
-async function updateInfluencerRelations(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<number> {
+// ── 인플루언서→코인 관계 (기존, 메타엣지 검증 적용) ──
+
+async function updateInfluencerRelations(supabase: SB): Promise<number> {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: highScorePosts } = await supabase
@@ -217,47 +437,82 @@ async function updateInfluencerRelations(
 
       if (!coinEntity) continue;
 
-      const { data: existing } = await supabase
-        .from('crypto_relations')
-        .select('id, weight')
-        .eq('source_entity_id', influencer.id)
-        .eq('target_entity_id', coinEntity.id)
-        .eq('relation_type', 'mentions')
-        .single();
-
-      if (existing) {
-        await supabase
-          .from('crypto_relations')
-          .update({ weight: (existing.weight || 0) + 1, updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await supabase
-          .from('crypto_relations')
-          .insert({
-            source_entity_id: influencer.id,
-            target_entity_id: coinEntity.id,
-            relation_type: 'mentions',
-            weight: 1,
-            context: `u/${post.author} (score: ${post.score})`,
-          });
-        created++;
-      }
+      const ok = await upsertRelation(
+        supabase, influencer.id, coinEntity.id,
+        'influencer', 'coin', 'mentions', 1,
+        `u/${post.author} (score: ${post.score})`
+      );
+      if (ok) created++;
     }
   }
 
   return created;
 }
 
-export async function updateKnowledgeGraph(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
-): Promise<void> {
+// ── Step 2: 관계 weight 감쇠 (Temporal Decay) ──
+
+async function decayStaleRelations(supabase: SB): Promise<number> {
+  const staleThreshold = new Date(Date.now() - RELATION_DECAY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('crypto_relations')
+    .update({ weight: 0 })
+    .lt('updated_at', staleThreshold)
+    .gt('weight', 0)
+    .select('id');
+
+  if (error) {
+    console.warn('   ⚠️  관계 감쇠 오류:', error.message);
+    return 0;
+  }
+
+  return data?.length || 0;
+}
+
+async function decayStaleEntities(supabase: SB): Promise<number> {
+  const staleThreshold = new Date(Date.now() - ENTITY_DECAY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('crypto_entities')
+    .update({
+      metadata: { confidence: 0.1, decayed: true, last_validated_at: new Date().toISOString() },
+    })
+    .lt('last_seen_at', staleThreshold)
+    .in('entity_type', ['event', 'narrative'])
+    .select('id');
+
+  if (error) {
+    console.warn('   ⚠️  엔티티 감쇠 오류:', error.message);
+    return 0;
+  }
+
+  return data?.length || 0;
+}
+
+// ── 메인 오케스트레이터 ──
+
+export async function updateKnowledgeGraph(supabase: SB): Promise<void> {
+  // Step 2: 감쇠 먼저 실행
+  const decayedRels = await decayStaleRelations(supabase);
+  const decayedEnts = await decayStaleEntities(supabase);
+  console.log(`   🕐 감쇠: 관계 ${decayedRels}개, 엔티티 ${decayedEnts}개`);
+
+  // 기존 엔티티 (Step 4: Active Metadata 포함)
   const coinCount = await upsertCoinEntities(supabase);
   console.log(`   🪙 코인 엔티티: ${coinCount}개 upsert`);
 
   const influencerCount = await upsertInfluencerEntities(supabase);
   console.log(`   👤 인플루언서 엔티티: ${influencerCount}개 upsert`);
 
+  // Step 3: 내러티브 엔티티
+  const narrativeCount = await upsertNarrativeEntities(supabase);
+  console.log(`   📊 내러티브 엔티티: ${narrativeCount}개 upsert`);
+
+  // Step 5: 이벤트 엔티티
+  const eventCount = await upsertEventEntities(supabase);
+  console.log(`   ⚡ 이벤트 엔티티: ${eventCount}개 upsert`);
+
+  // 관계 (Step 1: 메타엣지 검증 포함)
   const correlations = await updateCoinCorrelations(supabase);
   console.log(`   🔗 코인 상관관계: ${correlations}개`);
 

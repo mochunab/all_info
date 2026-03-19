@@ -11,12 +11,13 @@ type NetworkNode = {
   id: string;
   name: string;
   fullName: string;
-  type: 'coin' | 'influencer';
+  type: 'coin' | 'influencer' | 'narrative' | 'event';
   mentions: number;
   sentiment: number;
   score: number;
   label: string;
   velocity: number;
+  confidence: number;
   x?: number;
   y?: number;
   z?: number;
@@ -76,9 +77,9 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
   const [links, setLinks] = useState<NetworkLink[]>([]);
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<NetworkNode | null>(null);
   const [loading, setLoading] = useState(true);
   const graphRef = useRef<any>(null);
+  const hoverTipRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 420 });
 
@@ -100,10 +101,10 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    // tighten layout: strong center pull + limited repulsion + shorter links
-    fg.d3Force('center')?.strength(1);
-    fg.d3Force('charge')?.strength(-30).distanceMax(100);
-    fg.d3Force('link')?.distance(20);
+    // tighten layout: strong center pull + minimal repulsion to keep disconnected nodes close
+    fg.d3Force('center')?.strength(2);
+    fg.d3Force('charge')?.strength(-15).distanceMax(40);
+    fg.d3Force('link')?.distance(15);
     fg.d3ReheatSimulation();
 
     const timer = setTimeout(() => {
@@ -178,9 +179,23 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
     (node: NetworkNode) => {
       const dimmed = neighborSet && !neighborSet.has(node.id);
       if (dimmed) return isDark ? 'rgba(100,100,100,0.2)' : 'rgba(180,180,180,0.3)';
-      if (node.type === 'influencer') return '#8b5cf6';
+
+      const alpha = Math.max(0.3, node.confidence ?? 1.0);
+
+      if (node.type === 'influencer') return `rgba(139,92,246,${alpha})`;
+      if (node.type === 'narrative') return `rgba(245,158,11,${alpha})`;
+      if (node.type === 'event') return `rgba(244,63,94,${alpha})`;
       if (selectedChip && node.name === selectedChip) return '#2563EB';
-      return getSentimentColor(node.sentiment);
+
+      const base = getSentimentColor(node.sentiment);
+      if (alpha < 1) {
+        const hex = base.replace('#', '');
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+      }
+      return base;
     },
     [neighborSet, selectedChip, isDark]
   );
@@ -199,8 +214,15 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
 
   const nodeLabel = useCallback(
     (node: NetworkNode) => {
-      if (node.type === 'influencer') {
-        return `<div style="background:rgba(139,92,246,0.9);color:#fff;padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600">${node.name}<br/><span style="font-weight:400;font-size:10px">Influencer</span></div>`;
+      const typeLabels: Record<string, { bg: string; label: string }> = {
+        influencer: { bg: 'rgba(139,92,246,0.9)', label: 'Influencer' },
+        narrative: { bg: 'rgba(245,158,11,0.9)', label: 'Narrative' },
+        event: { bg: 'rgba(244,63,94,0.9)', label: 'Event' },
+      };
+
+      const meta = typeLabels[node.type];
+      if (meta) {
+        return `<div style="background:${meta.bg};color:#fff;padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600">${node.name}<br/><span style="font-weight:400;font-size:10px">${meta.label}</span></div>`;
       }
       return `<div style="background:var(--bg-secondary,#fff);color:var(--text-primary,#111);padding:6px 12px;border-radius:8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);border:1px solid var(--border,#E5E7EB)">
         <div style="font-weight:700">${node.name}${node.fullName !== node.name ? ` <span style="font-weight:400;color:var(--text-tertiary,#9CA3AF)">${node.fullName}</span>` : ''}</div>
@@ -216,9 +238,10 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
       if (neighborSet.has(src) && neighborSet.has(tgt)) {
-        return link.type === 'correlates_with'
-          ? 'rgba(37, 99, 235, 0.45)'
-          : 'rgba(139, 92, 246, 0.35)';
+        if (link.type === 'correlates_with') return 'rgba(37, 99, 235, 0.45)';
+        if (link.type === 'part_of') return 'rgba(245, 158, 11, 0.45)';
+        if (link.type === 'impacts') return 'rgba(244, 63, 94, 0.45)';
+        return 'rgba(139, 92, 246, 0.35)';
       }
       return isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)';
     },
@@ -272,6 +295,14 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
                 <span className="w-2 h-2 rounded-sm bg-purple-500 inline-block" style={{ transform: 'rotate(45deg)', width: 7, height: 7 }} />
                 Influencer
               </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                Narrative
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-rose-500 inline-block" />
+                Event
+              </span>
             </div>
           </div>
           {/* Filter Chips */}
@@ -319,7 +350,11 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
                   linkWidth={linkWidthFn as any}
                   linkOpacity={0.6}
                   onNodeClick={handleNodeClick as any}
-                  onNodeHover={((node: any) => setHoveredNode(node)) as any}
+                  onNodeHover={((node: any) => {
+                    if (hoverTipRef.current) {
+                      hoverTipRef.current.style.display = node ? 'block' : 'none';
+                    }
+                  }) as any}
                   backgroundColor={bgColor}
                   showNavInfo={false}
                   controlType="orbit"
@@ -329,12 +364,13 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
                   cooldownTicks={0}
                 />
 
-                {/* Node name overlay for large nodes */}
-                {hoveredNode && (
-                  <div className="absolute top-3 right-3 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-[var(--border)]">
-                    Click to view details
-                  </div>
-                )}
+                <div
+                  ref={hoverTipRef}
+                  className="absolute top-3 right-3 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-[var(--border)]"
+                  style={{ display: 'none' }}
+                >
+                  Click to view details
+                </div>
               </>
             )}
           </div>

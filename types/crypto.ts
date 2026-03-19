@@ -92,11 +92,37 @@ export type CryptoRelation = {
   updated_at: string;
 };
 
+export type CryptoCoin = {
+  id: string;
+  coingecko_id: string;
+  symbol: string;
+  name: string;
+  image_url: string | null;
+  market_cap_rank: number | null;
+  is_active: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CryptoPrice = {
+  id: string;
+  coingecko_id: string;
+  price_usd: number;
+  market_cap: number | null;
+  volume_24h: number | null;
+  price_change_24h: number | null;
+  price_change_pct_24h: number | null;
+  circulating_supply: number | null;
+  fetched_at: string;
+  created_at: string;
+};
+
 // ── Enums ──
 
 export type SignalLabel = 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
 export type EntityType = 'coin' | 'influencer' | 'event' | 'narrative';
-export type RelationType = 'mentions' | 'recommends' | 'correlates_with' | 'part_of';
+export type RelationType = 'mentions' | 'recommends' | 'correlates_with' | 'part_of' | 'impacts';
 export type TimeWindow = '1h' | '6h' | '24h' | '7d';
 
 // ── Reddit API Types ──
@@ -229,6 +255,11 @@ export type CryptoCoinResponse = {
     related_entity: CryptoEntity;
   })[];
   recent_posts: CryptoPost[];
+};
+
+export type CryptoPricesResponse = {
+  prices: (CryptoPrice & { coin: CryptoCoin })[];
+  fetched_at: string | null;
 };
 
 // ── Config Types ──

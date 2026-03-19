@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import type { CryptoSignal, TimeWindow } from '@/types/crypto';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import type { CryptoSignal, TimeWindow, CryptoPrice } from '@/types/crypto';
 import { t } from '@/lib/i18n';
 import CoinCard from '@/components/crypto/CoinCard';
 import SignalTimeline from '@/components/crypto/SignalTimeline';
@@ -22,6 +22,8 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
   const [search, setSearch] = useState('');
   const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [prices, setPrices] = useState<(CryptoPrice & { crypto_coins: any })[]>([]);
 
   const fetchSignals = useCallback(async (window: TimeWindow) => {
     setLoading(true);
@@ -36,11 +38,38 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
     }
   }, []);
 
+  const fetchPrices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crypto/prices?limit=200');
+      const data = await res.json();
+      setPrices(data.prices || []);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    fetchPrices();
+  }, [fetchPrices]);
+
   useEffect(() => {
     if (timeWindow !== '24h') {
       fetchSignals(timeWindow);
     }
   }, [timeWindow, fetchSignals]);
+
+  const priceMap = useMemo(() => {
+    const map = new Map<string, { price_usd: number; price_change_pct_24h: number | null; image_url: string | null }>();
+    for (const p of prices) {
+      const symbol = p.crypto_coins?.symbol;
+      if (symbol) {
+        map.set(symbol, {
+          price_usd: p.price_usd,
+          price_change_pct_24h: p.price_change_pct_24h,
+          image_url: p.crypto_coins?.image_url,
+        });
+      }
+    }
+    return map;
+  }, [prices]);
 
   const handleWindowChange = useCallback((window: TimeWindow) => {
     setTimeWindow(window);
@@ -89,6 +118,7 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
                 <CoinCard
                   key={`${signal.coin_symbol}-${signal.time_window}`}
                   signal={signal}
+                  price={priceMap.get(signal.coin_symbol)}
                   onClick={setSelectedCoin}
                   language={language}
                 />
