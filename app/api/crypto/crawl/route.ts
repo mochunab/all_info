@@ -66,17 +66,9 @@ async function handleCrawl(request: NextRequest) {
     console.log(`[크립토] Phase: ${phase} — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    // ── Phase 1: 크롤링만 (Telegram/Reddit/Threads) ──
+    // ── Phase 1: 크롤링만 (Telegram/Threads — Reddit은 GitHub Actions 스크립트에서 실행) ──
     if (phase === 'crawl') {
       const allResults: CryptoCrawlResult[] = [];
-
-      try {
-        const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
-        const results = await crawlAllSubreddits(supabase);
-        allResults.push(...results);
-      } catch (e) {
-        console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
-      }
 
       try {
         const { crawlAllTelegramChannels } = await import('@/lib/crypto/telegram-crawler');
