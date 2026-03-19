@@ -187,6 +187,44 @@ export const COIN_LIST: CoinEntry[] = [
   { symbol: 'BASE', name: 'Base', aliases: ['base'] },
 ];
 
+// ── 온톨로지 메타엣지 규칙 (허용 관계 문법) ──
+
+export type MetaEdgeRule = { source: string; target: string };
+
+export const META_EDGES: Record<string, MetaEdgeRule> = {
+  correlates_with: { source: 'coin', target: 'coin' },
+  mentions: { source: 'influencer', target: 'coin' },
+  part_of: { source: 'coin', target: 'narrative' },
+  recommends: { source: 'influencer', target: 'coin' },
+  impacts: { source: 'event', target: 'coin' },
+} as const;
+
+// ── 내러티브 클러스터 (코인 그룹 → 자동 내러티브 생성) ──
+
+export const NARRATIVE_CLUSTERS: { name: string; coins: string[] }[] = [
+  { name: 'Dog Coins', coins: ['DOGE', 'SHIB', 'FLOKI', 'BONK', 'WIF', 'MYRO'] },
+  { name: 'AI Tokens', coins: ['FET', 'AGIX', 'TAO', 'RNDR', 'OCEAN', 'WLD', 'AI16Z', 'VIRTUAL', 'AIXBT'] },
+  { name: 'Meme Culture', coins: ['PEPE', 'BRETT', 'MOG', 'POPCAT', 'MEME', 'TURBO', 'BOME', 'MEW', 'NEIRO'] },
+  { name: 'DeFi', coins: ['AAVE', 'CRV', 'MKR', 'SNX', 'COMP', 'SUSHI', 'CAKE', 'PENDLE', 'JUP', 'UNI'] },
+  { name: 'L2 & Infra', coins: ['ARB', 'OP', 'STRK', 'ZK', 'BLAST', 'BASE', 'SUI', 'SEI'] },
+  { name: 'Political Coins', coins: ['TRUMP', 'MELANIA'] },
+  { name: 'Solana Ecosystem', coins: ['SOL', 'BONK', 'WIF', 'JUP', 'POPCAT', 'BOME'] },
+];
+
+// ── 이벤트 감지 키워드 (key_phrases에서 추출) ──
+
+export const EVENT_KEYWORDS = [
+  'listing', 'delisting', 'launch', 'airdrop', 'hack', 'exploit',
+  'regulation', 'sec', 'etf', 'halving', 'burn', 'partnership',
+  'upgrade', 'fork', 'mainnet', 'testnet', 'rug pull', 'bankruptcy',
+  'acquisition', 'integration', 'staking', 'unlock', 'vesting',
+] as const;
+
+// ── 관계 감쇠 설정 ──
+
+export const RELATION_DECAY_DAYS = 3;
+export const ENTITY_DECAY_DAYS = 7;
+
 // 심볼 → 코인 빠른 조회용 맵
 export const COIN_MAP = new Map<string, CoinEntry>(
   COIN_LIST.map((c) => [c.symbol.toUpperCase(), c])

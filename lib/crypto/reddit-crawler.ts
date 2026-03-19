@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RedditListingResponse, RedditPost, CryptoCrawlResult } from '@/types/crypto';
-import { extractCoinMentions } from '@/lib/crypto/coin-extractor';
+import { extractCoinMentionsFromDB } from '@/lib/crypto/coin-extractor';
 import {
   CRYPTO_SUBREDDITS,
   REDDIT_RATE_LIMIT_MS,
@@ -146,7 +146,7 @@ export async function crawlSubreddit(
       const dbId = sourceIdToDbId.get(`reddit_${post.name}`);
       if (!dbId) continue;
 
-      const mentions = extractCoinMentions(sanitizeText(post.title), post.selftext ? sanitizeText(post.selftext) : null);
+      const mentions = await extractCoinMentionsFromDB(sanitizeText(post.title), post.selftext ? sanitizeText(post.selftext) : null, supabase);
       for (const m of mentions) {
         mentionRows.push({
           post_id: dbId,
