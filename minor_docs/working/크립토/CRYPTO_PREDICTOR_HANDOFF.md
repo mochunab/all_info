@@ -76,7 +76,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - crypto_entities → nodes, crypto_relations → links
     - crypto_mentions → crypto_sentiments → key_phrases 집계
 
-**Phase 6 — Threads 연동 (2026-03-15, 코드 완료 / 토큰 미발급)**
+**Phase 6 — Threads 연동 (2026-03-15 코드 완료, 2026-03-20 토큰 발급 + 앱 게시)**
 31. **Threads 크롤러** — Meta Threads API 키워드 검색 (`keyword_search`) 기반 크립토 게시물 수집
     - `lib/crypto/threads-crawler.ts` — 10개 키워드 × RECENT 검색, since 파라미터로 중복 최소화
     - `types/crypto.ts` — `CryptoSource`에 `'threads'` 추가 + `ThreadsSearchPost`, `ThreadsSearchResponse`, `ThreadsSearchKeyword` 타입
@@ -86,9 +86,14 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - `lib/i18n.ts` — subtitle 5개 언어 "Reddit · Threads · Telegram" 으로 업데이트
 32. **Threads 전용 센티먼트 Edge Function** — `analyze-threads-sentiment` (Gemini 2.5 Flash Lite)
     - Threads 특성 반영: 500자 제한, 이모지 해석(🚀=강세, 📉=약세), 해시태그/멘션, NFA/DYOR 면책 표현
-33. **Meta App 설정 완료** — `acainfo` 앱, Threads API use case, `threads_basic` + `threads_keyword_search` 테스트 준비 완료
-    - Threads 앱 ID: `744117611965629`
-    - 리디렉션 콜백 URL: `https://localhost/` 설정 완료
+33. **Meta App 설정 + 앱 게시 완료** (2026-03-20)
+    - `acainfo` 앱 (App ID: `949873810905349`), Threads 앱 ID: `744117611965629`
+    - Threads 테스터 `gyeol_hh` 등록 + 수락 완료
+    - OAuth Long-lived 토큰 발급 완료 (60일, 만료: ~2026-05-18)
+    - `THREADS_ACCESS_TOKEN` — `.env.local` + Vercel production 환경변수 설정 완료
+    - `analyze-threads-sentiment` Edge Function 배포 완료
+    - 앱 라이브 모드 전환 완료 (개인정보처리방침 URL: `https://aca-info.com/terms`)
+    - **제한**: `keyword_search`가 현재 **자기 게시물만** 반환. 공개 게시물 검색은 **Tech Provider 인증 + 앱 검수** 필요 (비즈니스 인증 → 액세스 인증 → 앱 검수 3단계, 사업자등록증 필요)
 
 **Phase 7 — 타임아웃 방지 + 시그널 보정 (2026-03-17)**
 34. **3-Phase 파이프라인 분리** — 단일 호출 전체 실행 → crawl/sentiment/signals 3개 독립 호출
@@ -142,8 +147,9 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 4. **센티먼트 배치 쿼리 개선** — 현재 NOT IN 서브쿼리 방식이 Supabase JS에서 직접 지원 안 됨 → RPC 함수(`get_posts_without_sentiment`) 생성 또는 LEFT JOIN 방식으로 전환 필요
 5. **첫 크롤링 테스트** — Reddit API 승인 후 `curl -X POST https://aca-info.com/api/crypto/crawl -H "Authorization: Bearer $CRON_SECRET"` 실행 후 DB 데이터 확인
 6. ~~**서브레딧 목록 확장**~~ — ✅ config.ts에 5개 추가 완료 (2026-03-15) → 총 10개
-7. **Threads 토큰 발급** — Threads 테스터 등록 + OAuth 인증 코드 → short-lived token → long-lived token 교환 → `THREADS_ACCESS_TOKEN` 환경변수 설정. 아래 "Threads 토큰 발급" 섹션 참조
-8. **analyze-threads-sentiment Edge Function 배포** — `supabase functions deploy analyze-threads-sentiment --project-ref tcpvxihjswauwrmcxhhh`
+7. ~~**Threads 토큰 발급**~~ — ✅ 완료 (2026-03-20). 테스터 등록/수락 + OAuth Long-lived 토큰 발급 + 환경변수 설정
+8. ~~**analyze-threads-sentiment Edge Function 배포**~~ — ✅ 배포 완료 (2026-03-20)
+9. **Threads 공개 검색 활성화** — 현재 `keyword_search`가 자기 게시물만 반환. Tech Provider 인증 (비즈니스 인증 + 앱 검수) 필요. 사업자등록증 필요하여 보류 중
 
 #### 우선순위 중간 (기능 완성도)
 9. **Discord 봇 연동** — Discord Bot API + discord.js로 크립토 서버 메시지 수집. 봇 초대 필수 (서버 관리자 협조 필요). **DM 피칭 4개 서버 발송 완료 (2026-03-15), 응답 대기 중.**
@@ -178,11 +184,12 @@ Phase 1 (crawl): 크롤링만 — 완료 후 자동으로 Phase 2 트리거
   │   → crypto_posts upsert → coin-extractor → crypto_mentions
   │
   ├─ Telegram (API 키 불필요, ✅ 동작 중)
-  │   → 11개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
+  │   → 25개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
   │   → Cheerio HTML 파싱 → crypto_posts upsert → crypto_mentions
   │
-  └─ Threads (THREADS_ACCESS_TOKEN 필요, 토큰 미발급)
+  └─ Threads (THREADS_ACCESS_TOKEN ✅ 설정 완료, 공개 검색 보류)
       → 10개 키워드 검색 → crypto_posts upsert → crypto_mentions
+      → ⚠️ 현재 자기 게시물만 반환 (Tech Provider 인증 필요)
   ↓ fire-and-forget: {phase: "sentiment"}
 
 Phase 2 (sentiment): 센티먼트 분석 — 미완료 시 자기 재호출, 완료 시 Phase 3 트리거
@@ -307,7 +314,7 @@ app/api/crypto/crawl/route.ts         Phase 4 (prices) 추가 + parsePhase query
 | 함수 | 모델 | 용도 | 배포 완료 |
 |------|------|------|----------|
 | `analyze-crypto-sentiment` | `gemini-2.5-flash-lite` | Reddit/Telegram 게시물 센티먼트 분석 (score/label/fomo/fud/reasoning) | ✅ 배포 완료 (2026-03-15) |
-| `analyze-threads-sentiment` | `gemini-2.5-flash-lite` | Threads 전용 센티먼트 분석 (이모지 해석, 500자 최적화, NFA/DYOR 처리) | **미배포** (토큰 발급 후 배포) |
+| `analyze-threads-sentiment` | `gemini-2.5-flash-lite` | Threads 전용 센티먼트 분석 (이모지 해석, 500자 최적화, NFA/DYOR 처리) | ✅ 배포 완료 (2026-03-20) |
 
 `google_API_KEY` secret 사용 (기존 Edge Function과 공유, Dashboard에 이미 등록됨).
 
@@ -326,7 +333,7 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 | `REDDIT_CLIENT_SECRET` | `.env.local` + Vercel | Reddit OAuth2 클라이언트 시크릿 | **미설정** (API Access Request 승인 대기 중) |
 | `REDDIT_USER_AGENT` | `.env.local` + Vercel | Reddit API User-Agent (기본값: `InsightHub:MemePredictor:1.0`) | **미설정** (API Access Request 승인 대기 중) |
 | `google_API_KEY` | Supabase Secrets | Gemini API (analyze-crypto-sentiment) | 기존 등록됨 |
-| `THREADS_ACCESS_TOKEN` | `.env.local` + Vercel | Threads API 장기 액세스 토큰 (60일) | **미설정** (테스터 등록 + OAuth 필요) |
+| `THREADS_ACCESS_TOKEN` | `.env.local` + Vercel | Threads API 장기 액세스 토큰 (60일) | ✅ 설정 완료 (2026-03-20, 만료: ~2026-05-18) |
 | `CRON_SECRET` | `.env.local` + Vercel | 크롤링 Bearer 인증 | 기존 등록됨 |
 | `COINGECKO_API_KEY` | `.env.local` + Vercel | CoinGecko Demo API 키 (선택, 없어도 동작) | 미설정 (무료 한도 충분) |
 
@@ -346,35 +353,29 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 - 리디렉션 콜백 URL: `https://localhost/` 설정 완료
 - 제거/삭제 콜백 URL: `https://localhost/deauth`, `https://localhost/delete`
 
-**블로커: Threads 테스터 등록**
-- Meta 개발자 포탈 → 앱 역할 → Threads 테스터 → `gyeol_hh` 추가 시도했으나 **등록이 반영되지 않음**
-- 기존에 `my-theads-insight` 앱이 Threads 계정에 승인되어 있음 (2026-01-25) → 해당 앱이 어느 Meta 개발자 계정에 있는지 확인 필요
-- **대안 1**: `my-theads-insight` 앱에 `threads_keyword_search` 퍼미션 추가 → 기존 승인 활용
-- **대안 2**: `acainfo` 앱의 Threads 테스터 등록 재시도 (시간 경과 후 또는 Meta 지원 문의)
+**✅ Threads 설정 완료 (2026-03-20)**
+- Threads 테스터 `gyeol_hh` 등록 + Threads 웹에서 초대 수락 완료
+- OAuth Long-lived 토큰 발급 완료 (60일, 발급일: 2026-03-19, 만료: ~2026-05-18)
+- `.env.local` + Vercel production에 `THREADS_ACCESS_TOKEN` 설정 완료
+- `analyze-threads-sentiment` Edge Function 배포 완료
+- 앱 라이브 모드 전환 완료 (개인정보처리방침 URL: `https://aca-info.com/terms`)
 
-**토큰 발급 절차** (테스터 등록 성공 후):
+**현재 제한: `keyword_search` 자기 게시물만 반환**
+- 앱이 라이브 모드이지만 `threads_keyword_search`가 **표준 액세스** 수준
+- 공개 게시물 검색은 **고급 액세스** (Tech Provider 인증 + 앱 검수) 필요
+- Tech Provider 요건: 비즈니스 인증 (사업자등록증) → 액세스 인증 → 앱 검수 3단계
+- 개인/학생 프로젝트에서는 비즈니스 인증 불가 → **보류**
+
+**토큰 갱신 절차** (60일 만료 시):
 1. 브라우저에서 인증 코드 요청:
    ```
    https://threads.net/oauth/authorize?client_id=744117611965629&redirect_uri=https://localhost/&scope=threads_basic,threads_keyword_search&response_type=code
    ```
 2. Threads 로그인 → 앱 승인 → `https://localhost/?code=XXXXXX#_` 에서 code 복사
-3. Short-lived token 교환:
-   ```bash
-   curl -s -X POST "https://graph.threads.net/oauth/access_token" \
-     -d "client_id=744117611965629" \
-     -d "client_secret={Threads앱시크릿}" \
-     -d "grant_type=authorization_code" \
-     -d "redirect_uri=https://localhost/" \
-     -d "code={Step2의코드}"
-   ```
-4. Long-lived token 교환 (60일 유효):
-   ```bash
-   curl -s "https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret={Threads앱시크릿}&access_token={Step3의토큰}"
-   ```
-5. `.env.local` + Vercel에 `THREADS_ACCESS_TOKEN` 설정
-6. `supabase functions deploy analyze-threads-sentiment --project-ref tcpvxihjswauwrmcxhhh`
+3. Short-lived → Long-lived 토큰 교환 (위 절차 반복)
+4. `.env.local` + Vercel에 `THREADS_ACCESS_TOKEN` 갱신
 
-**⚠️ 앱 시크릿 노출됨**: 이전 대화에서 앱 시크릿이 노출되었으므로 Meta 개발자 대시보드 → 앱 설정 → 기본 설정에서 **앱 시크릿 재발급** 필요
+**⚠️ 앱 시크릿 재발급 필요**: 대화에서 앱 시크릿이 노출됨 → Meta 개발자 대시보드 → 앱 설정 → 기본 설정에서 리셋 필수
 
 ---
 
@@ -396,12 +397,14 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 - **Discord Developer Portal**: https://discord.com/developers → 봇 생성 → MESSAGE_CONTENT intent 활성화
 - **ToS 주의**: 수집 데이터로 ML 학습 금지 (추론/분석은 OK), 개인 메시지 저장 금지
 
-### Threads (코드 완료, 토큰 미발급)
+### Threads (코드 완료, 토큰 발급 완료, 공개 검색 보류)
 - **방식**: Meta Threads API 공식 `keyword_search` 엔드포인트
 - **장점**: 키워드 검색으로 크립토 관련 게시물만 정확 수집, 참여도 지표(views/likes/replies/reposts), 유저 프로필 → 인플루언서 감지
 - **Rate limit**: 2,200쿼리/24시간 (30분 크론 = 하루 48회, 충분)
-- **코드 완료**: `threads-crawler.ts`, `analyze-threads-sentiment` Edge Function, `batch-sentiment.ts` 소스 라우팅, crawl route Phase 1c
-- **블로커**: Threads 테스터 등록 + OAuth 토큰 발급 필요 (아래 "Threads 토큰 발급" 섹션 참조)
+- **코드 완료**: `threads-crawler.ts`, `analyze-threads-sentiment` Edge Function 배포, `batch-sentiment.ts` 소스 라우팅, crawl route Phase 1c
+- **토큰 발급 완료**: Long-lived 토큰 (60일, 만료: ~2026-05-18), `.env.local` + Vercel 설정 완료
+- **앱 게시 완료**: 라이브 모드, 개인정보처리방침 URL 설정
+- **블로커**: `keyword_search`가 자기 게시물만 반환. 공개 검색은 Tech Provider 인증 필요 (비즈니스 인증 = 사업자등록증 필요 → 보류)
 
 ### 4chan /biz/ (보류)
 - **검토 결과**: 크립토 비율 ~28%, 나머지는 부동산/커리어/개인재무 노이즈
@@ -534,11 +537,13 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - [x] `config.ts` Threads 키워드/상수 추가 (2026-03-15)
 - [x] `i18n.ts` subtitle 5개 언어 업데이트 (2026-03-15)
 - [x] Meta App 설정 (acainfo, Threads API use case, 리디렉션 URL) (2026-03-15)
-- [ ] Threads 테스터 등록 (`gyeol_hh`) — 개발자 포탈에서 등록 시도했으나 미반영
-- [ ] `THREADS_ACCESS_TOKEN` 환경변수 설정 (`.env.local` + Vercel)
-- [ ] `analyze-threads-sentiment` Edge Function 배포
-- [ ] 크롤링 테스트 후 Threads 소스 게시물 DB 확인
+- [x] Threads 테스터 등록 (`gyeol_hh`) + Threads 웹에서 초대 수락 (2026-03-20)
+- [x] `THREADS_ACCESS_TOKEN` 환경변수 설정 (`.env.local` + Vercel) (2026-03-20)
+- [x] `analyze-threads-sentiment` Edge Function 배포 (2026-03-20)
+- [x] 앱 라이브 모드 전환 (개인정보처리방침 URL 설정) (2026-03-20)
+- [x] 크롤링 테스트 — API 연결 성공 (200 OK), 자기 게시물 검색 확인 (2026-03-20)
 - [ ] **앱 시크릿 재발급** (노출됨, Meta 개발자 대시보드에서 리셋 필수)
+- [ ] **공개 게시물 검색** — Tech Provider 인증 필요 (비즈니스 인증 = 사업자등록증, 보류)
 
 ### Phase 8 — CoinGecko 가격 연동 (2026-03-20)
 - [x] DB 마이그레이션 `021_crypto_prices.sql` 적용 (crypto_coins + crypto_prices)
