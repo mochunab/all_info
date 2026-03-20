@@ -66,9 +66,17 @@ async function handleCrawl(request: NextRequest) {
     console.log(`[크립토] Phase: ${phase} — ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    // ── Phase 1: 크롤링만 (Telegram/Threads — Reddit은 GitHub Actions 스크립트에서 실행) ──
+    // ── Phase 1: 크롤링 (Reddit/Telegram/Threads) ──
     if (phase === 'crawl') {
       const allResults: CryptoCrawlResult[] = [];
+
+      try {
+        const { crawlAllSubreddits } = await import('@/lib/crypto/reddit-crawler');
+        const results = await crawlAllSubreddits(supabase);
+        allResults.push(...results);
+      } catch (e) {
+        console.warn(`[Reddit] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
 
       try {
         const { crawlAllTelegramChannels } = await import('@/lib/crypto/telegram-crawler');
@@ -204,11 +212,38 @@ async function handleCrawl(request: NextRequest) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[가격 완료] ${elapsed}초, 동기화: ${syncResult.synced}개, 가격: ${priceResult.stored}개`);
 
+      await triggerNextPhase('battle');
+
       return NextResponse.json({
         success: true,
         phase: 'prices',
         sync: syncResult,
         prices: priceResult,
+        elapsed: `${elapsed}s`,
+        nextPhase: 'battle',
+      });
+    }
+
+    // ── Phase 5: 배틀 거래 ──
+    if (phase === 'battle') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let battleResult: any = { evaluated: false };
+
+      try {
+        const { executeBattle } = await import('@/lib/crypto/battle-trader');
+        battleResult = await executeBattle(supabase);
+        console.log(`[배틀] 평가: ${battleResult.evaluated}`);
+      } catch (e) {
+        console.warn(`[배틀] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[배틀 완료] ${elapsed}초`);
+
+      return NextResponse.json({
+        success: true,
+        phase: 'battle',
+        battle: battleResult,
         elapsed: `${elapsed}s`,
       });
     }

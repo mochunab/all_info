@@ -234,6 +234,47 @@ export type SignalComputeResult = {
   top_posts: TopPostSummary[];
 };
 
+// ── Trending Explain Types ──
+
+export type TrendingExplainResponse = {
+  coin_symbol: string;
+
+  score_breakdown: {
+    velocity: { normalized: number; weight: 0.25 };
+    sentiment: { normalized: number; weight: 0.30 };
+    engagement: { normalized: number; weight: 0.20 };
+    fomo: { normalized: number; weight: 0.10 };
+    mention_confidence: number;
+    final_score: number;
+  };
+
+  post_sentiments: {
+    title: string;
+    channel: string;
+    source: CryptoSource;
+    permalink: string | null;
+    score: number;
+    sentiment_label: string;
+    fomo_score: number;
+    fud_score: number;
+    reasoning: string | null;
+    key_phrases: string[];
+  }[];
+
+  source_breakdown: { source: string; count: number; avg_sentiment: number }[];
+
+  top_phrases: { phrase: string; count: number }[];
+
+  narratives: { name: string }[];
+  events: { name: string }[];
+
+  price: {
+    price_usd: number;
+    price_change_pct_24h: number | null;
+    volume_24h: number | null;
+  } | null;
+};
+
 // ── API Response Types ──
 
 export type CryptoPostsResponse = {
@@ -260,6 +301,101 @@ export type CryptoCoinResponse = {
 export type CryptoPricesResponse = {
   prices: (CryptoPrice & { coin: CryptoCoin })[];
   fetched_at: string | null;
+};
+
+// ── Battle Types ──
+
+export type BattlePlayer = 'monkey' | 'robot';
+
+export type BattlePosition = {
+  id: string;
+  player: BattlePlayer;
+  coin_symbol: string;
+  entry_price: number;
+  initial_size: number;
+  remaining_size: number;
+  stop_loss_price: number | null;
+  take_profit_stage: number;
+  status: 'open' | 'closed';
+  close_reason: string | null;
+  realized_pnl: number;
+  signal_snapshot: BattleSignalSnapshot | null;
+  hold_until: string | null;
+  opened_at: string;
+  closed_at: string | null;
+};
+
+export type BattleSignalSnapshot = {
+  signal_label: string;
+  weighted_score: number;
+  avg_sentiment: number;
+  mention_velocity: number;
+  fomo_avg: number;
+  confidence: number;
+};
+
+export type BattleCloseReason =
+  | 'stop_loss'
+  | 'take_profit_1'
+  | 'take_profit_2'
+  | 'signal_reversal'
+  | 'sentiment_drop'
+  | 'velocity_dead'
+  | 'hold_expired';
+
+export type BattleTrade = {
+  id: string;
+  trade_date: string;
+  player: BattlePlayer;
+  coin_symbol: string;
+  action: 'buy' | 'sell';
+  entry_price: number;
+  trade_size: number;
+  price_at_close: number | null;
+  pnl: number | null;
+  signal_label: string | null;
+  weighted_score: number | null;
+  position_id: string | null;
+  reason: string | null;
+  traded_at: string | null;
+};
+
+export type BattlePortfolio = {
+  id: string;
+  snapshot_date: string;
+  player: BattlePlayer;
+  portfolio_value: number;
+  total_trades: number;
+  win_count: number;
+  cash_balance: number | null;
+  open_positions: number | null;
+};
+
+export type BattleResponse = {
+  portfolio: {
+    monkey: { current: number; change_pct: number; cash: number; openPositions: number };
+    robot: { current: number; change_pct: number; cash: number; openPositions: number };
+  };
+  history: {
+    dates: string[];
+    monkey: number[];
+    robot: number[];
+  };
+  recentTrades: {
+    monkey: BattleTrade[];
+    robot: BattleTrade[];
+  };
+  openPositions: {
+    monkey: BattlePosition[];
+    robot: BattlePosition[];
+  };
+  stats: {
+    totalTrades: number;
+    monkeyWins: number;
+    robotWins: number;
+    monkeyWinRate: number;
+    robotWinRate: number;
+  };
 };
 
 // ── Config Types ──
