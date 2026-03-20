@@ -10,11 +10,11 @@ type SignalTimelineProps = {
 };
 
 const LABEL_EMOJI: Record<string, string> = {
-  strong_buy: '🟢',
-  buy: '🟩',
-  neutral: '🟡',
-  sell: '🟧',
-  strong_sell: '🔴',
+  extremely_hot: '🔥',
+  hot: '🟠',
+  warm: '🟡',
+  cool: '🔵',
+  cold: '❄️',
 };
 
 export default function SignalTimeline({ signals, onSelect, language = 'ko' }: SignalTimelineProps) {

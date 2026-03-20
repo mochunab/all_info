@@ -1,6 +1,6 @@
 # Insight Hub 크립토 온톨로지 가이드
 
-> 최종 갱신: 2026-03-20
+> 최종 갱신: 2026-03-21
 > "온톨로지 없는 시그널은 숫자일 뿐이고, 시그널 없는 온톨로지는 박물관이다."
 
 ---
@@ -20,8 +20,8 @@
 |-------------|------|-----------|--------|
 | `coin` | 크립토 코인/토큰 | 24시간 내 1회+ 멘션 | 원형, 센티먼트 색상 (green/gray/red) |
 | `influencer` | 고빈도 작성자 | 7일간 score≥50 게시물 3개+ | 다이아몬드, 보라 |
-| `narrative` | 코인 그룹 테마 | 클러스터 내 2개+ 코인 활성 | 원형, 주황 |
-| `event` | 시장 이벤트 | key_phrases에서 이벤트 키워드 매칭 | 사각형, 로즈 |
+| `narrative` | 코인 그룹 테마 | LLM 감지 (2회+ 등장) 또는 클러스터 내 2개+ 코인 활성 | 원형, 주황 |
+| `event` | 시장 이벤트 | LLM 감지 (이벤트명+영향 코인+방향) 또는 key_phrases 이벤트 키워드 매칭 | 사각형, 로즈 |
 
 ### 코인 목록
 `config.ts` COIN_LIST — 144개 코인. 카테고리별:
@@ -58,9 +58,9 @@
 |---------------|-----------------|------|-----------|
 | `correlates_with` | coin → coin | 동시 언급 상관관계 | 24h 내 3개+ 게시물에서 동시 멘션 |
 | `mentions` | influencer → coin | 인플루언서가 코인 언급 | score≥100 게시물에서 코인 멘션 |
-| `part_of` | coin → narrative | 코인이 내러티브에 소속 | NARRATIVE_CLUSTERS 매칭 |
-| `impacts` | event → coin | 이벤트가 코인에 영향 | key_phrases에서 EVENT_KEYWORDS 매칭 |
-| `recommends` | influencer → coin | 인플루언서가 코인 추천 | (미구현, 향후 센티먼트 기반) |
+| `recommends` | influencer → coin | 인플루언서가 코인 추천 | sentiment=bullish + confidence>0.7 + score≥100 |
+| `part_of` | coin → narrative | 코인이 내러티브에 소속 | LLM 감지 또는 NARRATIVE_CLUSTERS 매칭 |
+| `impacts` | event → coin | 이벤트가 코인에 영향 | LLM 감지 (impact: +/-/neutral) 또는 EVENT_KEYWORDS 매칭 |
 
 ### 메타엣지 규칙 (허용 관계 문법)
 
@@ -96,7 +96,7 @@ config.ts META_EDGES:
 | coin | `min(0.3 + (mentions/10)*0.3 + sources*0.2, 1.0)` |
 | influencer | `min(0.4 + (posts/10)*0.3 + sources*0.15, 1.0)` |
 | narrative | `min(0.5 + active_coins*0.1, 1.0)` |
-| event | `0.6` (고정, key_phrases 기반이므로) |
+| event | LLM 감지: `0.75`, 키워드 매칭: `0.6` |
 
 ### source_count
 해당 엔티티가 확인된 데이터 소스 수 (reddit=1, telegram=2, threads=3). 다수 소스에서 확인될수록 높은 신뢰도.
@@ -112,8 +112,15 @@ config.ts META_EDGES:
 | 대상 | 감쇠 조건 | 처리 |
 |------|-----------|------|
 | 관계 (crypto_relations) | `updated_at` < 3일 전 | weight → 0 |
-| 이벤트/내러티브 엔티티 | `last_seen_at` < 7일 전 | confidence → 0.1, decayed=true |
+| 이벤트/내러티브 엔티티 | `last_seen_at` < 7일 전 | 점진적 감쇠: `confidence × 0.85^(경과일수 - 7)`, 최소 0.05 |
 | 코인/인플루언서 엔티티 | 감쇠 없음 | 크롤링 시마다 갱신 |
+
+### 점진적 감쇠 곡선 (Phase B 개선, 2026-03-21)
+- 7일까지는 confidence 유지
+- 7일 초과 후 매일 15%씩 감쇠: `newConfidence = originalConfidence × 0.85^(daysSinceLastSeen - 7)`
+- 14일(7일 초과 +7일) 후: ~0.32배, 21일 후: ~0.10배
+- `decayed: true` 플래그는 confidence < 0.15 이하일 때만 설정
+- 최소 바닥: 0.05 (완전히 사라지지 않음)
 
 감쇠는 `updateKnowledgeGraph()` 실행 시 가장 먼저 실행됨 → 이후 새 데이터로 활성 관계/엔티티가 갱신.
 
@@ -127,13 +134,13 @@ Network API에서 `weight > 0` 필터로 감쇠된 관계 자동 제외.
 Phase 3 (signals) 호출 시 실행되는 순서:
 
 1. decayStaleRelations()     — 3일+ 관계 weight=0
-2. decayStaleEntities()      — 7일+ event/narrative confidence=0.1
+2. decayStaleEntities()      — 7일+ event/narrative → 점진적 감쇠 (0.85^일수, 최소 0.05)
 3. upsertCoinEntities()      — 24h 멘션 기반 코인 엔티티 + 품질 메타데이터
 4. upsertInfluencerEntities() — 7일 고점수 작성자 엔티티
-5. upsertNarrativeEntities()  — 클러스터 기반 내러티브 엔티티 + part_of 관계
-6. upsertEventEntities()      — key_phrases → 이벤트 엔티티 + impacts 관계
+5. upsertNarrativeEntities()  — LLM 감지 내러티브 우선 (2회+ 등장) + 하드코딩 클러스터 fallback + part_of 관계
+6. upsertEventEntities()      — LLM 감지 이벤트 우선 (이름+코인+impact) + EVENT_KEYWORDS fallback + impacts 관계
 7. updateCoinCorrelations()   — 동시 멘션 3회+ → correlates_with 관계
-8. updateInfluencerRelations() — 고점수 게시물 → mentions 관계
+8. updateInfluencerRelations() — 고점수 게시물 → mentions + recommends 관계 (bullish+confidence>0.7+score≥100)
 ```
 
 ---
@@ -178,6 +185,7 @@ crypto_relations (
 | event 노드 | 로즈(#f43f5e), 투명도=confidence |
 | correlates_with 엣지 | 파란, 굵기=weight |
 | mentions 엣지 | 보라 |
+| recommends 엣지 | 초록(#22c55e) |
 | part_of 엣지 | 주황 |
 | impacts 엣지 | 로즈 |
 
@@ -194,11 +202,12 @@ link distance: 15        — 연결 노드 간 짧은 거리
 ## 9. 설계 원칙
 
 ### 범용성 우선
-온톨로지 로직은 특정 코인/이벤트에 하드코딩하지 않음. 모든 감지는 패턴 기반:
+온톨로지 로직은 특정 코인/이벤트에 하드코딩하지 않음. LLM 동적 감지 우선 + 패턴 기반 fallback:
 - 코인 = COIN_LIST 매칭
-- 내러티브 = NARRATIVE_CLUSTERS 소속
-- 이벤트 = EVENT_KEYWORDS 포함
+- 내러티브 = **LLM 동적 감지 (우선)** + NARRATIVE_CLUSTERS 하드코딩 (fallback)
+- 이벤트 = **LLM 이벤트 감지 (이름+코인+impact, 우선)** + EVENT_KEYWORDS 매칭 (fallback)
 - 인플루언서 = 통계 기준 (3개+ 고점수 게시물)
+- 추천 관계 = 센티먼트 기반 (bullish + confidence>0.7 + score≥100)
 
 ### 최소 임계값
 노이즈 방지를 위한 최소 조건:
@@ -217,57 +226,85 @@ link distance: 15        — 연결 노드 간 짧은 거리
 ```
 lib/crypto/
   config.ts              META_EDGES, NARRATIVE_CLUSTERS, EVENT_KEYWORDS, RELATION_DECAY_DAYS
-  knowledge-graph.ts     온톨로지 파이프라인 전체 (8개 함수)
+  knowledge-graph.ts     온톨로지 파이프라인 전체 (8개 함수) — LLM 내러티브/이벤트 통합, 점진적 감쇠, recommends
+  score-utils.ts         normalizeSentimentTrend() 포함 스코어링 유틸
+  signal-generator.ts    시계열 센티먼트 트렌드 계산
+  batch-sentiment.ts     LLM narratives/events 응답 파싱 → metadata JSONB 저장
+  backtester.ts          백테스팅 — 시그널 vs 가격 비교, 적중 평가, 미평가 건 재평가
 
-types/crypto.ts          EntityType, RelationType 타입 정의
+types/crypto.ts          EntityType, RelationType, CryptoSentimentEvent, BacktestResult/Response 타입 정의
 
 app/api/crypto/
   network/route.ts       그래프 데이터 API (nodes+links+keywords, confidence 포함)
+  events/route.ts        이벤트 타임라인 API (coin 필터, days, limit)
+  trending-explain/route.ts  코인별 관계 기반 narrative/event 조회
+  backtest/route.ts      백테스트 정확도 API (라벨별/코인별 적중률)
 
 components/crypto/
-  SignalNetwork.tsx       3D Force Graph 시각화 (4종 노드 + 5종 엣지 + 품질 투명도)
+  SignalNetwork.tsx       3D Force Graph — narrative/event 노드 클릭 하이라이트, recommends 엣지
+  EventTimeline.tsx       이벤트 타임라인 컴포넌트 (impact 색상, AI 뱃지, 코인 칩)
+  WhyTrendingPanel.tsx    WHY 패널 — EventTimeline 통합
+  CoinDetail.tsx          FOMO 라인 + 이벤트 ReferenceLine 추가 차트
+  BacktestReport.tsx      백테스트 정확도 리포트 (아코디언, 적중률 바, 코인별, 최근 결과)
+
+supabase/functions/
+  analyze-crypto-sentiment/index.ts   narratives/events 필드 추가 프롬프트
+  analyze-threads-sentiment/index.ts  동일
 
 supabase/migrations/
   018_crypto_tables.sql   초기 스키마 (entity_type, relation_type CHECK)
   022_crypto_ontology_upgrade.sql   impacts 관계 타입 추가
+  026_add_sentiments_metadata.sql   crypto_sentiments.metadata JSONB 컬럼 추가
+  027_crypto_backtest.sql           crypto_backtest_results 테이블 + crypto_backtest_summary 뷰
 ```
 
 ---
 
-## 11. 남은 작업 (온톨로지 관련)
+## 11. 완료된 작업 (Phase B + C, 2026-03-21)
 
-### 즉시 작업 가능
+### Phase B — 온톨로지 고도화 (완료)
 
-| # | 항목 | 파일 | 설명 |
-|---|------|------|------|
-| 1 | **recommends 관계 활성화** | `knowledge-graph.ts` | 메타엣지 이미 정의됨. 센티먼트 bullish + confidence>0.7 + score>100 → influencer→coin `recommends` 관계 생성 로직만 추가 |
-| 2 | **가중 confidence 감쇠** | `knowledge-graph.ts` | 현재 `decayStaleEntities()`가 7일 후 confidence=0.1로 이진 감쇠 → `confidence × 0.9^(경과일수)` 점진 감쇠로 전환 |
-| 3 | **narrative 노드 클릭 연동** | `SignalNetwork.tsx` | narrative 노드 클릭 시 소속 코인만 하이라이트 (현재 coin 클릭만 CoinDetail 모달 오픈) |
-| 4 | **프로덕션 검증** | — | 배포 후 narrative/event 노드 생성 확인, 저신뢰 투명도 확인, 감쇠 동작 확인 |
+| # | 항목 | 상태 |
+|---|------|------|
+| 1 | **시계열 트렌드 계산** — `normalizeSentimentTrend()` 추가, 이전 윈도우 대비 센티먼트 변화율 | ✅ |
+| 2 | **가중 confidence 감쇠** — 이진(0.1) → 점진적(0.85^일수, 최소 0.05) | ✅ |
+| 3 | **recommends 관계 활성화** — bullish+confidence>0.7+score≥100 → recommends 자동 생성 | ✅ |
+| 4 | **LLM 내러티브 동적 감지** — Edge Function 프롬프트 확장 + batch-sentiment 파싱 + knowledge-graph 통합 | ✅ |
+| 5 | **LLM 이벤트 감지 고도화** — 이벤트명+영향 코인+impact 방향 추출, 키워드 매칭 fallback 유지 | ✅ |
+| 6 | **DB 마이그레이션** — `crypto_sentiments.metadata` JSONB 컬럼 추가 (026_add_sentiments_metadata.sql) | ✅ |
+| 7 | **Edge Function 배포** — analyze-crypto-sentiment + analyze-threads-sentiment (narratives/events 프롬프트) | ✅ |
 
-### Edge Function 변경 필요
+### Phase C — 시각화 강화 (완료)
 
-| # | 항목 | 파일 | 설명 |
-|---|------|------|------|
-| 5 | **LLM 내러티브 동적 감지** | `analyze-crypto-sentiment/index.ts` | 프롬프트에 `narratives` 필드 추가 → LLM이 "AI tokens", "dog coins" 등 테마를 동적 감지. 현재 NARRATIVE_CLUSTERS 하드코딩 대체 |
-| 6 | **LLM 이벤트 감지 고도화** | `analyze-crypto-sentiment/index.ts` | 프롬프트에 `events` 필드 추가 → 이벤트명 + 영향 코인 + 영향 방향(+/-) 추출. 현재 EVENT_KEYWORDS 매칭 대체 |
-| 7 | **LLM 결과 저장** | `batch-sentiment.ts`, `crypto_sentiments` | Edge Function에서 반환된 narrative/event 데이터를 DB에 저장 (metadata JSONB 또는 별도 컬럼) |
+| # | 항목 | 상태 |
+|---|------|------|
+| 1 | **내러티브/이벤트 클러스터 하이라이트** — 노드 클릭 시 연결 코인 하이라이트 (focusedNode) | ✅ |
+| 2 | **이벤트 타임라인** — `/api/crypto/events` API + `EventTimeline.tsx` 컴포넌트 + WhyTrendingPanel 통합 | ✅ |
+| 3 | **추론 경로 표시** — narrative/event 노드 클릭 → 관련 코인 경로 하이라이트 | ✅ |
+| 4 | **CoinDetail 차트 강화** — FOMO 라인(점선) + 이벤트 ReferenceLine + 범례 확장 | ✅ |
+| 5 | **recommends 엣지 시각화** — 초록(#22c55e) 색상 | ✅ |
+| 6 | **i18n** — `crypto.eventTimeline` 5개 언어 추가 | ✅ |
 
-### 시각화 강화
+---
 
-| # | 항목 | 파일 | 설명 |
-|---|------|------|------|
-| 8 | **이벤트 타임라인 UI** | 새 컴포넌트 | 이벤트 엔티티를 시간축 위에 배치 → 코인 센티먼트/가격 변동과 병렬 표시 |
-| 9 | **추론 경로 표시** | `SignalNetwork.tsx` | "왜 DOGE가 trending?" → 그래프에서 관련 경로(narrative+influencer+event) 하이라이트 |
-| 10 | **CoinDetail 온톨로지 탭** | `CoinDetail.tsx` | 관련 narrative/event 엔티티 목록 + impacts/part_of 관계 표시 |
+## 12. 남은 작업
+
+### 프로덕션 검증
+
+| # | 항목 | 설명 |
+|---|------|------|
+| 1 | **LLM 내러티브/이벤트 생성 확인** | 크롤링 파이프라인 1회 실행 후 crypto_sentiments.metadata에 narratives/events 저장 확인 |
+| 2 | **knowledge-graph LLM 통합 확인** | crypto_entities에 LLM 기반 narrative/event 엔티티 + source:'llm' 메타데이터 확인 |
+| 3 | **점진적 감쇠 확인** | last_seen_at 7일+ 된 엔티티의 confidence 값이 0.85^일수로 감쇠되는지 확인 |
+| 4 | **recommends 관계 확인** | bullish + high-score 게시물 인플루언서 → recommends 관계 생성 확인 |
 
 ### 장기 (아키텍처 변경)
 
 | # | 항목 | 설명 |
 |---|------|------|
-| 11 | **Neo4j 마이그레이션** | Supabase RDBMS의 관계 쿼리 한계 (경로 탐색, 깊이 쿼리) → Neo4j Cypher로 전환 |
-| 12 | **ReBAC 권한 체계** | 관계 기반 접근 제어 — 유료/무료 티어별 그래프 탐색 깊이 제한 |
-| 13 | **AI 채팅 온톨로지 연동** | chat-insight에 그래프 컨텍스트 주입 → "DOGE가 왜 뜨는지" 관계 기반 설명 |
+| 5 | **Neo4j 마이그레이션** | Supabase RDBMS의 관계 쿼리 한계 (경로 탐색, 깊이 쿼리) → Neo4j Cypher로 전환 |
+| 6 | **ReBAC 권한 체계** | 관계 기반 접근 제어 — 유료/무료 티어별 그래프 탐색 깊이 제한 |
+| 7 | **AI 채팅 온톨로지 연동** | chat-insight에 그래프 컨텍스트 주입 → "DOGE가 왜 뜨는지" 관계 기반 설명 |
 
 ---
 
@@ -281,35 +318,45 @@ supabase/migrations/
 | Threads 토큰 발급 → 크롤링 시작 | 테스터 등록 블로커 | 3번째 소스 활성화 |
 | Discord 봇 연동 | DM 피칭 4건, 응답 대기 | 커뮤니티 심층 데이터 |
 
-### Phase B — 온톨로지 고도화
+### Phase B — 온톨로지 고도화 ✅ 완료 (2026-03-21)
+
+| 항목 | 상태 |
+|------|------|
+| LLM 내러티브 감지 (Edge Function + knowledge-graph 통합) | ✅ |
+| LLM 이벤트 감지 (이벤트명+영향 코인+impact 방향) | ✅ |
+| recommends 관계 활성화 (bullish+confidence>0.7+score≥100) | ✅ |
+| 시계열 트렌드 (`normalizeSentimentTrend`, 이전 윈도우 대비 변화율) | ✅ |
+| 가중 confidence 감쇠 (점진적 0.85^일수, 최소 0.05) | ✅ |
+
+### Phase C — 시각화 강화 ✅ 완료 (2026-03-21)
+
+| 항목 | 상태 |
+|------|------|
+| 내러티브/이벤트 클러스터 하이라이트 (노드 클릭 → 소속 코인 하이라이트) | ✅ |
+| 이벤트 타임라인 (API + EventTimeline 컴포넌트 + WhyTrendingPanel 통합) | ✅ |
+| 추론 경로 표시 (narrative/event 노드 클릭 → 관련 경로 하이라이트) | ✅ |
+| CoinDetail 차트 강화 (FOMO 라인 + 이벤트 ReferenceLine) | ✅ |
+
+### Phase D — 백테스팅 ✅ 완료 (2026-03-21)
+
+| 항목 | 상태 |
+|------|------|
+| DB 테이블 `crypto_backtest_results` + 집계 뷰 `crypto_backtest_summary` | ✅ |
+| 백테스트 로직 `backtester.ts` (runBacktest + evaluatePending) | ✅ |
+| API `/api/crypto/backtest` (라벨별/코인별 적중률, 최근 결과) | ✅ |
+| 파이프라인 Phase 6 (battle → backtest 체이닝) | ✅ |
+| BacktestReport UI (아코디언, 적중률 바, 코인별, 최근 결과) | ✅ |
+| i18n 7키 × 5언어 | ✅ |
+| 초기 데이터 788개 레코드 기록 (가격 축적 대기) | ✅ |
+
+### Phase E — 추가 분석 (미완료)
 
 | 항목 | 설명 | 난이도 |
 |------|------|--------|
-| **LLM 내러티브 감지** | 센티먼트 Edge Function에 narrative 필드 추가 → 하드코딩 클러스터 → LLM 동적 감지로 전환 | 중 |
-| **LLM 이벤트 감지** | 키워드 매칭 → LLM이 이벤트명+영향 코인+영향 방향(+/-)까지 추출 | 중 |
-| **recommends 관계 활성화** | 센티먼트 bullish + confidence>0.7 + score>100 → recommends 관계 자동 생성 | 낮음 |
-| **시계열 트렌드** | signal_generator.ts의 sentiment_trend 현재 0 하드코딩 → 이전 윈도우 대비 변화율 계산 | 낮음 |
-| **가중 confidence 감쇠** | 현재 이진(활성/감쇠) → 시간 경과에 따른 점진적 감쇠 곡선 | 낮음 |
-
-### Phase C — 시각화 강화
-
-| 항목 | 설명 | 난이도 |
-|------|------|--------|
-| **내러티브 클러스터 시각화** | narrative 노드 클릭 → 소속 코인만 하이라이트 + 클러스터 바운딩 박스 | 중 |
-| **이벤트 타임라인** | 이벤트 엔티티를 시간축 위에 배치 → 코인 가격/센티먼트 변동과 병렬 표시 | 높음 |
-| **추론 경로 표시** | "왜 DOGE가 trending인가?" → 그래프에서 관련 경로 하이라이트 (narrative+influencer+event) | 높음 |
-| **CoinDetail 차트** | recharts로 시간별 센티먼트/멘션 변화 차트 | 중 |
-
-### Phase D — 고급 분석
-
-| 항목 | 설명 | 난이도 |
-|------|------|--------|
-| **가격 데이터 연동** | CoinGecko API → 시그널 vs 실제 가격 비교 (crypto_coins + crypto_prices 테이블 이미 정의) | 중 |
-| **백테스팅** | 과거 시그널 → 실제 가격 변동 비교 → 정확도 리포트 | 높음 |
 | **알림 시스템** | velocity>2.0 & score≥60 → 이메일/Discord 웹훅 알림 | 중 |
 | **AI 채팅 온톨로지 연동** | chat-insight에 그래프 컨텍스트 주입 → "DOGE가 왜 뜨는지" 관계 기반 답변 | 높음 |
 
-### Phase E — 플랫폼 분리
+### Phase F — 플랫폼 분리
 
 | 항목 | 설명 | 난이도 |
 |------|------|--------|

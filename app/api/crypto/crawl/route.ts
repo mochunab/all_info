@@ -268,10 +268,37 @@ async function handleCrawl(request: NextRequest) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[배틀 완료] ${elapsed}초`);
 
+      await triggerNextPhase('backtest');
+
       return NextResponse.json({
         success: true,
         phase: 'battle',
         battle: battleResult,
+        elapsed: `${elapsed}s`,
+        nextPhase: 'backtest',
+      });
+    }
+
+    // ── Phase 6: 백테스트 (시그널 vs 가격 비교) ──
+    if (phase === 'backtest') {
+      let backtestResult = { recorded: 0, evaluated: 0 };
+
+      try {
+        const { runBacktest, evaluatePending } = await import('@/lib/crypto/backtester');
+        backtestResult = await runBacktest(supabase);
+        const pending = await evaluatePending(supabase);
+        backtestResult.evaluated += pending.evaluated;
+      } catch (e) {
+        console.warn(`[백테스트] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[백테스트 완료] ${elapsed}초, 기록: ${backtestResult.recorded}개, 평가: ${backtestResult.evaluated}개`);
+
+      return NextResponse.json({
+        success: true,
+        phase: 'backtest',
+        backtest: backtestResult,
         elapsed: `${elapsed}s`,
       });
     }

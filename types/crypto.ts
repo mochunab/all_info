@@ -120,7 +120,7 @@ export type CryptoPrice = {
 
 // ── Enums ──
 
-export type SignalLabel = 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
+export type SignalLabel = 'extremely_hot' | 'hot' | 'warm' | 'cool' | 'cold';
 export type EntityType = 'coin' | 'influencer' | 'event' | 'narrative';
 export type RelationType = 'mentions' | 'recommends' | 'correlates_with' | 'part_of' | 'impacts';
 export type TimeWindow = '1h' | '6h' | '24h' | '7d';
@@ -436,6 +436,55 @@ export type BattleResponse = {
     monkeyWinRate: number;
     robotWinRate: number;
   };
+};
+
+// ── Backtest Types ──
+
+export type BacktestResult = {
+  id: string;
+  coin_symbol: string;
+  time_window: TimeWindow;
+  signal_label: SignalLabel;
+  weighted_score: number;
+  signal_at: string;
+  price_at_signal: number;
+  price_after: number | null;
+  price_change_pct: number | null;
+  lookup_window: string;
+  hit: boolean | null;
+  evaluated_at: string | null;
+  created_at: string;
+};
+
+export type BacktestSummary = {
+  signal_label: string;
+  total: number;
+  wins: number;
+  win_rate: number;
+  avg_return: number;
+};
+
+export type BacktestCoinSummary = {
+  coin_symbol: string;
+  total: number;
+  wins: number;
+  win_rate: number;
+  avg_return: number;
+};
+
+export type BacktestResponse = {
+  summary: BacktestSummary[];
+  coinSummary: BacktestCoinSummary[];
+  totalEvaluated: number;
+  lookupWindow: string;
+  recentResults: {
+    coin_symbol: string;
+    signal_label: string;
+    weighted_score: number;
+    price_change_pct: number;
+    hit: boolean;
+    signal_at: string;
+  }[];
 };
 
 // ── Config Types ──

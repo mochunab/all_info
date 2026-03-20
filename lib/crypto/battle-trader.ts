@@ -20,7 +20,7 @@ const ROBOT = {
   VELOCITY_BONUS_THRESHOLD: 1.0,
   SENTIMENT_BONUS_THRESHOLD: 0.3,
   FOMO_BONUS_THRESHOLD: 0.5,
-  SIGNAL_REVERSAL_LABELS: ['sell', 'strong_sell'] as string[],
+  SIGNAL_REVERSAL_LABELS: ['cool', 'cold'] as string[],
   SENTIMENT_DROP_THRESHOLD: -0.4,
   VELOCITY_DEAD_THRESHOLD: 0.2,
 } as const;
@@ -150,7 +150,7 @@ async function evaluateRobotEntry(
     .from('crypto_signals')
     .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity')
     .eq('time_window', '1h')
-    .in('signal_label', ['strong_buy', 'buy', 'neutral'])
+    .in('signal_label', ['extremely_hot', 'hot', 'warm'])
     .gte('weighted_score', ROBOT.MIN_WEIGHTED_SCORE)
     .gte('mention_count', ROBOT.MIN_MENTION_COUNT)
     .order('weighted_score', { ascending: false });

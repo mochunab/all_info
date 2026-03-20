@@ -9,6 +9,7 @@ import SignalNetwork from '@/components/crypto/SignalNetwork';
 import CoinDetail from '@/components/crypto/CoinDetail';
 import TimeWindowSelector from '@/components/crypto/TimeWindowSelector';
 import MonkeyVsRobot from '@/components/crypto/MonkeyVsRobot';
+import BacktestReport from '@/components/crypto/BacktestReport';
 
 type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 
@@ -91,6 +92,8 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
       </div>
 
       <MonkeyVsRobot language={language} />
+
+      <BacktestReport language={language} />
 
       <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} timeWindow={timeWindow} />
 

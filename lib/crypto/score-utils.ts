@@ -22,11 +22,11 @@ export function normalizeFomo(avgFomo: number): number {
 }
 
 export function computeSignalLabel(score: number): SignalLabel {
-  if (score >= 80) return 'strong_buy';
-  if (score >= 60) return 'buy';
-  if (score >= 40) return 'neutral';
-  if (score >= 20) return 'sell';
-  return 'strong_sell';
+  if (score >= 80) return 'extremely_hot';
+  if (score >= 60) return 'hot';
+  if (score >= 40) return 'warm';
+  if (score >= 20) return 'cool';
+  return 'cold';
 }
 
 export function computeMentionConfidence(mentions: number): number {

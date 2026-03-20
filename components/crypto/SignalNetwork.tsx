@@ -122,17 +122,17 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    fg.d3Force('charge')?.strength(-250);
-    fg.d3Force('link')?.distance(50);
-    fg.d3Force('center')?.strength(3);
+    fg.d3Force('charge')?.strength(-300);
+    fg.d3Force('link')?.distance(60);
+    fg.d3Force('center')?.strength(2);
 
+    fg.cameraPosition({ x: 0, y: 0, z: 120 });
     const zoomFit = () => {
-      try { fg.zoomToFit(400, -40); } catch { /* ignore */ }
+      try { fg.zoomToFit(600, 10); } catch { /* ignore */ }
     };
-    const t1 = setTimeout(zoomFit, 600);
-    const t2 = setTimeout(zoomFit, 1500);
-    const t3 = setTimeout(zoomFit, 3000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    const t1 = setTimeout(zoomFit, 500);
+    const t2 = setTimeout(zoomFit, 2000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [nodes]);
 
   const fetchNetwork = useCallback(async (coin?: string) => {
@@ -507,10 +507,17 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     controlType="orbit"
                     enableNodeDrag={false}
                     enableNavigationControls={true}
-                    warmupTicks={200}
-                    cooldownTicks={50}
+                    warmupTicks={50}
+                    cooldownTicks={100}
                     d3AlphaDecay={0.04}
                     d3VelocityDecay={0.3}
+                    onEngineStop={() => {
+                      const fg = graphRef.current;
+                      if (fg) {
+                        fg.cameraPosition({ x: 0, y: 0, z: 120 });
+                        setTimeout(() => { try { fg.zoomToFit(600, 10); } catch {} }, 100);
+                      }
+                    }}
                   />
                   <div
                     ref={hoverTipRef}

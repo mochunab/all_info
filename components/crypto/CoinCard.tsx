@@ -18,11 +18,11 @@ type CoinCardProps = {
 };
 
 const SIGNAL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  strong_buy: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Strong Buy' },
-  buy: { bg: 'bg-green-500/10', text: 'text-green-500', label: 'Buy' },
-  neutral: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', label: 'Neutral' },
-  sell: { bg: 'bg-red-500/10', text: 'text-red-400', label: 'Sell' },
-  strong_sell: { bg: 'bg-red-500/20', text: 'text-red-500', label: 'Strong Sell' },
+  extremely_hot: { bg: 'bg-red-500/20', text: 'text-red-400', label: '🔥 Extremely Hot' },
+  hot: { bg: 'bg-orange-500/15', text: 'text-orange-400', label: '🟠 Hot' },
+  warm: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', label: '🟡 Warm' },
+  cool: { bg: 'bg-blue-500/10', text: 'text-blue-400', label: '🔵 Cool' },
+  cold: { bg: 'bg-blue-500/20', text: 'text-blue-300', label: '❄️ Cold' },
 };
 
 function formatPrice(usd: number): string {
@@ -32,7 +32,7 @@ function formatPrice(usd: number): string {
 }
 
 export default function CoinCard({ signal, price, onClick, language = 'ko' }: CoinCardProps) {
-  const badge = SIGNAL_COLORS[signal.signal_label] || SIGNAL_COLORS.neutral;
+  const badge = SIGNAL_COLORS[signal.signal_label] || { bg: 'bg-gray-500/10', text: 'text-gray-400', label: signal.signal_label || 'N/A' };
   const velocitySign = signal.mention_velocity > 0 ? '+' : '';
   const velocityPercent = (signal.mention_velocity * 100).toFixed(0);
 
