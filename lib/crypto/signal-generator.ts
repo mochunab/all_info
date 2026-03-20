@@ -1,18 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { SignalLabel, TimeWindow, SignalComputeResult, TopPostSummary } from '@/types/crypto';
-import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS, MIN_MENTION_CONFIDENCE } from '@/lib/crypto/config';
-
-function computeSignalLabel(score: number): SignalLabel {
-  if (score >= 80) return 'strong_buy';
-  if (score >= 60) return 'buy';
-  if (score >= 40) return 'neutral';
-  if (score >= 20) return 'sell';
-  return 'strong_sell';
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
+import type { TimeWindow, SignalComputeResult, TopPostSummary } from '@/types/crypto';
+import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS } from '@/lib/crypto/config';
+import {
+  clamp,
+  normalizeVelocity,
+  normalizeSentiment,
+  normalizeEngagement,
+  normalizeFomo,
+  computeSignalLabel,
+  computeMentionConfidence,
+} from '@/lib/crypto/score-utils';
 
 export async function generateSignalsForWindow(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,13 +132,13 @@ export async function generateSignalsForWindow(
     const totalEngagement = agg.engagements.reduce((a, b) => a + b, 0);
     const engagementPerMention = agg.mentions > 0 ? totalEngagement / agg.mentions : 0;
 
-    const velocityNorm = clamp((velocity + 1) * 50, 0, 100);
-    const sentimentNorm = clamp((avgSentiment + 1) * 50, 0, 100);
+    const velocityNorm = normalizeVelocity(velocity);
+    const sentimentNorm = normalizeSentiment(avgSentiment);
     const trendNorm = 50;
-    const engagementNorm = clamp(Math.log10(engagementPerMention + 1) * 25, 0, 100);
-    const fomoNorm = clamp(avgFomo * 100, 0, 100);
+    const engagementNorm = normalizeEngagement(engagementPerMention);
+    const fomoNorm = normalizeFomo(avgFomo);
 
-    const mentionConfidence = clamp(agg.mentions / MIN_MENTION_CONFIDENCE, 0, 1);
+    const mentionConfidence = computeMentionConfidence(agg.mentions);
 
     const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +

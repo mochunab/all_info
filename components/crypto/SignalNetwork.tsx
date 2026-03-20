@@ -3,7 +3,10 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import type { CryptoSignal } from '@/types/crypto';
+import type { CryptoSignal, TrendingExplainResponse, TimeWindow } from '@/types/crypto';
+import { useIsDark } from '@/lib/hooks/useIsDark';
+import { t } from '@/lib/i18n';
+import WhyTrendingPanel from '@/components/crypto/WhyTrendingPanel';
 
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
 
@@ -30,12 +33,11 @@ type NetworkLink = {
   weight: number;
 };
 
-type Keyword = { word: string; count: number };
-
 type SignalNetworkProps = {
   signals: CryptoSignal[];
   onCoinSelect: (symbol: string) => void;
   language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
+  timeWindow?: TimeWindow;
 };
 
 const SENTIMENT_COLORS = {
@@ -55,33 +57,24 @@ function getNodeSize(mentions: number, maxMentions: number): number {
   return 3 + (mentions / maxMentions) * 12;
 }
 
-function useIsDark() {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    const check = () => document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setDark(check());
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => setDark(check());
-    mq.addEventListener('change', handler);
-    const obs = new MutationObserver(() => setDark(check()));
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => { mq.removeEventListener('change', handler); obs.disconnect(); };
-  }, []);
-  return dark;
-}
+const MD3_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
-
-export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkProps) {
+export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', timeWindow = '24h' }: SignalNetworkProps) {
   const isDark = useIsDark();
+  const [isOpen, setIsOpen] = useState(false);
   const [nodes, setNodes] = useState<NetworkNode[]>([]);
   const [links, setLinks] = useState<NetworkLink[]>([]);
-  const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const graphRef = useRef<any>(null);
   const hoverTipRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 420 });
+
+  // WHY panel state
+  const [explainData, setExplainData] = useState<TrendingExplainResponse | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const explainCache = useRef<Map<string, TrendingExplainResponse>>(new Map());
 
   const topCoins = useMemo(() => signals.slice(0, 8), [signals]);
 
@@ -96,19 +89,14 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
     return () => obs.disconnect();
   }, []);
 
-  // configure forces & center camera after layout stabilizes
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    // tighten layout: strong center pull + minimal repulsion to keep disconnected nodes close
-    fg.d3Force('center')?.strength(2);
-    fg.d3Force('charge')?.strength(-15).distanceMax(40);
-    fg.d3Force('link')?.distance(15);
-    fg.d3ReheatSimulation();
+    fg.cameraPosition({ x: 0, y: 0, z: 200 });
 
     const timer = setTimeout(() => {
-      fg.zoomToFit(400, 40);
+      fg.zoomToFit(600, 10);
     }, 1500);
     return () => clearTimeout(timer);
   }, [nodes]);
@@ -121,9 +109,27 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
         : '/api/crypto/network?limit=30';
       const res = await fetch(url);
       const data = await res.json();
-      setNodes(data.nodes || []);
-      setLinks(data.links || []);
-      setKeywords(data.keywords || []);
+      const rawNodes: NetworkNode[] = data.nodes || [];
+      const rawLinks: NetworkLink[] = data.links || [];
+
+      const connectedIds = new Set<string>();
+      for (const l of rawLinks) {
+        connectedIds.add(typeof l.source === 'string' ? l.source : l.source.id);
+        connectedIds.add(typeof l.target === 'string' ? l.target : l.target.id);
+      }
+
+      const connected = rawNodes.filter((n) => connectedIds.has(n.id));
+      const connectedCount = connected.length;
+
+      const positioned = connected.map((n, idx) => {
+        const phi = Math.acos(1 - (2 * (idx + 0.5)) / connectedCount);
+        const theta = Math.PI * (1 + Math.sqrt(5)) * idx;
+        const r = 30 + Math.random() * 10;
+        return { ...n, x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi) };
+      });
+
+      setNodes(positioned);
+      setLinks(rawLinks);
     } catch {
       // silent
     } finally {
@@ -132,16 +138,50 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
   }, []);
 
   useEffect(() => {
-    fetchNetwork();
-  }, [fetchNetwork]);
+    if (isOpen && topCoins.length > 0) {
+      const firstCoin = topCoins[0].coin_symbol;
+      setSelectedChip(firstCoin);
+      fetchNetwork(firstCoin);
+      fetchExplain(firstCoin);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const fetchExplain = useCallback(async (coin: string) => {
+    const cached = explainCache.current.get(`${coin}-${timeWindow}`);
+    if (cached) {
+      setExplainData(cached);
+      return;
+    }
+    setExplainLoading(true);
+    try {
+      const res = await fetch(`/api/crypto/trending-explain?coin=${coin}&window=${timeWindow}`);
+      if (res.ok) {
+        const data: TrendingExplainResponse = await res.json();
+        explainCache.current.set(`${coin}-${timeWindow}`, data);
+        setExplainData(data);
+      } else {
+        setExplainData(null);
+      }
+    } catch {
+      setExplainData(null);
+    } finally {
+      setExplainLoading(false);
+    }
+  }, [timeWindow]);
 
   const handleChipClick = useCallback(
     (symbol: string) => {
       const next = selectedChip === symbol ? null : symbol;
       setSelectedChip(next);
       fetchNetwork(next || undefined);
+      if (next) {
+        fetchExplain(next);
+      } else {
+        setExplainData(null);
+      }
     },
-    [selectedChip, fetchNetwork]
+    [selectedChip, fetchNetwork, fetchExplain]
   );
 
   const maxMentions = useMemo(
@@ -164,14 +204,9 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
   }, [selectedChip, nodes, links]);
 
   const graphWidth = useMemo(() => {
-    if (selectedChip && keywords.length > 0) return Math.floor(dimensions.width * 0.6);
+    if (selectedChip) return Math.floor(dimensions.width * 0.6);
     return dimensions.width;
-  }, [selectedChip, keywords, dimensions.width]);
-
-  const maxKwCount = useMemo(
-    () => Math.max(...keywords.map((k) => k.count), 1),
-    [keywords]
-  );
+  }, [selectedChip, dimensions.width]);
 
   const bgColor = useMemo(() => isDark ? '#111827' : '#FAFAFA', [isDark]);
 
@@ -179,14 +214,11 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
     (node: NetworkNode) => {
       const dimmed = neighborSet && !neighborSet.has(node.id);
       if (dimmed) return isDark ? 'rgba(100,100,100,0.2)' : 'rgba(180,180,180,0.3)';
-
       const alpha = Math.max(0.3, node.confidence ?? 1.0);
-
       if (node.type === 'influencer') return `rgba(139,92,246,${alpha})`;
       if (node.type === 'narrative') return `rgba(245,158,11,${alpha})`;
       if (node.type === 'event') return `rgba(244,63,94,${alpha})`;
       if (selectedChip && node.name === selectedChip) return '#2563EB';
-
       const base = getSentimentColor(node.sentiment);
       if (alpha < 1) {
         const hex = base.replace('#', '');
@@ -219,7 +251,6 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
         narrative: { bg: 'rgba(245,158,11,0.9)', label: 'Narrative' },
         event: { bg: 'rgba(244,63,94,0.9)', label: 'Event' },
       };
-
       const meta = typeLabels[node.type];
       if (meta) {
         return `<div style="background:${meta.bg};color:#fff;padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600">${node.name}<br/><span style="font-weight:400;font-size:10px">${meta.label}</span></div>`;
@@ -234,28 +265,29 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
 
   const linkColorFn = useCallback(
     (link: NetworkLink) => {
-      if (!neighborSet) return isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      const typeColor = (alpha: number) => {
+        if (link.type === 'correlates_with') return `rgba(37, 99, 235, ${alpha})`;
+        if (link.type === 'part_of') return `rgba(245, 158, 11, ${alpha})`;
+        if (link.type === 'impacts') return `rgba(244, 63, 94, ${alpha})`;
+        return `rgba(139, 92, 246, ${alpha})`;
+      };
+      if (!neighborSet) return typeColor(isDark ? 0.35 : 0.3);
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
-      if (neighborSet.has(src) && neighborSet.has(tgt)) {
-        if (link.type === 'correlates_with') return 'rgba(37, 99, 235, 0.45)';
-        if (link.type === 'part_of') return 'rgba(245, 158, 11, 0.45)';
-        if (link.type === 'impacts') return 'rgba(244, 63, 94, 0.45)';
-        return 'rgba(139, 92, 246, 0.35)';
-      }
-      return isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)';
+      if (neighborSet.has(src) && neighborSet.has(tgt)) return typeColor(0.7);
+      return isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
     },
     [neighborSet, isDark]
   );
 
   const linkWidthFn = useCallback(
     (link: NetworkLink) => {
-      if (!neighborSet) return 0.3;
+      if (!neighborSet) return Math.max(0.8, Math.min(link.weight * 0.6, 2.5));
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
       return neighborSet.has(src) && neighborSet.has(tgt)
-        ? Math.min(link.weight * 0.5, 2.5)
-        : 0.15;
+        ? Math.max(1.2, Math.min(link.weight * 0.8, 3.5))
+        : 0.3;
     },
     [neighborSet]
   );
@@ -272,183 +304,177 @@ export default function SignalNetwork({ signals, onCoinSelect }: SignalNetworkPr
   return (
     <div className="mb-6">
       <div className="border border-[var(--border)] rounded-xl bg-[var(--bg-primary)] overflow-hidden">
-        {/* Header */}
-        <div className="px-4 pt-4 pb-2">
-          <div className="flex items-center justify-between mb-3">
+        {/* Accordion Header */}
+        <button
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="w-full px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-secondary)] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 text-[var(--text-tertiary)] transition-transform duration-300"
+              style={{
+                transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                transitionTimingFunction: MD3_EASING,
+              }}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
               Signal Network
             </h2>
-            <div className="flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                Bullish
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-neutral-400 inline-block" />
-                Neutral
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                Bearish
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm bg-purple-500 inline-block" style={{ transform: 'rotate(45deg)', width: 7, height: 7 }} />
-                Influencer
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                Narrative
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm bg-rose-500 inline-block" />
-                Event
-              </span>
+          </div>
+          {!isOpen && (
+            <span className="text-[11px] text-[var(--text-tertiary)]">
+              {t(language, 'crypto.signalNetworkDesc')}
+            </span>
+          )}
+        </button>
+
+        {/* Accordion Content */}
+        <div
+          className="overflow-hidden transition-all duration-300"
+          style={{
+            maxHeight: isOpen ? '900px' : '0px',
+            opacity: isOpen ? 1 : 0,
+            transitionTimingFunction: MD3_EASING,
+          }}
+        >
+          {/* Legend + Filter Chips */}
+          <div className="px-4 pb-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                  Bullish
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-neutral-400 inline-block" />
+                  Neutral
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                  Bearish
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-sm bg-purple-500 inline-block" style={{ transform: 'rotate(45deg)', width: 7, height: 7 }} />
+                  Influencer
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                  Narrative
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-sm bg-rose-500 inline-block" />
+                  Event
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {topCoins.map((s) => (
+                <button
+                  key={s.coin_symbol}
+                  onClick={() => handleChipClick(s.coin_symbol)}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+                    selectedChip === s.coin_symbol
+                      ? 'bg-[var(--accent)] text-white shadow-lg shadow-blue-500/25'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
+                  }`}
+                >
+                  {s.coin_symbol}
+                </button>
+              ))}
             </div>
           </div>
-          {/* Filter Chips */}
-          <div className="flex flex-wrap gap-2">
-            {topCoins.map((s) => (
-              <button
-                key={s.coin_symbol}
-                onClick={() => handleChipClick(s.coin_symbol)}
-                className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-                  selectedChip === s.coin_symbol
-                    ? 'bg-[var(--accent)] text-white shadow-lg shadow-blue-500/25'
-                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
-                }`}
-              >
-                {s.coin_symbol}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Graph + Keywords */}
-        <div className="flex" ref={containerRef}>
-          {/* 3D Force Graph */}
-          <div className="relative" style={{ width: graphWidth, height: dimensions.height }}>
-            {loading && nodes.length === 0 ? (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
-                Loading network...
-              </div>
-            ) : nodes.length === 0 ? (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
-                Network will appear after crawling
-              </div>
-            ) : (
-              <>
-                <ForceGraph3D
-                  ref={graphRef}
-                  width={graphWidth}
-                  height={dimensions.height}
-                  graphData={{ nodes, links }}
-                  nodeColor={nodeColorFn as any}
-                  nodeVal={nodeValFn as any}
-                  nodeLabel={nodeLabel as any}
-                  nodeOpacity={0.9}
-                  linkColor={linkColorFn as any}
-                  linkWidth={linkWidthFn as any}
-                  linkOpacity={0.6}
-                  onNodeClick={handleNodeClick as any}
-                  onNodeHover={((node: any) => {
-                    if (hoverTipRef.current) {
-                      hoverTipRef.current.style.display = node ? 'block' : 'none';
-                    }
-                  }) as any}
-                  backgroundColor={bgColor}
-                  showNavInfo={false}
-                  controlType="orbit"
-                  enableNodeDrag={false}
-                  enableNavigationControls={true}
-                  warmupTicks={100}
-                  cooldownTicks={0}
-                />
-
-                <div
-                  ref={hoverTipRef}
-                  className="absolute top-3 right-3 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-[var(--border)]"
-                  style={{ display: 'none' }}
-                >
-                  Click to view details
+          {/* Graph + WHY Panel (split layout) */}
+          <div className="flex flex-col md:flex-row" ref={containerRef}>
+            {/* 3D Force Graph */}
+            <div className="relative" style={{ width: graphWidth, height: dimensions.height }}>
+              {loading && nodes.length === 0 ? (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
+                  Loading network...
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* Keyword Cloud */}
-          {selectedChip && (
-            <div
-              className="border-l border-[var(--border)] p-4 flex flex-col"
-              style={{
-                width: dimensions.width - graphWidth,
-                height: dimensions.height,
-              }}
-            >
-              <div className="text-xs font-semibold text-[var(--text-primary)] mb-1">
-                {selectedChip} Keywords
-              </div>
-              <div className="text-[10px] text-[var(--text-tertiary)] mb-3">
-                AI-extracted from community posts
-              </div>
-
-              {keywords.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-[var(--text-tertiary)]">
-                  {loading ? 'Loading...' : 'No keyword data yet'}
+              ) : nodes.length === 0 ? (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
+                  Network will appear after crawling
                 </div>
               ) : (
-                <div className="flex-1 overflow-hidden flex flex-wrap items-center justify-center gap-1.5 content-center">
-                  {keywords.map((kw) => {
-                    const ratio = kw.count / maxKwCount;
-                    const fontSize = 11 + ratio * 14;
-                    const opacity = 0.4 + ratio * 0.6;
-                    return (
-                      <span
-                        key={kw.word}
-                        className="inline-block text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors cursor-default"
-                        style={{ fontSize, opacity }}
-                        title={`${kw.count} mentions`}
-                      >
-                        {kw.word}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Mini stats */}
-              {selectedChip && !loading && (
-                <div className="mt-auto pt-3 border-t border-[var(--border)] space-y-1">
-                  {(() => {
-                    const sig = signals.find((s) => s.coin_symbol === selectedChip);
-                    if (!sig) return null;
-                    const sentColor =
-                      sig.avg_sentiment > 0.3
-                        ? 'text-green-400'
-                        : sig.avg_sentiment < -0.3
-                          ? 'text-red-400'
-                          : 'text-yellow-400';
-                    return (
-                      <>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-[var(--text-tertiary)]">Sentiment</span>
-                          <span className={sentColor}>
-                            {sig.avg_sentiment > 0 ? '+' : ''}
-                            {sig.avg_sentiment.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-[var(--text-tertiary)]">FOMO Index</span>
-                          <span className="text-[var(--text-secondary)]">
-                            {sig.weighted_score.toFixed(0)}%
-                          </span>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
+                <>
+                  <ForceGraph3D
+                    ref={graphRef}
+                    width={graphWidth}
+                    height={dimensions.height}
+                    graphData={{ nodes, links }}
+                    nodeColor={nodeColorFn as any}
+                    nodeVal={nodeValFn as any}
+                    nodeLabel={nodeLabel as any}
+                    nodeOpacity={0.9}
+                    linkColor={linkColorFn as any}
+                    linkWidth={linkWidthFn as any}
+                    linkOpacity={0.6}
+                    onNodeClick={handleNodeClick as any}
+                    onNodeHover={((node: any) => {
+                      if (hoverTipRef.current) {
+                        hoverTipRef.current.style.display = node ? 'block' : 'none';
+                      }
+                    }) as any}
+                    backgroundColor={bgColor}
+                    showNavInfo={false}
+                    controlType="orbit"
+                    enableNodeDrag={false}
+                    enableNavigationControls={true}
+                    nodeRelSize={4}
+                    warmupTicks={80}
+                    cooldownTicks={0}
+                    d3AlphaDecay={0.04}
+                    d3VelocityDecay={0.3}
+                  />
+                  <div
+                    ref={hoverTipRef}
+                    className="absolute top-3 right-3 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-secondary)]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-[var(--border)]"
+                    style={{ display: 'none' }}
+                  >
+                    Click to view details
+                  </div>
+                </>
               )}
             </div>
-          )}
+
+            {/* WHY Trending Panel (right side) */}
+            {selectedChip ? (
+              <div
+                className="border-t md:border-t-0 md:border-l border-[var(--border)]"
+                style={{ width: dimensions.width - graphWidth, minHeight: dimensions.height }}
+              >
+                {explainLoading ? (
+                  <div className="flex items-center justify-center h-full text-sm text-[var(--text-tertiary)]">
+                    <svg className="animate-spin w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Loading...
+                  </div>
+                ) : explainData ? (
+                  <WhyTrendingPanel data={explainData} language={language} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-xs text-[var(--text-tertiary)] px-4 text-center">
+                    {t(language, 'crypto.selectCoinHint')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                className="hidden md:flex border-l border-[var(--border)] items-center justify-center"
+                style={{ width: dimensions.width - graphWidth, height: dimensions.height }}
+              >
+                {/* Empty state only shows when no chip selected on desktop — graph takes full width */}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

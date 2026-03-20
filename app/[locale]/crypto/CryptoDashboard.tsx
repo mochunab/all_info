@@ -8,6 +8,7 @@ import SignalTimeline from '@/components/crypto/SignalTimeline';
 import SignalNetwork from '@/components/crypto/SignalNetwork';
 import CoinDetail from '@/components/crypto/CoinDetail';
 import TimeWindowSelector from '@/components/crypto/TimeWindowSelector';
+import MonkeyVsRobot from '@/components/crypto/MonkeyVsRobot';
 
 type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 
@@ -89,6 +90,10 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
         <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
       </div>
 
+      <MonkeyVsRobot language={language} />
+
+      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} timeWindow={timeWindow} />
+
       <div className="mb-6">
         <input
           type="text"
@@ -98,8 +103,6 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
           className="w-full max-w-md px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
         />
       </div>
-
-      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} />
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1">
