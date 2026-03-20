@@ -143,6 +143,7 @@ export type RedditPost = {
   link_flair_text: string | null;
   created_utc: number;
   is_self: boolean;
+  subreddit_subscribers?: number;
 };
 
 export type RedditListingResponse = {
