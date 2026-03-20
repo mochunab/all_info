@@ -99,8 +99,14 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       const d = Math.sqrt((n.x || 0) ** 2 + (n.y || 0) ** 2 + (n.z || 0) ** 2);
       if (d > maxDist) maxDist = d;
     }
-    const cameraZ = Math.max(60, maxDist * 2.5);
+    const cameraZ = Math.max(40, maxDist * 1.5);
     fg.cameraPosition({ x: 0, y: 0, z: cameraZ });
+
+    // 시뮬레이션 안정화 후 재조정
+    const timer = setTimeout(() => {
+      try { fg.zoomToFit(400, -20); } catch { /* ignore */ }
+    }, 1200);
+    return () => clearTimeout(timer);
   }, [nodes]);
 
   const fetchNetwork = useCallback(async (coin?: string) => {
