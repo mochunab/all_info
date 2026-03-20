@@ -109,9 +109,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function sanitizeText(text: string): string {
   return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\0/g, '');
 }
 
 function extractCoinMentions(title: string, body: string | null) {
@@ -196,13 +198,22 @@ function parseAtomFeed(xml: string): RssPost[] {
     const published = entry.match(/<updated>([^<]+)<\/updated>/)?.[1] || '';
     const contentMatch = entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
     const rawContent = contentMatch?.[1] || null;
-    // HTML 태그 제거하여 텍스트만 추출
-    const content = rawContent
-      ? rawContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)
-      : null;
+    let content: string | null = null;
+    if (rawContent) {
+      try {
+        content = rawContent
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+          .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+          .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000);
+        JSON.stringify(content);
+      } catch {
+        content = null;
+      }
+    }
 
     if (id && title) {
-      posts.push({ id, title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"'), author, link, published, content });
+      const decodedTitle = title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&#x200B;/g, '');
+      posts.push({ id, title: decodedTitle, author, link, published, content });
     }
   }
 
