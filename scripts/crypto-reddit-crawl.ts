@@ -1,9 +1,9 @@
 #!/usr/bin/env npx tsx
 /**
- * Reddit 크립토 크롤러 (GitHub Actions 전용)
+ * Reddit 크립토 크롤러 (GitHub Actions 전용, RSS 방식)
  *
- * Vercel 서버에서 Reddit 403 차단 → GitHub Actions runner에서 직접 실행.
- * 크롤링 완료 후 Vercel API로 sentiment phase 트리거.
+ * Reddit JSON API는 클라우드 IP 차단 → RSS (.rss)는 허용.
+ * Atom XML 파싱 후 DB 저장, 센티먼트 phase 트리거.
  *
  * Usage:
  *   npx tsx scripts/crypto-reddit-crawl.ts
@@ -19,24 +19,22 @@ import { createClient } from '@supabase/supabase-js';
 // ── Config ──
 
 const SUBREDDITS = [
-  { name: 'CryptoCurrency', weight: 1.0, minScore: 10 },
-  { name: 'memecoin', weight: 1.2, minScore: 5 },
-  { name: 'SatoshiStreetBets', weight: 1.1, minScore: 5 },
-  { name: 'CryptoMoonShots', weight: 0.8, minScore: 3 },
-  { name: 'altcoin', weight: 0.9, minScore: 5 },
-  { name: 'memecoinmoonshots', weight: 1.0, minScore: 3 },
-  { name: 'CryptoMarkets', weight: 0.9, minScore: 10 },
-  { name: 'solana', weight: 1.0, minScore: 5 },
-  { name: 'Dogecoin', weight: 0.8, minScore: 5 },
-  { name: 'CryptoCurrencies', weight: 0.7, minScore: 5 },
+  { name: 'CryptoCurrency', weight: 1.0 },
+  { name: 'memecoin', weight: 1.2 },
+  { name: 'SatoshiStreetBets', weight: 1.1 },
+  { name: 'CryptoMoonShots', weight: 0.8 },
+  { name: 'altcoin', weight: 0.9 },
+  { name: 'memecoinmoonshots', weight: 1.0 },
+  { name: 'CryptoMarkets', weight: 0.9 },
+  { name: 'solana', weight: 1.0 },
+  { name: 'Dogecoin', weight: 0.8 },
+  { name: 'CryptoCurrencies', weight: 0.7 },
 ];
 
-const MAX_PAGES = 3;
-const PAGE_LIMIT = 100;
 const RATE_LIMIT_MS = 1500;
 const USER_AGENT = 'InsightHub:MemePredictor:1.0 (by /u/insighthub)';
 
-// ── Coin list (동일) ──
+// ── Coin list ──
 
 const COIN_LIST = [
   { symbol: 'BTC', name: 'Bitcoin', aliases: ['bitcoin', 'btc'] },
@@ -116,21 +114,6 @@ function sanitizeText(text: string): string {
     .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
 }
 
-type RedditPost = {
-  name: string;
-  title: string;
-  selftext: string | null;
-  author: string;
-  permalink: string;
-  ups: number;
-  upvote_ratio: number;
-  num_comments: number;
-  total_awards_received: number;
-  score: number;
-  link_flair_text: string | null;
-  created_utc: number;
-};
-
 function extractCoinMentions(title: string, body: string | null) {
   const text = `${title}\n${body || ''}`;
   const counts = new Map<string, number>();
@@ -187,41 +170,59 @@ function extractCoinMentions(title: string, body: string | null) {
   }));
 }
 
-// ── Reddit fetch ──
+// ── RSS 파싱 (정규식, 외부 의존성 없음) ──
 
-async function fetchSubredditPosts(subreddit: string, sort: 'hot' | 'new', maxPages: number): Promise<RedditPost[]> {
-  const posts: RedditPost[] = [];
-  let after: string | null = null;
+type RssPost = {
+  id: string;
+  title: string;
+  author: string;
+  link: string;
+  published: string;
+  content: string | null;
+};
 
-  for (let page = 0; page < maxPages; page++) {
-    const url = new URL(`https://www.reddit.com/r/${subreddit}/${sort}.json`);
-    url.searchParams.set('limit', String(PAGE_LIMIT));
-    url.searchParams.set('raw_json', '1');
-    if (after) url.searchParams.set('after', after);
+function parseAtomFeed(xml: string): RssPost[] {
+  const posts: RssPost[] = [];
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+  let entryMatch: RegExpExecArray | null;
 
-    const response = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT },
-    });
+  while ((entryMatch = entryRegex.exec(xml)) !== null) {
+    const entry = entryMatch[1];
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn(`  ⏳ Rate limited r/${subreddit}/${sort}, waiting 3s`);
-        await sleep(3000);
-        continue;
-      }
-      throw new Error(`Reddit ${response.status} for r/${subreddit}/${sort}`);
+    const id = entry.match(/<id>([^<]+)<\/id>/)?.[1] || '';
+    const title = entry.match(/<title>([^<]*)<\/title>/)?.[1] || '';
+    const author = entry.match(/<name>([^<]*)<\/name>/)?.[1]?.replace(/^\/u\//, '') || 'unknown';
+    const link = entry.match(/<link\s+href="([^"]+)"/)?.[1] || '';
+    const published = entry.match(/<updated>([^<]+)<\/updated>/)?.[1] || '';
+    const contentMatch = entry.match(/<content[^>]*>([\s\S]*?)<\/content>/);
+    const rawContent = contentMatch?.[1] || null;
+    // HTML 태그 제거하여 텍스트만 추출
+    const content = rawContent
+      ? rawContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)
+      : null;
+
+    if (id && title) {
+      posts.push({ id, title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"'), author, link, published, content });
     }
-
-    const data = await response.json();
-    const children = data.data.children.map((c: { data: RedditPost }) => c.data);
-    posts.push(...children);
-    after = data.data.after;
-
-    if (!after || children.length < PAGE_LIMIT) break;
-    await sleep(RATE_LIMIT_MS);
   }
 
   return posts;
+}
+
+// ── Reddit RSS fetch ──
+
+async function fetchSubredditRss(subreddit: string): Promise<RssPost[]> {
+  const url = `https://www.reddit.com/r/${subreddit}/.rss`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Reddit RSS ${response.status} for r/${subreddit}`);
+  }
+
+  const xml = await response.text();
+  return parseAtomFeed(xml);
 }
 
 // ── Main ──
@@ -246,46 +247,39 @@ async function main() {
   let totalErrors = 0;
 
   for (const config of SUBREDDITS) {
-    console.log(`\n📌 r/${config.name} (minScore: ${config.minScore})`);
+    console.log(`\n📌 r/${config.name}`);
 
     try {
-      const [hotPosts, newPosts] = await Promise.all([
-        fetchSubredditPosts(config.name, 'hot', 2),
-        fetchSubredditPosts(config.name, 'new', 1),
-      ]);
+      const rssPosts = await fetchSubredditRss(config.name);
+      totalFound += rssPosts.length;
 
-      const seen = new Set<string>();
-      const allPosts: RedditPost[] = [];
-      for (const post of [...hotPosts, ...newPosts]) {
-        if (!seen.has(post.name) && post.score >= config.minScore) {
-          seen.add(post.name);
-          allPosts.push(post);
-        }
-      }
-
-      totalFound += allPosts.length;
-      if (allPosts.length === 0) {
-        console.log(`  → 0개 (minScore 미달)`);
+      if (rssPosts.length === 0) {
+        console.log(`  → 0개`);
         continue;
       }
 
-      const rows = allPosts.map((p) => ({
-        source: 'reddit' as const,
-        source_id: `reddit_${p.name}`,
-        channel: config.name,
-        title: sanitizeText(p.title),
-        body: p.selftext ? sanitizeText(p.selftext) : null,
-        author: p.author,
-        permalink: `https://reddit.com${p.permalink}`,
-        upvotes: p.ups,
-        upvote_ratio: p.upvote_ratio,
-        num_comments: p.num_comments,
-        num_awards: p.total_awards_received,
-        score: p.score,
-        flair: p.link_flair_text,
-        posted_at: new Date(p.created_utc * 1000).toISOString(),
-        crawled_at: new Date().toISOString(),
-      }));
+      // RSS에는 score가 없으므로 source_id로 Reddit post ID 추출
+      const rows = rssPosts.map((p) => {
+        // id 형태: t3_xxxxx (URL에서 추출)
+        const postId = p.link.match(/comments\/([a-z0-9]+)/)?.[1] || p.id;
+        return {
+          source: 'reddit' as const,
+          source_id: `reddit_t3_${postId}`,
+          channel: config.name,
+          title: sanitizeText(p.title),
+          body: p.content ? sanitizeText(p.content) : null,
+          author: p.author,
+          permalink: p.link.replace('https://www.reddit.com', ''),
+          upvotes: 0,
+          upvote_ratio: 0,
+          num_comments: 0,
+          num_awards: 0,
+          score: 0,
+          flair: null,
+          posted_at: new Date(p.published).toISOString(),
+          crawled_at: new Date().toISOString(),
+        };
+      });
 
       const { data: upserted, error: upsertError } = await supabase
         .from('crypto_posts')
@@ -308,10 +302,10 @@ async function main() {
 
       const mentionRows: { post_id: string; coin_symbol: string; coin_name: string | null; mention_count: number; context: string | null }[] = [];
 
-      for (const post of allPosts) {
-        const dbId = sourceIdToDbId.get(`reddit_${post.name}`);
+      for (const row of rows) {
+        const dbId = sourceIdToDbId.get(row.source_id);
         if (!dbId) continue;
-        const mentions = extractCoinMentions(sanitizeText(post.title), post.selftext ? sanitizeText(post.selftext) : null);
+        const mentions = extractCoinMentions(row.title, row.body);
         for (const m of mentions) {
           mentionRows.push({ post_id: dbId, coin_symbol: m.symbol, coin_name: m.name, mention_count: m.count, context: m.context });
         }
@@ -328,7 +322,7 @@ async function main() {
         }
       }
 
-      console.log(`  ✅ ${allPosts.length}개 발견, ${upsertedPosts.length}개 저장, ${mentionRows.length}개 멘션`);
+      console.log(`  ✅ ${rssPosts.length}개 발견, ${upsertedPosts.length}개 저장, ${mentionRows.length}개 멘션`);
     } catch (e) {
       console.error(`  ❌ ${e instanceof Error ? e.message : 'unknown'}`);
       totalErrors++;
@@ -339,10 +333,9 @@ async function main() {
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n${'='.repeat(50)}`);
-  console.log(`Reddit 크롤링 완료: ${elapsed}초`);
+  console.log(`Reddit RSS 크롤링 완료: ${elapsed}초`);
   console.log(`  발견: ${totalFound}개, 저장: ${totalNew}개, 멘션: ${totalMentions}개, 에러: ${totalErrors}개`);
 
-  // Vercel API로 sentiment phase 트리거
   if (cronSecret) {
     console.log(`\n🔄 센티먼트 phase 트리거...`);
     try {
