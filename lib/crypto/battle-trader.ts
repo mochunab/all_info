@@ -438,7 +438,8 @@ async function updateDailyPortfolioSnapshot(supabase: SupabaseClient, prices: Ma
     const { count: totalTrades } = await supabase
       .from('battle_trades')
       .select('id', { count: 'exact', head: true })
-      .eq('player', player);
+      .eq('player', player)
+      .eq('action', 'sell');
 
     const { count: winCount } = await supabase
       .from('battle_trades')
