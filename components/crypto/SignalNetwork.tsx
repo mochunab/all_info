@@ -93,7 +93,15 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    fg.cameraPosition({ x: 0, y: 0, z: 150 });
+    fg.cameraPosition({ x: 0, y: 0, z: 250 });
+
+    try {
+      const camera = fg.camera();
+      if (camera) {
+        camera.fov = 25;
+        camera.updateProjectionMatrix();
+      }
+    } catch { /* camera not ready */ }
 
     const timer = setTimeout(() => {
       try { fg.zoomToFit(600, 15); } catch { /* ignore */ }
