@@ -108,19 +108,12 @@ const BLACKLIST = new Set([
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function sanitizeText(text: string): string {
-  let s = text
+  return text
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\uFFFD/g, '')
     .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
     .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
     .replace(/\0/g, '');
-  // JSON.stringify 호환 확인
-  try {
-    JSON.stringify(s);
-  } catch {
-    // 안전하게 ASCII + 기본 유니코드만 남기기
-    s = s.replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '');
-  }
-  return s;
 }
 
 function extractCoinMentions(title: string, body: string | null) {
