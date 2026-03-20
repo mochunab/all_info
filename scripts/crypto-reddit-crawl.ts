@@ -108,12 +108,19 @@ const BLACKLIST = new Set([
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function sanitizeText(text: string): string {
-  return text
+  let s = text
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
     .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
-    .replace(/\\/g, '\\\\')
     .replace(/\0/g, '');
+  // JSON.stringify 호환 확인
+  try {
+    JSON.stringify(s);
+  } catch {
+    // 안전하게 ASCII + 기본 유니코드만 남기기
+    s = s.replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '');
+  }
+  return s;
 }
 
 function extractCoinMentions(title: string, body: string | null) {
@@ -270,23 +277,17 @@ async function main() {
       }
 
       // RSS에는 score가 없으므로 source_id로 Reddit post ID 추출
-      const rows = rssPosts.map((p) => {
+      const rows = [];
+      for (const p of rssPosts) {
         const postId = p.link.match(/comments\/([a-z0-9]+)/)?.[1] || p.id;
-        const title = sanitizeText(p.title);
-        // body(RSS content)를 null로 먼저 시도, title만으로 멘션 추출 가능
-        const body: string | null = null;
-        const author = sanitizeText(p.author);
-        const permalink = p.link.replace('https://www.reddit.com', '');
-        // permalink에 유니코드/특수문자 있으면 안전하게 ASCII만
-        const safePermalink = permalink.replace(/[^\x20-\x7E/]/g, '');
-        return {
+        const row = {
           source: 'reddit' as const,
           source_id: `reddit_t3_${postId}`,
           channel: config.name,
-          title,
-          body,
-          author,
-          permalink: safePermalink,
+          title: sanitizeText(p.title),
+          body: null as string | null,
+          author: sanitizeText(p.author),
+          permalink: p.link.replace('https://www.reddit.com', '').replace(/[^\x20-\x7E/]/g, ''),
           upvotes: 0,
           upvote_ratio: 0,
           num_comments: 0,
@@ -296,7 +297,14 @@ async function main() {
           posted_at: new Date(p.published).toISOString(),
           crawled_at: new Date().toISOString(),
         };
-      });
+        // 행 전체가 JSON-safe인지 검증
+        try {
+          JSON.stringify(row);
+          rows.push(row);
+        } catch {
+          console.warn(`  ⚠️ 스킵 (JSON 비호환): ${p.title.slice(0, 50)}`);
+        }
+      }
 
       const { data: upserted, error: upsertError } = await supabase
         .from('crypto_posts')
