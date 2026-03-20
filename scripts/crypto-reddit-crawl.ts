@@ -271,16 +271,22 @@ async function main() {
 
       // RSS에는 score가 없으므로 source_id로 Reddit post ID 추출
       const rows = rssPosts.map((p) => {
-        // id 형태: t3_xxxxx (URL에서 추출)
         const postId = p.link.match(/comments\/([a-z0-9]+)/)?.[1] || p.id;
+        const title = sanitizeText(p.title);
+        // body(RSS content)를 null로 먼저 시도, title만으로 멘션 추출 가능
+        const body: string | null = null;
+        const author = sanitizeText(p.author);
+        const permalink = p.link.replace('https://www.reddit.com', '');
+        // permalink에 유니코드/특수문자 있으면 안전하게 ASCII만
+        const safePermalink = permalink.replace(/[^\x20-\x7E/]/g, '');
         return {
           source: 'reddit' as const,
           source_id: `reddit_t3_${postId}`,
           channel: config.name,
-          title: sanitizeText(p.title),
-          body: p.content ? sanitizeText(p.content) : null,
-          author: p.author,
-          permalink: p.link.replace('https://www.reddit.com', ''),
+          title,
+          body,
+          author,
+          permalink: safePermalink,
           upvotes: 0,
           upvote_ratio: 0,
           num_comments: 0,
