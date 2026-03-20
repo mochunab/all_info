@@ -93,19 +93,11 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    // 노드 분포 범위에 기반해 카메라 거리 계산
-    let maxDist = 0;
-    for (const n of nodes) {
-      const d = Math.sqrt((n.x || 0) ** 2 + (n.y || 0) ** 2 + (n.z || 0) ** 2);
-      if (d > maxDist) maxDist = d;
-    }
-    const cameraZ = Math.max(40, maxDist * 1.5);
-    fg.cameraPosition({ x: 0, y: 0, z: cameraZ });
+    fg.cameraPosition({ x: 0, y: 0, z: 150 });
 
-    // 시뮬레이션 안정화 후 재조정
     const timer = setTimeout(() => {
-      try { fg.zoomToFit(400, -20); } catch { /* ignore */ }
-    }, 1200);
+      try { fg.zoomToFit(600, 15); } catch { /* ignore */ }
+    }, 1500);
     return () => clearTimeout(timer);
   }, [nodes]);
 
@@ -127,16 +119,8 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       }
 
       const connected = rawNodes.filter((n) => connectedIds.has(n.id));
-      const connectedCount = connected.length;
 
-      const positioned = connected.map((n, idx) => {
-        const phi = Math.acos(1 - (2 * (idx + 0.5)) / connectedCount);
-        const theta = Math.PI * (1 + Math.sqrt(5)) * idx;
-        const r = 15 + Math.random() * 5;
-        return { ...n, x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi) };
-      });
-
-      setNodes(positioned);
+      setNodes(connected);
       setLinks(rawLinks);
     } catch {
       // silent
