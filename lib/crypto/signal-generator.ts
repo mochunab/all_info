@@ -9,6 +9,7 @@ import {
   normalizeFomo,
   computeSignalLabel,
   computeMentionConfidence,
+  computeMarketCapDampening,
 } from '@/lib/crypto/score-utils';
 
 export async function generateSignalsForWindow(
@@ -56,21 +57,59 @@ export async function generateSignalsForWindow(
     sentimentMap.set(s.post_id, s);
   }
 
-  // 3. 이전 윈도우 멘션 (velocity 계산용)
+  // 3. 이전 윈도우 멘션 (velocity + sentiment_trend 계산용)
   const { data: prevData } = await supabase
     .from('crypto_mentions')
-    .select('coin_symbol, mention_count')
+    .select('coin_symbol, mention_count, post_id')
     .gte('created_at', prevWindowStart.toISOString())
     .lt('created_at', windowStart.toISOString());
 
   const prevCounts = new Map<string, number>();
+  const prevPostIds: string[] = [];
   if (prevData) {
     for (const m of prevData) {
       prevCounts.set(m.coin_symbol, (prevCounts.get(m.coin_symbol) || 0) + m.mention_count);
+      prevPostIds.push(m.post_id);
     }
   }
 
-  // 4. 코인별 집계
+  // 3b. 이전 윈도우 센티먼트 (sentiment_trend 계산용)
+  const prevSentimentMap = new Map<string, number[]>();
+  if (prevPostIds.length > 0) {
+    const uniquePrevPostIds = [...new Set(prevPostIds)];
+    const { data: prevSentiments } = await supabase
+      .from('crypto_sentiments')
+      .select('post_id, sentiment_score')
+      .in('post_id', uniquePrevPostIds);
+
+    if (prevSentiments && prevData) {
+      const prevPostToSentiment = new Map<string, number>();
+      for (const s of prevSentiments) {
+        prevPostToSentiment.set(s.post_id, s.sentiment_score);
+      }
+      for (const m of prevData) {
+        const score = prevPostToSentiment.get(m.post_id);
+        if (score !== undefined) {
+          if (!prevSentimentMap.has(m.coin_symbol)) prevSentimentMap.set(m.coin_symbol, []);
+          prevSentimentMap.get(m.coin_symbol)!.push(score);
+        }
+      }
+    }
+  }
+
+  // 4. 시가총액 순위 조회 (대형 코인 감쇠용)
+  const allSymbols = [...new Set(mentions.map((m: { coin_symbol: string }) => m.coin_symbol))];
+  const { data: coinRows } = await supabase
+    .from('crypto_coins')
+    .select('symbol, market_cap_rank')
+    .in('symbol', allSymbols);
+
+  const rankMap = new Map<string, number | null>();
+  for (const c of coinRows || []) {
+    rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
+  }
+
+  // 5. 코인별 집계
   type CoinAgg = {
     mentions: number;
     sentiments: number[];
@@ -112,7 +151,7 @@ export async function generateSignalsForWindow(
     }
   }
 
-  // 5. 시그널 계산
+  // 6. 시그널 계산
   const results: SignalComputeResult[] = [];
 
   for (const [symbol, agg] of coinMap) {
@@ -132,13 +171,22 @@ export async function generateSignalsForWindow(
     const totalEngagement = agg.engagements.reduce((a, b) => a + b, 0);
     const engagementPerMention = agg.mentions > 0 ? totalEngagement / agg.mentions : 0;
 
+    const prevSentiments = prevSentimentMap.get(symbol);
+    const prevAvgSentiment = prevSentiments && prevSentiments.length > 0
+      ? prevSentiments.reduce((a, b) => a + b, 0) / prevSentiments.length
+      : null;
+    const sentimentTrend = prevAvgSentiment !== null
+      ? avgSentiment - prevAvgSentiment
+      : 0;
+
     const velocityNorm = normalizeVelocity(velocity);
     const sentimentNorm = normalizeSentiment(avgSentiment);
-    const trendNorm = 50;
+    const trendNorm = normalizeSentiment(sentimentTrend);
     const engagementNorm = normalizeEngagement(engagementPerMention);
     const fomoNorm = normalizeFomo(avgFomo);
 
     const mentionConfidence = computeMentionConfidence(agg.mentions);
+    const marketCapDampening = computeMarketCapDampening(rankMap.get(symbol) ?? null);
 
     const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +
@@ -147,7 +195,7 @@ export async function generateSignalsForWindow(
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
       fomoNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
-    const weightedScore = clamp(rawScore * mentionConfidence, 0, 100);
+    const weightedScore = clamp(rawScore * mentionConfidence * marketCapDampening, 0, 100);
 
     agg.posts.sort((a, b) => b.score - a.score);
 
@@ -157,7 +205,7 @@ export async function generateSignalsForWindow(
       mention_count: agg.mentions,
       mention_velocity: Math.round(velocity * 10000) / 10000,
       avg_sentiment: Math.round(avgSentiment * 1000) / 1000,
-      sentiment_trend: 0,
+      sentiment_trend: Math.round(sentimentTrend * 1000) / 1000,
       weighted_score: Math.round(weightedScore * 100) / 100,
       engagement_score: Math.round(engagementPerMention * 100) / 100,
       signal_label: computeSignalLabel(weightedScore),

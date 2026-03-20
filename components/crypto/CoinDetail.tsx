@@ -1,6 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
 import type { CryptoSignal, CryptoPost, CryptoEntity, TimeWindow } from '@/types/crypto';
 import { t } from '@/lib/i18n';
 import SentimentGauge from './SentimentGauge';
@@ -20,24 +30,34 @@ type DetailData = {
   relations: any[];
 };
 
+type TimelinePoint = {
+  timestamp: string;
+  mentions: number;
+  avg_sentiment: number | null;
+  avg_fomo: number | null;
+};
+
 export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
+  const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [coinsRes, signalsRes, postsRes] = await Promise.all([
+      const [coinsRes, signalsRes, postsRes, historyRes] = await Promise.all([
         fetch(`/api/crypto/coins?search=${symbol}&type=coin&limit=1`),
         fetch(`/api/crypto/signals?coin=${symbol}&window=${timeWindow}`),
         fetch(`/api/crypto/posts?coin=${symbol}&limit=10`),
+        fetch(`/api/crypto/history?coin=${symbol}&days=7`),
       ]);
 
-      const [coinsData, signalsData, postsData] = await Promise.all([
+      const [coinsData, signalsData, postsData, historyData] = await Promise.all([
         coinsRes.json(),
         signalsRes.json(),
         postsRes.json(),
+        historyRes.json(),
       ]);
 
       setData({
@@ -46,6 +66,7 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
         posts: postsData.posts || [],
         relations: coinsData.relations || [],
       });
+      setTimeline(historyData.timeline || []);
     } catch (error) {
       console.error('Failed to fetch coin detail:', error);
     } finally {
@@ -60,10 +81,16 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
   const signal = data?.signals?.[0];
   const dateLocale = language === 'ko' ? 'ko-KR' : language === 'ja' ? 'ja-JP' : language === 'zh' ? 'zh-CN' : language === 'vi' ? 'vi-VN' : 'en-US';
 
+  const chartData = timeline.map((p) => ({
+    label: new Date(p.timestamp).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', hour: '2-digit' }),
+    mentions: p.mentions,
+    sentiment: p.avg_sentiment != null ? Math.round(p.avg_sentiment * 100) : null,
+  }));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[var(--bg-primary)] border border-[var(--border)] rounded-2xl shadow-2xl">
-        <div className="sticky top-0 bg-[var(--bg-primary)] border-b border-[var(--border)] p-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-[var(--bg-primary)] border-b border-[var(--border)] p-4 flex items-center justify-between z-10">
           <div>
             <h2 className="text-xl font-bold text-[var(--text-primary)]">{symbol}</h2>
             {data?.entity && (
@@ -109,6 +136,84 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                   <div>
                     <p className="text-xs text-[var(--text-tertiary)] mb-1">{t(language, 'crypto.sentiment')}</p>
                     <SentimentGauge score={signal.avg_sentiment} />
+                  </div>
+                  {signal.sentiment_trend !== 0 && (
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+                      <span>{t(language, 'crypto.communityMood')}</span>
+                      <span className={signal.sentiment_trend > 0 ? 'text-green-500' : 'text-red-500'}>
+                        {signal.sentiment_trend > 0 ? '+' : ''}{(signal.sentiment_trend * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {chartData.length > 1 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
+                    {t(language, 'crypto.chart.title')}
+                  </h3>
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis
+                          yAxisId="mentions"
+                          tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                          allowDecimals={false}
+                        />
+                        <YAxis
+                          yAxisId="sentiment"
+                          orientation="right"
+                          domain={[-100, 100]}
+                          tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                          hide
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any, name: any) => {
+                            if (name === 'sentiment') return [`${value}%`, t(language, 'crypto.sentiment')];
+                            return [value, t(language, 'crypto.mentions').replace('{count}', '').trim()];
+                          }}
+                        />
+                        <Bar
+                          yAxisId="mentions"
+                          dataKey="mentions"
+                          fill="var(--accent, #6366f1)"
+                          opacity={0.4}
+                          radius={[2, 2, 0, 0]}
+                        />
+                        <Line
+                          yAxisId="sentiment"
+                          dataKey="sentiment"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex justify-center gap-4 mt-1 text-[10px] text-[var(--text-tertiary)]">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-3 h-2 rounded-sm bg-[var(--accent,#6366f1)] opacity-40" />
+                      {t(language, 'crypto.mentions').replace('{count}', '').trim()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-3 h-0.5 bg-green-500" />
+                      {t(language, 'crypto.sentiment')}
+                    </span>
                   </div>
                 </div>
               )}

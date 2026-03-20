@@ -96,26 +96,9 @@ export async function processCryptoSentiments(
 
   try {
     const { data: postsData, error } = await supabase
-      .from('crypto_posts')
-      .select('id, title, body, source')
-      .not('id', 'in', supabase.from('crypto_sentiments').select('post_id'))
-      .order('posted_at', { ascending: false })
-      .limit(batchSize);
+      .rpc('get_posts_without_sentiment', { lim: batchSize });
 
-    // fallback: LEFT JOIN 방식
-    if (error || !postsData) {
-      const { data: fallbackData, error: fbError } = await supabase
-        .rpc('get_posts_without_sentiment', { lim: batchSize });
-
-      if (fbError || !fallbackData || fallbackData.length === 0) {
-        console.log('ℹ️  [센티먼트] 분석 대기 중인 게시물 없음');
-        return { ...result, completed: true };
-      }
-
-      return processPostBatch(supabase, fallbackData as PostRow[], result, timeBudgetMs);
-    }
-
-    if (postsData.length === 0) {
+    if (error || !postsData || postsData.length === 0) {
       console.log('ℹ️  [센티먼트] 분석 대기 중인 게시물 없음');
       return { ...result, completed: true };
     }

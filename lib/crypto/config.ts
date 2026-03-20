@@ -102,6 +102,12 @@ export const SELF_CONTINUE = {
 // 시그널 신뢰도 최소 멘션 수 (미만이면 점수 감쇠)
 export const MIN_MENTION_CONFIDENCE = 5;
 
+// 시가총액 순위 기반 감쇠 — 대형 코인의 "당연한 언급량" 보정
+export const MARKET_CAP_DAMPENING = {
+  MAX_RANK: 200,
+  MIN_FACTOR: 0.3,
+} as const;
+
 // 시그널 가중치
 export const SIGNAL_WEIGHTS = {
   MENTION_VELOCITY: 0.25,
