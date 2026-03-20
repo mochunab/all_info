@@ -167,7 +167,7 @@ async function crawlTwitterKeyword(
           coin_symbol: m.symbol,
           coin_name: m.name,
           mention_count: m.count,
-          context: m.context,
+          context: m.context ? sanitizeText(m.context) : null,
         });
       }
     }
