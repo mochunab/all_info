@@ -1,0 +1,36 @@
+name: Crypto Battle (5min)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  prices-and-battle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Fetch prices
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"phase":"prices"}' \
+            "${{ secrets.SITE_URL }}/api/crypto/crawl")
+
+          http_code=$(echo "$response" | tail -1)
+          echo "Prices: HTTP $http_code"
+
+      - name: Execute battle
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"phase":"battle"}' \
+            "${{ secrets.SITE_URL }}/api/crypto/crawl")
+
+          http_code=$(echo "$response" | tail -1)
+          echo "Battle: HTTP $http_code"

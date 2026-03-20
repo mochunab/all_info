@@ -461,6 +461,47 @@ async function updateDailyPortfolioSnapshot(supabase: SupabaseClient, prices: Ma
   }
 }
 
+// ── Lazy 평가 (API 호출 시 가격 기반 청산 즉시 실행) ──
+
+function evaluateRobotPriceExit(
+  pos: BattlePosition,
+  currentPrice: number,
+): { reason: BattleCloseReason; closeAll: boolean } | null {
+  const pnlPct = (currentPrice - pos.entry_price) / pos.entry_price;
+
+  if (pnlPct <= -ROBOT.STOP_LOSS_PCT) return { reason: 'stop_loss', closeAll: true };
+  if (pos.take_profit_stage >= 1 && currentPrice <= pos.entry_price) return { reason: 'stop_loss', closeAll: true };
+  if (pos.take_profit_stage === 0 && pnlPct >= ROBOT.TP1_PCT) return { reason: 'take_profit_1', closeAll: false };
+  if (pos.take_profit_stage === 1 && pnlPct >= ROBOT.TP2_PCT) return { reason: 'take_profit_2', closeAll: false };
+
+  return null;
+}
+
+export async function lazyEvaluateExits(supabase: SupabaseClient): Promise<number> {
+  const coins = await getTradableCoins(supabase);
+  const prices = await getCurrentPrices(supabase, coins.map(c => c.symbol));
+  if (prices.size === 0) return 0;
+
+  let closed = 0;
+  for (const player of ['monkey', 'robot'] as const) {
+    const positions = await getOpenPositions(supabase, player);
+    for (const pos of positions) {
+      const currentPrice = prices.get(pos.coin_symbol);
+      if (!currentPrice) continue;
+
+      const result = player === 'monkey'
+        ? evaluateMonkeyExit(pos)
+        : evaluateRobotPriceExit(pos, currentPrice);
+
+      if (result) {
+        await closePosition(supabase, pos, currentPrice, result.reason, result.closeAll);
+        closed++;
+      }
+    }
+  }
+  return closed;
+}
+
 // ── 유틸 ──
 
 async function getTradableCoins(supabase: SupabaseClient) {

@@ -53,19 +53,4 @@ jobs:
             exit 1
           fi
 
-      # Phase 5: Battle (별도 트리거 — 체인 끊김 방지)
-      - name: Trigger battle phase
-        run: |
-          sleep 60
-          response=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json" \
-            -d '{"phase":"battle"}' \
-            "${{ secrets.SITE_URL }}/api/crypto/crawl")
-
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | sed '$d')
-
-          echo "HTTP $http_code"
-          echo "$body" | head -50
+      # Battle + Prices는 crypto-battle.yml (5분 주기)에서 별도 실행

@@ -2,15 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import dynamic from 'next/dynamic';
 import * as THREE from 'three';
 import SpriteText from 'three-spritetext';
 import type { CryptoSignal, TrendingExplainResponse, TimeWindow } from '@/types/crypto';
 import { useIsDark } from '@/lib/hooks/useIsDark';
 import { t } from '@/lib/i18n';
 import WhyTrendingPanel from '@/components/crypto/WhyTrendingPanel';
-
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
 
 type NetworkNode = {
   id: string;
@@ -64,6 +61,11 @@ const MD3_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', timeWindow = '24h' }: SignalNetworkProps) {
   const isDark = useIsDark();
   const [isOpen, setIsOpen] = useState(false);
+  const [ForceGraph3D, setForceGraph3D] = useState<any>(null);
+
+  useEffect(() => {
+    import('react-force-graph-3d').then(mod => setForceGraph3D(() => mod.default));
+  }, []);
   const [nodes, setNodes] = useState<NetworkNode[]>([]);
   const [links, setLinks] = useState<NetworkLink[]>([]);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
@@ -115,15 +117,22 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     } catch { /* scene not ready */ }
   }, [nodes]);
 
-  // Camera auto-fit
+  // D3 force config + camera auto-fit
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
-    fg.cameraPosition({ x: 0, y: 0, z: 200 });
-    const timer = setTimeout(() => {
-      try { fg.zoomToFit(600, 20); } catch { /* ignore */ }
-    }, 1500);
-    return () => clearTimeout(timer);
+
+    fg.d3Force('charge')?.strength(-250);
+    fg.d3Force('link')?.distance(50);
+    fg.d3Force('center')?.strength(3);
+
+    const zoomFit = () => {
+      try { fg.zoomToFit(400, -40); } catch { /* ignore */ }
+    };
+    const t1 = setTimeout(zoomFit, 600);
+    const t2 = setTimeout(zoomFit, 1500);
+    const t3 = setTimeout(zoomFit, 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [nodes]);
 
   const fetchNetwork = useCallback(async (coin?: string) => {
@@ -264,7 +273,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       const isFocused = focusedNode === node.id;
 
       const baseSize = getNodeSize(node.mentions, maxMentions);
-      let radius = baseSize * 0.6;
+      let radius = baseSize * 2.5;
       if (dimmed) radius *= 0.5;
       if (isFocused) radius *= 1.5;
       if (isSelected) radius *= 1.6;
@@ -296,12 +305,12 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
 
       if (!dimmed && (node.type === 'coin' || isSelected || isFocused)) {
         const label = node.name.length > 8 ? node.name.slice(0, 7) + '..' : node.name;
-        const sprite = new SpriteText(label, isSelected ? 3 : 2.2, isDark ? '#E5E7EB' : '#374151');
+        const sprite = new SpriteText(label, isSelected ? 6 : 4.5, isDark ? '#E5E7EB' : '#374151');
         sprite.fontWeight = isSelected ? '700' : '600';
         sprite.backgroundColor = isDark ? 'rgba(17,24,39,0.75)' : 'rgba(255,255,255,0.75)';
         sprite.borderRadius = 3;
         sprite.padding = [1.5, 3] as any;
-        (sprite as any).position.set(0, -(radius + 3), 0);
+        (sprite as any).position.set(0, -(radius + 6), 0);
         group.add(sprite as any);
       }
 
@@ -452,7 +461,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                   onClick={() => handleChipClick(s.coin_symbol)}
                   className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
                     selectedChip === s.coin_symbol
-                      ? 'bg-[var(--accent)] text-white shadow-lg shadow-blue-500/25'
+                      ? 'bg-[var(--accent)] text-white shadow-sm shadow-blue-500/15'
                       : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
                   }`}
                 >
@@ -466,7 +475,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
           <div className="flex flex-col md:flex-row" ref={containerRef}>
             {/* 3D Force Graph */}
             <div className="relative" style={{ width: graphWidth, height: dimensions.height }}>
-              {loading && nodes.length === 0 ? (
+              {!ForceGraph3D || (loading && nodes.length === 0) ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
                   Loading network...
                 </div>
@@ -477,7 +486,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
               ) : (
                 <>
                   <ForceGraph3D
-                    ref={graphRef}
+                    ref={graphRef as any}
                     width={graphWidth}
                     height={dimensions.height}
                     graphData={{ nodes, links }}
@@ -498,8 +507,8 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     controlType="orbit"
                     enableNodeDrag={false}
                     enableNavigationControls={true}
-                    warmupTicks={80}
-                    cooldownTicks={0}
+                    warmupTicks={200}
+                    cooldownTicks={50}
                     d3AlphaDecay={0.04}
                     d3VelocityDecay={0.3}
                   />
