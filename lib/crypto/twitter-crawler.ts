@@ -17,9 +17,14 @@ function getApifyToken(): string {
 
 function sanitizeText(text: string): string {
   return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    .replace(/\0/g, '');
+}
+
+function sanitizeObject<T>(obj: T): T {
+  return JSON.parse(sanitizeText(JSON.stringify(obj))) as T;
 }
 
 function tweetToRow(tweet: ApifyTweet) {
@@ -31,12 +36,19 @@ function tweetToRow(tweet: ApifyTweet) {
 
   const permalink = `https://x.com/${tweet.username}/status/${tweet.id}`;
 
+  // hashtags가 [{tag: "..."}, ...] 형태일 수 있음
+  const hashtags = Array.isArray(tweet.hashtags)
+    ? tweet.hashtags.map((h: string | { tag?: string }) =>
+        typeof h === 'string' ? h : h?.tag || '')
+      .filter(Boolean)
+    : [];
+
   return {
     source: 'twitter' as const,
     source_id: `twitter_${tweet.id}`,
-    channel: `@${tweet.username || 'unknown'}`,
-    title,
-    body,
+    channel: sanitizeText(`@${tweet.username || 'unknown'}`),
+    title: sanitizeText(title),
+    body: body ? sanitizeText(body) : null,
     author: tweet.username || null,
     permalink,
     upvotes: tweet.favorite_count || 0,
@@ -48,13 +60,13 @@ function tweetToRow(tweet: ApifyTweet) {
     posted_at: tweet.created_at ? new Date(tweet.created_at).toISOString() : new Date().toISOString(),
     crawled_at: new Date().toISOString(),
     metadata: {
-      retweet_count: tweet.retweet_count,
-      quote_count: tweet.quote_count,
-      user_verified: tweet.user_verified,
-      user_is_blue_verified: tweet.user_is_blue_verified,
-      user_followers_count: tweet.user_followers_count,
-      hashtags: tweet.hashtags,
-      is_retweet: tweet.is_retweet,
+      retweet_count: tweet.retweet_count || 0,
+      quote_count: tweet.quote_count || 0,
+      user_verified: tweet.user_verified || false,
+      user_is_blue_verified: tweet.user_is_blue_verified || false,
+      user_followers_count: tweet.user_followers_count || 0,
+      hashtags,
+      is_retweet: tweet.is_retweet || false,
     },
   };
 }
@@ -111,7 +123,7 @@ async function crawlTwitterKeyword(
     result.postsFound = tweets.length;
     if (tweets.length === 0) return result;
 
-    const rows = tweets.map((t) => tweetToRow(t));
+    const rows = tweets.map((t) => sanitizeObject(tweetToRow(t)));
 
     const { data: upserted, error: upsertError } = await supabase
       .from('crypto_posts')
