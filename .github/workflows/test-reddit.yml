@@ -1,0 +1,16 @@
+name: Test Reddit RSS
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Test Reddit endpoints
+        run: |
+          echo "=== RSS ==="
+          curl -s -o /dev/null -w "RSS: %{http_code}\n" -H "User-Agent: InsightHub:MemePredictor:1.0" "https://www.reddit.com/r/CryptoCurrency/.rss"
+          echo "=== JSON ==="
+          curl -s -o /dev/null -w "JSON: %{http_code}\n" -H "User-Agent: InsightHub:MemePredictor:1.0" "https://www.reddit.com/r/CryptoCurrency/hot.json?limit=3"
+          echo "=== Old Reddit ==="
+          curl -s -o /dev/null -w "Old: %{http_code}\n" -H "User-Agent: InsightHub:MemePredictor:1.0" "https://old.reddit.com/r/CryptoCurrency/hot.json?limit=3"
