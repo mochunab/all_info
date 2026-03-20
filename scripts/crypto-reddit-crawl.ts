@@ -306,18 +306,33 @@ async function main() {
         }
       }
 
-      const { data: upserted, error: upsertError } = await supabase
+      // 배치 upsert 시도, 실패하면 한 건씩 처리
+      let upsertedPosts: { id: string; source_id: string }[] = [];
+      const { data: batchResult, error: batchError } = await supabase
         .from('crypto_posts')
         .upsert(rows, { onConflict: 'source_id', ignoreDuplicates: false })
         .select('id, source_id');
 
-      if (upsertError) {
-        console.error(`  ❌ upsert: ${upsertError.message}`);
-        totalErrors++;
-        continue;
+      if (batchError) {
+        console.warn(`  ⚠️ 배치 실패 (${batchError.message}), 개별 upsert 시도...`);
+        let okCount = 0;
+        for (const row of rows) {
+          const { data, error } = await supabase
+            .from('crypto_posts')
+            .upsert([row], { onConflict: 'source_id', ignoreDuplicates: false })
+            .select('id, source_id');
+          if (error) {
+            console.warn(`    ✕ ${row.source_id}: ${error.message} — "${row.title.slice(0, 40)}"`);
+          } else if (data) {
+            upsertedPosts.push(...data);
+            okCount++;
+          }
+        }
+        console.log(`  → 개별: ${okCount}/${rows.length}개 성공`);
+      } else {
+        upsertedPosts = batchResult || [];
       }
 
-      const upsertedPosts = upserted || [];
       totalNew += upsertedPosts.length;
 
       const sourceIdToDbId = new Map<string, string>();
