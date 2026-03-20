@@ -234,7 +234,44 @@ supabase/migrations/
 
 ---
 
-## 11. 로드맵
+## 11. 남은 작업 (온톨로지 관련)
+
+### 즉시 작업 가능
+
+| # | 항목 | 파일 | 설명 |
+|---|------|------|------|
+| 1 | **recommends 관계 활성화** | `knowledge-graph.ts` | 메타엣지 이미 정의됨. 센티먼트 bullish + confidence>0.7 + score>100 → influencer→coin `recommends` 관계 생성 로직만 추가 |
+| 2 | **가중 confidence 감쇠** | `knowledge-graph.ts` | 현재 `decayStaleEntities()`가 7일 후 confidence=0.1로 이진 감쇠 → `confidence × 0.9^(경과일수)` 점진 감쇠로 전환 |
+| 3 | **narrative 노드 클릭 연동** | `SignalNetwork.tsx` | narrative 노드 클릭 시 소속 코인만 하이라이트 (현재 coin 클릭만 CoinDetail 모달 오픈) |
+| 4 | **프로덕션 검증** | — | 배포 후 narrative/event 노드 생성 확인, 저신뢰 투명도 확인, 감쇠 동작 확인 |
+
+### Edge Function 변경 필요
+
+| # | 항목 | 파일 | 설명 |
+|---|------|------|------|
+| 5 | **LLM 내러티브 동적 감지** | `analyze-crypto-sentiment/index.ts` | 프롬프트에 `narratives` 필드 추가 → LLM이 "AI tokens", "dog coins" 등 테마를 동적 감지. 현재 NARRATIVE_CLUSTERS 하드코딩 대체 |
+| 6 | **LLM 이벤트 감지 고도화** | `analyze-crypto-sentiment/index.ts` | 프롬프트에 `events` 필드 추가 → 이벤트명 + 영향 코인 + 영향 방향(+/-) 추출. 현재 EVENT_KEYWORDS 매칭 대체 |
+| 7 | **LLM 결과 저장** | `batch-sentiment.ts`, `crypto_sentiments` | Edge Function에서 반환된 narrative/event 데이터를 DB에 저장 (metadata JSONB 또는 별도 컬럼) |
+
+### 시각화 강화
+
+| # | 항목 | 파일 | 설명 |
+|---|------|------|------|
+| 8 | **이벤트 타임라인 UI** | 새 컴포넌트 | 이벤트 엔티티를 시간축 위에 배치 → 코인 센티먼트/가격 변동과 병렬 표시 |
+| 9 | **추론 경로 표시** | `SignalNetwork.tsx` | "왜 DOGE가 trending?" → 그래프에서 관련 경로(narrative+influencer+event) 하이라이트 |
+| 10 | **CoinDetail 온톨로지 탭** | `CoinDetail.tsx` | 관련 narrative/event 엔티티 목록 + impacts/part_of 관계 표시 |
+
+### 장기 (아키텍처 변경)
+
+| # | 항목 | 설명 |
+|---|------|------|
+| 11 | **Neo4j 마이그레이션** | Supabase RDBMS의 관계 쿼리 한계 (경로 탐색, 깊이 쿼리) → Neo4j Cypher로 전환 |
+| 12 | **ReBAC 권한 체계** | 관계 기반 접근 제어 — 유료/무료 티어별 그래프 탐색 깊이 제한 |
+| 13 | **AI 채팅 온톨로지 연동** | chat-insight에 그래프 컨텍스트 주입 → "DOGE가 왜 뜨는지" 관계 기반 설명 |
+
+---
+
+## 12. 로드맵
 
 ### Phase A — 데이터 소스 확장 (다음 우선순위)
 

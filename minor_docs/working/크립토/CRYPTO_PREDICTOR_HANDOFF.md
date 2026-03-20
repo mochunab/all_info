@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-20
+> 최종 작업일: 2026-03-21
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -20,7 +20,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 1. **Reddit 센티먼트 추적** — 10개 서브레딧 × 30분 크롤링 → 코인 멘션 추출 → LLM 센티먼트 분석
 2. **가중 시그널 스코어** — 언급 속도 × 25% + 센티먼트 × 30% + 트렌드 × 15% + 참여도 × 20% + FOMO × 10% → 0~100점 + signal_label
 3. **지식그래프** — 코인/인플루언서/내러티브 엔티티 + 상관관계 엣지 → "DOGE가 뜨는 이유"를 연결 관계로 설명
-4. **Signal Network 시각화** — Force-directed 그래프 + AI 키워드 클라우드 (react-force-graph-2d)
+4. **Signal Network 시각화** — Force-directed 3D 그래프 + WHY Trending 추론 패널 (점수 분해·AI 근거·소스 분포·키워드·내러티브)
 
 ---
 
@@ -95,6 +95,17 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - 앱 라이브 모드 전환 완료 (개인정보처리방침 URL: `https://aca-info.com/terms`)
     - **제한**: `keyword_search`가 현재 **자기 게시물만** 반환. 공개 게시물 검색은 **Tech Provider 인증 + 앱 검수** 필요 (비즈니스 인증 → 액세스 인증 → 앱 검수 3단계, 사업자등록증 필요)
 
+**Phase 9 — X/Twitter 크롤링 연동 (2026-03-21)**
+46. **Twitter 크롤러** — Apify `scrape.badger/twitter-tweets-scraper` Actor 기반 X 게시물 수집
+    - `lib/crypto/twitter-crawler.ts` — Advanced Search 모드, 키워드 5개 × 20결과
+    - `types/crypto.ts` — `CryptoSource`에 `'twitter'` 추가, `ApifyTweet`, `TwitterSearchKeyword` 타입
+    - `lib/crypto/config.ts` — `TWITTER_SEARCH_KEYWORDS` (5개), `TWITTER_APIFY_ACTOR`, `TWITTER_RESULTS_PER_KEYWORD`
+    - `app/api/crypto/crawl/route.ts` — Phase 1d: Twitter 크롤링 (`APIFY_API_TOKEN` 조건부, 12시간 간격 제한)
+    - `lib/i18n.ts` — subtitle 5개 언어 "X · Reddit · Threads · Telegram" 으로 업데이트
+    - 센티먼트: 기존 `analyze-crypto-sentiment` Edge Function 재활용 (Reddit과 유사 구조)
+    - **비용**: Apify 무료 플랜 $5/월, `scrape.badger` $0.0002/결과 (tiered 아님), 12시간 간격 = 월 ~$1.20
+    - `APIFY_API_TOKEN` — `.env.local` + Vercel production 환경변수 설정 완료
+
 **Phase 7 — 타임아웃 방지 + 시그널 보정 (2026-03-17)**
 34. **3-Phase 파이프라인 분리** — 단일 호출 전체 실행 → crawl/sentiment/signals 3개 독립 호출
     - 각 페이즈 완료 후 fire-and-forget으로 다음 페이즈 트리거
@@ -137,6 +148,35 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 45. **CryptoDashboard 가격 연동** — `app/[locale]/crypto/CryptoDashboard.tsx`
     - `/api/crypto/prices` fetch → priceMap(symbol → price/change/image) 구성
     - CoinCard에 price prop 전달
+
+**Phase 9 — Why Trending 추론 시각화 (2026-03-21)**
+46. **score-utils.ts** — `signal-generator.ts`에서 공유 유틸 추출 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening)
+47. **trending-explain API** — `app/api/crypto/trending-explain/route.ts` (GET ?coin=X&window=24h)
+    - 점수 분해 (velocity/sentiment/engagement/fomo normalized + mention_confidence + final_score)
+    - 상위 5개 게시물 + AI reasoning 인용
+    - 소스 분포 (reddit/telegram/threads 건수 + avg_sentiment)
+    - 키프레이즈 Top 15 빈도 집계
+    - 내러티브/이벤트 태그 (NARRATIVE_CLUSTERS 매칭)
+    - 가격 정보 (crypto_coins → crypto_prices JOIN)
+48. **WHY 패널 하위 컴포넌트 5개**
+    - `ScoreBreakdown.tsx` — 4개 수평 바 (velocity/sentiment/engagement/fomo) + 3단계 라벨 (Strong/Moderate/Weak) + mention_confidence 안내
+    - `AiReasoningQuotes.tsx` — 상위 3개 게시물 reasoning 인용 블록 (센티먼트 뱃지, 소스 아이콘, FOMO/FUD 인디케이터)
+    - `SourceBreakdown.tsx` — 수평 스택 바 (Reddit 주황/Telegram 파랑/Threads 보라) + 소스별 건수 + 평균 센티먼트
+    - `PhraseCloud.tsx` — pill 태그, 빈도 기반 2~3단계 크기/투명도
+    - `NarrativeContext.tsx` — 내러티브(amber) + 이벤트(rose) 태그
+49. **WhyTrendingPanel.tsx** — 위 5개 + 가격 정보 조합하는 오른쪽 패널 컨테이너 (overflow-y-auto, max-height 420px)
+50. **SignalNetwork.tsx 대폭 리팩터**
+    - 전체를 아코디언 래퍼로 감쌈 (초기 닫힘, max-height + opacity 트랜지션 300ms MD3 easing)
+    - 좌우 분할 레이아웃: 왼쪽 60% 3D Force Graph + 오른쪽 40% WhyTrendingPanel
+    - 모바일: flex-col 스택
+    - 기존 키워드 클라우드 제거 (PhraseCloud로 대체)
+    - 코인 칩 클릭 → 그래프 필터 + /api/crypto/trending-explain fetch → WHY 패널 전달
+    - 아코디언 열릴 때 첫 번째 칩 자동 선택
+    - `useIsDark` 훅 공유 모듈로 추출 (`lib/hooks/useIsDark.ts`)
+    - Lazy fetch + 결과 캐시 (coin+window 키)
+51. **CryptoDashboard.tsx** — SignalNetwork에 timeWindow prop 추가
+52. **i18n** — ~15개 번역 키 × 5개 언어 추가 (scoreBreakdown, buzzSpeed, communityMood, engagement, hypeLevel, aiSays, whereDiscussed, whatTheySay, biggerPicture, mentionConfidenceLow, strong/moderate/weak 등)
+53. **types/crypto.ts** — `TrendingExplainResponse` 타입 추가
 
 ### 미완료 (To-Do)
 
@@ -251,8 +291,12 @@ lib/crypto/
   threads-crawler.ts        Threads API 키워드 검색 크롤러 (10개 키워드, since 필터)
   coin-extractor.ts         3단계 코인 멘션 추출 ($TICKER, 풀네임, ALL-CAPS) — DB 기반 (extractCoinMentionsFromDB) + 하드코딩 fallback
   batch-sentiment.ts        배치 센티먼트 처리 (소스별 Edge Function 라우팅, 5 concurrent)
-  signal-generator.ts       시간 윈도우별 가중 시그널 계산
+  score-utils.ts             공유 스코어링 유틸 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening)
+  signal-generator.ts       시간 윈도우별 가중 시그널 계산 (score-utils import)
   knowledge-graph.ts        엔티티/관계 자동 생성 (coin, influencer, correlates_with)
+
+lib/hooks/
+  useIsDark.ts              다크모드 감지 공유 훅 (SignalNetwork에서 추출)
 
 types/crypto.ts             크립토 전체 TypeScript 타입 (DB Row, API, Reddit, Telegram, Threads, Signal)
 
@@ -267,6 +311,7 @@ app/api/crypto/
   signals/route.ts          시그널 조회 API (window/coin 필터)
   coins/route.ts            코인 엔티티 + 관계 + 시그널 조회 API
   network/route.ts          그래프 데이터 API (nodes + links + keywords)
+  trending-explain/route.ts 추론 시각화 API (점수 분해 + AI 근거 + 소스/키워드/내러티브)
   prices/route.ts           코인 가격 조회 API (coin/limit 필터, 최신 fetched_at)
   chat/route.ts             AI 채팅 API (시그널 컨텍스트 주입)
 
@@ -278,7 +323,13 @@ components/crypto/
   CoinCard.tsx              코인 카드 (심볼, 시그널 뱃지, 센티먼트 게이지, i18n)
   SentimentGauge.tsx        센티먼트 바 시각화 (-1~1)
   SignalTimeline.tsx        Trending / Top Signals 사이드바 (i18n)
-  SignalNetwork.tsx         Force Graph + Keyword Cloud (react-force-graph-2d, 테마 대응)
+  SignalNetwork.tsx         아코디언 + 3D Force Graph + WHY Trending Panel (react-force-graph-3d)
+  WhyTrendingPanel.tsx      WHY 추론 패널 컨테이너 (5개 하위 컴포넌트 조합)
+  ScoreBreakdown.tsx        점수 분해 4개 바 (velocity/sentiment/engagement/fomo)
+  AiReasoningQuotes.tsx     AI reasoning 인용 블록 (상위 3개)
+  SourceBreakdown.tsx       소스 분포 스택 바 (reddit/telegram/threads)
+  PhraseCloud.tsx           키프레이즈 pill 태그 클라우드
+  NarrativeContext.tsx      내러티브 + 이벤트 태그
   CoinDetail.tsx            코인 상세 모달 (차트, 관계, 게시물, i18n)
   TimeWindowSelector.tsx    1h/6h/24h/7d 토글 (i18n)
 ```
@@ -335,6 +386,7 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 | `google_API_KEY` | Supabase Secrets | Gemini API (analyze-crypto-sentiment) | 기존 등록됨 |
 | `THREADS_ACCESS_TOKEN` | `.env.local` + Vercel | Threads API 장기 액세스 토큰 (60일) | ✅ 설정 완료 (2026-03-20, 만료: ~2026-05-18) |
 | `CRON_SECRET` | `.env.local` + Vercel | 크롤링 Bearer 인증 | 기존 등록됨 |
+| `APIFY_API_TOKEN` | `.env.local` + Vercel | Apify API 토큰 (Twitter/X 크롤링, 무료 $5/월) | ✅ 설정 완료 (2026-03-21) |
 | `COINGECKO_API_KEY` | `.env.local` + Vercel | CoinGecko Demo API 키 (선택, 없어도 동작) | 미설정 (무료 한도 충분) |
 
 ### Reddit API 키 발급 방법
@@ -458,15 +510,20 @@ signal_label:
 trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 ```
 
-### Signal Network 시각화
-- **라이브러리**: `react-force-graph-2d` (dynamic import, SSR 비활성화)
-- **노드**: 코인(원, 센티먼트 색상) + 인플루언서(다이아몬드, 보라)
-- **크기**: mention_count 비례 (3~15px)
-- **엣지**: correlates_with(파란) + mentions(보라), weight 비례 굵기
-- **인터랙션**: 드래그/줌/팬, 노드 hover 툴팁, 클릭 시 CoinDetail 모달
-- **필터**: 코인 칩 클릭 시 neighborSet만 하이라이트 + 키워드 클라우드 로드
-- **테마**: `useIsDark()` 훅으로 Canvas 텍스트/스트로크 색상 자동 전환
-- **키워드**: `/api/crypto/network?coin=BTC` → crypto_mentions → crypto_sentiments.key_phrases 집계
+### Signal Network 시각화 + WHY Trending 패널 (2026-03-21)
+- **라이브러리**: `react-force-graph-3d` (dynamic import, SSR 비활성화)
+- **아코디언**: 초기 닫힘, 클릭 시 300ms MD3 easing 트랜지션으로 펼침
+- **레이아웃**: 좌측 60% 3D Force Graph + 우측 40% WHY Trending Panel (모바일: 상하 스택)
+- **노드**: 코인(구, 센티먼트 색상) + 인플루언서(보라) + 내러티브(amber) + 이벤트(rose)
+- **크기**: mention_count 비례 (nodeRelSize=5)
+- **엣지**: correlates_with(파란) / part_of(amber) / impacts(rose) / recommends(초록), weight 비례 굵기
+- **인터랙션**: orbit 회전/줌, 노드 hover HTML 툴팁, 클릭 시 CoinDetail 모달
+- **필터**: 코인 칩 클릭 시 neighborSet 하이라이트 + trending-explain API fetch
+- **WHY 패널**: ScoreBreakdown + AiReasoningQuotes + SourceBreakdown + PhraseCloud + NarrativeContext
+- **Lazy fetch**: 코인 칩 클릭 시에만 API 호출, coin+window 키로 결과 캐시
+- **테마**: `useIsDark()` 공유 훅 (`lib/hooks/useIsDark.ts`)
+- **카메라**: cameraPosition z=250, FOV 25도, 1.5초 후 zoomToFit
+- **⚠️ 그래프 크기 이슈**: react-force-graph-3d 내부 카메라 관리로 FOV/zoom 외부 제어 제한적. `nodeThreeObject` 커스텀 렌더링 필요 → `GRAPH_ZOOM_FIX_HANDOFF.md` 참조
 
 ### DB 스키마 요약
 | 테이블 | PK | UNIQUE | 주요 FK |
@@ -544,6 +601,19 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - [x] 크롤링 테스트 — API 연결 성공 (200 OK), 자기 게시물 검색 확인 (2026-03-20)
 - [ ] **앱 시크릿 재발급** (노출됨, Meta 개발자 대시보드에서 리셋 필수)
 - [ ] **공개 게시물 검색** — Tech Provider 인증 필요 (비즈니스 인증 = 사업자등록증, 보류)
+
+### Phase 9 — Why Trending 추론 시각화 (2026-03-21)
+- [x] `score-utils.ts` 생성 + `signal-generator.ts` 리팩터
+- [x] `TrendingExplainResponse` 타입 추가
+- [x] `trending-explain` API 엔드포인트 생성
+- [x] `useIsDark` 훅 공유 모듈 추출
+- [x] WHY 패널 하위 컴포넌트 5개 생성 (ScoreBreakdown, AiReasoningQuotes, SourceBreakdown, PhraseCloud, NarrativeContext)
+- [x] `WhyTrendingPanel.tsx` 컨테이너 생성
+- [x] `SignalNetwork.tsx` 아코디언 + 좌우 분할 + WHY 패널 통합
+- [x] `CryptoDashboard.tsx` timeWindow prop 전달
+- [x] i18n ~15키 × 5언어 추가
+- [x] 프로덕션 배포 성공 (WHY 패널 동작 확인)
+- [ ] **그래프 크기 수정** — `nodeThreeObject` 커스텀 THREE.js 렌더링 필요 → `GRAPH_ZOOM_FIX_HANDOFF.md` 참조
 
 ### Phase 8 — CoinGecko 가격 연동 (2026-03-20)
 - [x] DB 마이그레이션 `021_crypto_prices.sql` 적용 (crypto_coins + crypto_prices)

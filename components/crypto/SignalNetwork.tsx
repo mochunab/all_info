@@ -3,6 +3,8 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import * as THREE from 'three';
+import SpriteText from 'three-spritetext';
 import type { CryptoSignal, TrendingExplainResponse, TimeWindow } from '@/types/crypto';
 import { useIsDark } from '@/lib/hooks/useIsDark';
 import { t } from '@/lib/i18n';
@@ -89,22 +91,37 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     return () => obs.disconnect();
   }, []);
 
+  // Custom lighting — replace default lights with prettier ones
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
-
-    fg.cameraPosition({ x: 0, y: 0, z: 250 });
-
     try {
-      const camera = fg.camera();
-      if (camera) {
-        camera.fov = 25;
-        camera.updateProjectionMatrix();
-      }
-    } catch { /* camera not ready */ }
+      const scene = fg.scene();
+      const existingLights = scene.children.filter(
+        (c: THREE.Object3D) => c instanceof THREE.Light
+      );
+      existingLights.forEach((l: THREE.Object3D) => scene.remove(l));
 
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      const dir1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir1.position.set(100, 200, 150);
+      scene.add(dir1);
+      const dir2 = new THREE.DirectionalLight(0xe8eaf6, 0.3);
+      dir2.position.set(-100, -50, -100);
+      scene.add(dir2);
+      const point = new THREE.PointLight(0xdbeafe, 0.4, 500);
+      point.position.set(0, 0, 0);
+      scene.add(point);
+    } catch { /* scene not ready */ }
+  }, [nodes]);
+
+  // Camera auto-fit
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg || nodes.length === 0) return;
+    fg.cameraPosition({ x: 0, y: 0, z: 200 });
     const timer = setTimeout(() => {
-      try { fg.zoomToFit(600, 15); } catch { /* ignore */ }
+      try { fg.zoomToFit(600, 20); } catch { /* ignore */ }
     }, 1500);
     return () => clearTimeout(timer);
   }, [nodes]);
@@ -203,6 +220,24 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     return ids;
   }, [selectedChip, nodes, links]);
 
+  const [focusedNode, setFocusedNode] = useState<string | null>(null);
+
+  const focusNeighborSet = useMemo(() => {
+    if (!focusedNode) return null;
+    const node = nodes.find((n) => n.id === focusedNode);
+    if (!node) return null;
+    const ids = new Set<string>([node.id]);
+    for (const l of links) {
+      const src = typeof l.source === 'string' ? l.source : l.source.id;
+      const tgt = typeof l.target === 'string' ? l.target : l.target.id;
+      if (src === node.id) ids.add(tgt);
+      if (tgt === node.id) ids.add(src);
+    }
+    return ids;
+  }, [focusedNode, nodes, links]);
+
+  const activeNeighborSet = focusNeighborSet || neighborSet;
+
   const graphWidth = useMemo(() => {
     if (selectedChip) return Math.floor(dimensions.width * 0.6);
     return dimensions.width;
@@ -210,38 +245,69 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
 
   const bgColor = useMemo(() => isDark ? '#111827' : '#FAFAFA', [isDark]);
 
-  const nodeColorFn = useCallback(
-    (node: NetworkNode) => {
-      const dimmed = neighborSet && !neighborSet.has(node.id);
-      if (dimmed) return isDark ? 'rgba(100,100,100,0.2)' : 'rgba(180,180,180,0.3)';
-      const alpha = Math.max(0.3, node.confidence ?? 1.0);
-      if (node.type === 'influencer') return `rgba(139,92,246,${alpha})`;
-      if (node.type === 'narrative') return `rgba(245,158,11,${alpha})`;
-      if (node.type === 'event') return `rgba(244,63,94,${alpha})`;
+  const getNodeColor = useCallback(
+    (node: NetworkNode): string => {
+      if (node.type === 'influencer') return '#8B5CF6';
+      if (node.type === 'narrative') return '#F59E0B';
+      if (node.type === 'event') return '#F43F5E';
       if (selectedChip && node.name === selectedChip) return '#2563EB';
-      const base = getSentimentColor(node.sentiment);
-      if (alpha < 1) {
-        const hex = base.replace('#', '');
-        const r = parseInt(hex.slice(0, 2), 16);
-        const g = parseInt(hex.slice(2, 4), 16);
-        const b = parseInt(hex.slice(4, 6), 16);
-        return `rgba(${r},${g},${b},${alpha})`;
-      }
-      return base;
+      return getSentimentColor(node.sentiment);
     },
-    [neighborSet, selectedChip, isDark]
+    [selectedChip]
   );
 
-  const nodeValFn = useCallback(
+  const nodeThreeObject = useCallback(
     (node: NetworkNode) => {
-      const size = getNodeSize(node.mentions, maxMentions);
-      const dimmed = neighborSet && !neighborSet.has(node.id);
+      const group = new THREE.Group();
+      const dimmed = activeNeighborSet && !activeNeighborSet.has(node.id);
       const isSelected = selectedChip && node.name === selectedChip;
-      if (dimmed) return size * 0.3;
-      if (isSelected) return size * 2;
-      return size;
+      const isFocused = focusedNode === node.id;
+
+      const baseSize = getNodeSize(node.mentions, maxMentions);
+      let radius = baseSize * 0.6;
+      if (dimmed) radius *= 0.5;
+      if (isFocused) radius *= 1.5;
+      if (isSelected) radius *= 1.6;
+
+      const hexColor = getNodeColor(node);
+      const color = new THREE.Color(hexColor);
+      const opacity = dimmed ? 0.2 : 0.92;
+
+      const geometry = new THREE.SphereGeometry(radius, 32, 32);
+      const material = new THREE.MeshPhongMaterial({
+        color,
+        shininess: 80,
+        specular: new THREE.Color(0xffffff),
+        emissive: color.clone().multiplyScalar(dimmed ? 0.02 : 0.15),
+        transparent: true,
+        opacity,
+      });
+      group.add(new THREE.Mesh(geometry, material));
+
+      if (!dimmed) {
+        const glowGeometry = new THREE.SphereGeometry(radius * 1.3, 16, 16);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: isSelected ? 0.15 : 0.06,
+        });
+        group.add(new THREE.Mesh(glowGeometry, glowMaterial));
+      }
+
+      if (!dimmed && (node.type === 'coin' || isSelected || isFocused)) {
+        const label = node.name.length > 8 ? node.name.slice(0, 7) + '..' : node.name;
+        const sprite = new SpriteText(label, isSelected ? 3 : 2.2, isDark ? '#E5E7EB' : '#374151');
+        sprite.fontWeight = isSelected ? '700' : '600';
+        sprite.backgroundColor = isDark ? 'rgba(17,24,39,0.75)' : 'rgba(255,255,255,0.75)';
+        sprite.borderRadius = 3;
+        sprite.padding = [1.5, 3] as any;
+        (sprite as any).position.set(0, -(radius + 3), 0);
+        group.add(sprite as any);
+      }
+
+      return group;
     },
-    [maxMentions, neighborSet, selectedChip]
+    [activeNeighborSet, selectedChip, focusedNode, maxMentions, getNodeColor, isDark]
   );
 
   const nodeLabel = useCallback(
@@ -269,32 +335,38 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
         if (link.type === 'correlates_with') return `rgba(37, 99, 235, ${alpha})`;
         if (link.type === 'part_of') return `rgba(245, 158, 11, ${alpha})`;
         if (link.type === 'impacts') return `rgba(244, 63, 94, ${alpha})`;
+        if (link.type === 'recommends') return `rgba(34, 197, 94, ${alpha})`;
         return `rgba(139, 92, 246, ${alpha})`;
       };
-      if (!neighborSet) return typeColor(isDark ? 0.35 : 0.3);
+      if (!activeNeighborSet) return typeColor(isDark ? 0.35 : 0.3);
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
-      if (neighborSet.has(src) && neighborSet.has(tgt)) return typeColor(0.7);
+      if (activeNeighborSet.has(src) && activeNeighborSet.has(tgt)) return typeColor(0.7);
       return isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
     },
-    [neighborSet, isDark]
+    [activeNeighborSet, isDark]
   );
 
   const linkWidthFn = useCallback(
     (link: NetworkLink) => {
-      if (!neighborSet) return Math.max(0.8, Math.min(link.weight * 0.6, 2.5));
+      if (!activeNeighborSet) return Math.max(0.8, Math.min(link.weight * 0.6, 2.5));
       const src = typeof link.source === 'string' ? link.source : link.source.id;
       const tgt = typeof link.target === 'string' ? link.target : link.target.id;
-      return neighborSet.has(src) && neighborSet.has(tgt)
+      return activeNeighborSet.has(src) && activeNeighborSet.has(tgt)
         ? Math.max(1.2, Math.min(link.weight * 0.8, 3.5))
         : 0.3;
     },
-    [neighborSet]
+    [activeNeighborSet]
   );
 
   const handleNodeClick = useCallback(
     (node: NetworkNode) => {
-      if (node.type === 'coin') onCoinSelect(node.name);
+      if (node.type === 'coin') {
+        setFocusedNode(null);
+        onCoinSelect(node.name);
+      } else {
+        setFocusedNode((prev) => (prev === node.id ? null : node.id));
+      }
     },
     [onCoinSelect]
   );
@@ -409,10 +481,9 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     width={graphWidth}
                     height={dimensions.height}
                     graphData={{ nodes, links }}
-                    nodeColor={nodeColorFn as any}
-                    nodeVal={nodeValFn as any}
+                    nodeThreeObject={nodeThreeObject as any}
                     nodeLabel={nodeLabel as any}
-                    nodeOpacity={0.9}
+                    nodeOpacity={1}
                     linkColor={linkColorFn as any}
                     linkWidth={linkWidthFn as any}
                     linkOpacity={0.6}
@@ -427,11 +498,10 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     controlType="orbit"
                     enableNodeDrag={false}
                     enableNavigationControls={true}
-                    nodeRelSize={5}
-                    warmupTicks={100}
-                    cooldownTicks={30}
-                    d3AlphaDecay={0.05}
-                    d3VelocityDecay={0.4}
+                    warmupTicks={80}
+                    cooldownTicks={0}
+                    d3AlphaDecay={0.04}
+                    d3VelocityDecay={0.3}
                   />
                   <div
                     ref={hoverTipRef}

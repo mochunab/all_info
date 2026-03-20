@@ -35,6 +35,10 @@ export function computeMentionConfidence(mentions: number): number {
 
 // 시가총액 순위 기반 감쇠 — rank 낮을수록(대형) 강하게 감쇠
 // rank 1(BTC) → 0.3, rank 10 → 0.43, rank 50 → 0.74, rank 100 → 0.87, rank 200+ → 1.0
+export function normalizeSentimentTrend(trend: number): number {
+  return clamp((trend + 1) * 50, 0, 100);
+}
+
 export function computeMarketCapDampening(marketCapRank: number | null): number {
   if (!marketCapRank || marketCapRank <= 0) return 1.0;
   const { MAX_RANK, MIN_FACTOR } = MARKET_CAP_DAMPENING;

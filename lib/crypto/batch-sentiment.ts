@@ -142,6 +142,14 @@ async function processPostBatch(
           throw new Error('No analysis method available');
         }, post.title.substring(0, 40));
 
+        const sentimentMetadata: Record<string, unknown> = {};
+        if (aiResult.narratives && aiResult.narratives.length > 0) {
+          sentimentMetadata.narratives = aiResult.narratives;
+        }
+        if (aiResult.events && aiResult.events.length > 0) {
+          sentimentMetadata.events = aiResult.events;
+        }
+
         const { error: insertError } = await supabase
           .from('crypto_sentiments')
           .upsert({
@@ -155,6 +163,7 @@ async function processPostBatch(
             mentioned_coins: aiResult.mentioned_coins,
             reasoning: aiResult.reasoning,
             model_used: 'gemini-2.5-flash-lite',
+            metadata: sentimentMetadata,
           }, { onConflict: 'post_id' });
 
         if (insertError) throw new Error(`DB insert failed: ${insertError.message}`);

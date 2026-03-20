@@ -6,6 +6,7 @@ import AiReasoningQuotes from '@/components/crypto/AiReasoningQuotes';
 import SourceBreakdown from '@/components/crypto/SourceBreakdown';
 import PhraseCloud from '@/components/crypto/PhraseCloud';
 import NarrativeContext from '@/components/crypto/NarrativeContext';
+import EventTimeline from '@/components/crypto/EventTimeline';
 
 type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 
@@ -73,6 +74,10 @@ export default function WhyTrendingPanel({ data, language }: Props) {
           <NarrativeContext narratives={data.narratives} events={data.events} language={language} />
         </>
       )}
+
+      {/* F. Event Timeline */}
+      <div className="h-px bg-[var(--border)]" />
+      <EventTimeline coin={data.coin_symbol} language={language} />
     </div>
   );
 }

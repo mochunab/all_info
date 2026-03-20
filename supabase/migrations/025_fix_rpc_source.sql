@@ -1,3 +1,5 @@
+DROP FUNCTION IF EXISTS get_posts_without_sentiment(integer);
+
 CREATE OR REPLACE FUNCTION get_posts_without_sentiment(lim integer DEFAULT 30)
 RETURNS TABLE (id uuid, title text, body text, source text) AS $$
   SELECT p.id, p.title, p.body, p.source

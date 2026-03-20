@@ -10,6 +10,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  ReferenceLine,
 } from 'recharts';
 import type { CryptoSignal, CryptoPost, CryptoEntity, TimeWindow } from '@/types/crypto';
 import { t } from '@/lib/i18n';
@@ -37,27 +38,38 @@ type TimelinePoint = {
   avg_fomo: number | null;
 };
 
+type EventPoint = {
+  id: string;
+  name: string;
+  timestamp: string;
+  impact: string;
+  coins: string[];
+};
+
 export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
   const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
+  const [events, setEvents] = useState<EventPoint[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [coinsRes, signalsRes, postsRes, historyRes] = await Promise.all([
+      const [coinsRes, signalsRes, postsRes, historyRes, eventsRes] = await Promise.all([
         fetch(`/api/crypto/coins?search=${symbol}&type=coin&limit=1`),
         fetch(`/api/crypto/signals?coin=${symbol}&window=${timeWindow}`),
         fetch(`/api/crypto/posts?coin=${symbol}&limit=10`),
         fetch(`/api/crypto/history?coin=${symbol}&days=7`),
+        fetch(`/api/crypto/events?coin=${symbol}&days=7&limit=10`),
       ]);
 
-      const [coinsData, signalsData, postsData, historyData] = await Promise.all([
+      const [coinsData, signalsData, postsData, historyData, eventsData] = await Promise.all([
         coinsRes.json(),
         signalsRes.json(),
         postsRes.json(),
         historyRes.json(),
+        eventsRes.json(),
       ]);
 
       setData({
@@ -67,6 +79,7 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
         relations: coinsData.relations || [],
       });
       setTimeline(historyData.timeline || []);
+      setEvents(eventsData.events || []);
     } catch (error) {
       console.error('Failed to fetch coin detail:', error);
     } finally {
@@ -85,7 +98,17 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
     label: new Date(p.timestamp).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', hour: '2-digit' }),
     mentions: p.mentions,
     sentiment: p.avg_sentiment != null ? Math.round(p.avg_sentiment * 100) : null,
+    fomo: p.avg_fomo != null ? Math.round(p.avg_fomo * 100) : null,
   }));
+
+  const eventLabels = events.map((evt) => {
+    const evtDate = new Date(evt.timestamp);
+    return {
+      label: evtDate.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', hour: '2-digit' }),
+      name: evt.name,
+      impact: evt.impact,
+    };
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -184,6 +207,7 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           formatter={(value: any, name: any) => {
                             if (name === 'sentiment') return [`${value}%`, t(language, 'crypto.sentiment')];
+                            if (name === 'fomo') return [`${value}%`, 'FOMO'];
                             return [value, t(language, 'crypto.mentions').replace('{count}', '').trim()];
                           }}
                         />
@@ -202,6 +226,31 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                           dot={false}
                           connectNulls
                         />
+                        <Line
+                          yAxisId="sentiment"
+                          dataKey="fomo"
+                          stroke="#f97316"
+                          strokeWidth={1.5}
+                          strokeDasharray="4 2"
+                          dot={false}
+                          connectNulls
+                        />
+                        {eventLabels.map((evt, i) => (
+                          <ReferenceLine
+                            key={`evt-${i}`}
+                            x={evt.label}
+                            yAxisId="mentions"
+                            stroke={evt.impact === 'positive' ? '#22c55e' : evt.impact === 'negative' ? '#ef4444' : '#9CA3AF'}
+                            strokeDasharray="3 3"
+                            strokeWidth={1}
+                            label={{
+                              value: evt.name.length > 15 ? evt.name.slice(0, 15) + '…' : evt.name,
+                              position: 'insideTopRight',
+                              fontSize: 9,
+                              fill: 'var(--text-tertiary)',
+                            }}
+                          />
+                        ))}
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
@@ -214,6 +263,16 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                       <span className="inline-block w-3 h-0.5 bg-green-500" />
                       {t(language, 'crypto.sentiment')}
                     </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-3 h-0.5 bg-orange-500" style={{ borderTop: '1px dashed' }} />
+                      FOMO
+                    </span>
+                    {eventLabels.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-3 h-0.5 bg-neutral-400" style={{ borderTop: '1px dashed' }} />
+                        Events
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

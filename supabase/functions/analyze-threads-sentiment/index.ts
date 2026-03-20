@@ -37,6 +37,13 @@ Threads(Meta) 크립토 게시물의 센티먼트를 분석하는 전문가
 - FOMO 표현: "to the moon", "don't miss", "last chance", "about to explode", 🚀🔥💎🙌
 - FUD 표현: "rug pull", "scam", "dead cat bounce", "dump incoming", 📉💀🗑️
 
+### 추가 분석
+9. **narratives**: 이 게시물이 속하는 크립토 테마/내러티브 1~3개 (예: "AI tokens", "dog coins", "DeFi summer", "Solana ecosystem", "meme culture", "L2 scaling")
+10. **events**: 게시물에서 감지된 시장 이벤트 배열. 각 이벤트는 {name, coins, impact} 구조
+    - name: 이벤트명 (예: "Binance listing", "ETF approval")
+    - coins: 영향받는 코인 심볼 배열
+    - impact: "positive" | "negative" | "neutral"
+
 ### 출력 (JSON만 반환)
 \`\`\`json
 {
@@ -47,7 +54,9 @@ Threads(Meta) 크립토 게시물의 센티먼트를 분석하는 전문가
   "key_phrases": [],
   "fomo_score": 0.0,
   "fud_score": 0.0,
-  "reasoning": ""
+  "reasoning": "",
+  "narratives": [],
+  "events": []
 }
 \`\`\`
 
@@ -68,7 +77,7 @@ async function callGemini(prompt) {
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.3,
-          maxOutputTokens: 500,
+          maxOutputTokens: 700,
         },
       }),
     }
@@ -103,6 +112,8 @@ async function analyzeSentiment(title, body) {
     fomo_score: Number(parsed.fomo_score) || 0,
     fud_score: Number(parsed.fud_score) || 0,
     reasoning: parsed.reasoning || '',
+    narratives: Array.isArray(parsed.narratives) ? parsed.narratives : [],
+    events: Array.isArray(parsed.events) ? parsed.events : [],
   };
 }
 

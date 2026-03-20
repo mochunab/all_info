@@ -177,22 +177,54 @@ export async function GET(req: NextRequest) {
     .slice(0, 15)
     .map(([phrase, count]) => ({ phrase, count }));
 
-  // 7. Narratives & events
+  // 7. Narratives & events — coin-specific via relations
   const narratives: { name: string }[] = [];
   const events: { name: string }[] = [];
 
-  const matchingClusters = NARRATIVE_CLUSTERS.filter(c => c.coins.includes(coin));
-  for (const cluster of matchingClusters) {
-    narratives.push({ name: cluster.name });
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entities = (entitiesRes.data || []) as any as EntityRow[];
-  if (entities.length > 0) {
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: coinEntityData } = await supabase
+    .from('crypto_entities')
+    .select('id')
+    .eq('entity_type', 'coin')
+    .eq('symbol', coin)
+    .single();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const coinEntityRow = coinEntityData as any as { id: string } | null;
+
+  if (coinEntityRow) {
+    const { data: coinRels } = await supabase
+      .from('crypto_relations')
+      .select('source_entity_id, target_entity_id, relation_type')
+      .or(`source_entity_id.eq.${coinEntityRow.id},target_entity_id.eq.${coinEntityRow.id}`)
+      .in('relation_type', ['part_of', 'impacts'])
+      .gt('weight', 0);
+
+    type RelRow = { source_entity_id: string; target_entity_id: string; relation_type: string };
+    const relatedEntityIds = new Set<string>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of (coinRels || []) as any as RelRow[]) {
+      relatedEntityIds.add(r.source_entity_id === coinEntityRow.id ? r.target_entity_id : r.source_entity_id);
+    }
+
     for (const e of entities) {
+      if (e.entity_type === 'narrative' && narratives.length < 5) {
+        narratives.push({ name: e.name });
+      }
       if (e.entity_type === 'event' && events.length < 5) {
         events.push({ name: e.name });
       }
+    }
+  }
+
+  // Hardcoded fallback for narratives
+  if (narratives.length === 0) {
+    const matchingClusters = NARRATIVE_CLUSTERS.filter(c => c.coins.includes(coin));
+    for (const cluster of matchingClusters) {
+      narratives.push({ name: cluster.name });
     }
   }
 

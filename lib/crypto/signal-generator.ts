@@ -5,6 +5,7 @@ import {
   clamp,
   normalizeVelocity,
   normalizeSentiment,
+  normalizeSentimentTrend,
   normalizeEngagement,
   normalizeFomo,
   computeSignalLabel,
@@ -181,7 +182,7 @@ export async function generateSignalsForWindow(
 
     const velocityNorm = normalizeVelocity(velocity);
     const sentimentNorm = normalizeSentiment(avgSentiment);
-    const trendNorm = normalizeSentiment(sentimentTrend);
+    const trendNorm = normalizeSentimentTrend(sentimentTrend);
     const engagementNorm = normalizeEngagement(engagementPerMention);
     const fomoNorm = normalizeFomo(avgFomo);
 

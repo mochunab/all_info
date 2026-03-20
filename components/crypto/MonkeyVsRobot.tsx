@@ -195,13 +195,14 @@ function ScoreTab({ data, language, monkeyLeads }: { data: BattleResponse; langu
         color="#2563EB"
         trophySide="left"
         language={language}
+        animScale={1.25}
       />
     </div>
   );
 }
 
 function PlayerScore({
-  animData, name, portfolio, winRate, leads, color, trophySide, language,
+  animData, name, portfolio, winRate, leads, color, trophySide, language, animScale = 1,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   animData: any;
@@ -212,12 +213,13 @@ function PlayerScore({
   color: string;
   trophySide: 'left' | 'right';
   language: Language;
+  animScale?: number;
 }) {
   return (
     <div className="flex flex-col items-center text-center">
       <div className="relative">
-        <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl p-3 mx-auto" style={{ backgroundColor: 'var(--bg-tertiary)', boxShadow: 'var(--shadow-sm)' }}>
-          <Lottie animationData={animData} loop autoplay style={{ width: '100%', height: '100%' }} />
+        <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl p-3 mx-auto overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)', boxShadow: 'var(--shadow-sm)' }}>
+          <Lottie animationData={animData} loop autoplay style={{ width: '100%', height: '100%', transform: `scale(${animScale})` }} />
         </div>
         {leads && (
           <div className={`absolute -top-2 ${trophySide === 'right' ? '-right-2' : '-left-2'} flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full text-white`} style={{ backgroundColor: color, boxShadow: 'var(--shadow-md)' }}>

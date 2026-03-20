@@ -14,9 +14,9 @@ const ROBOT = {
   TP1_CLOSE_RATIO: 1 / 3,
   TP2_PCT: 0.50,
   TP2_CLOSE_RATIO: 1 / 3,
-  MIN_WEIGHTED_SCORE: 60,
-  MIN_MENTION_COUNT: 5,
-  MIN_CONFIDENCE: 75,
+  MIN_WEIGHTED_SCORE: 50,
+  MIN_MENTION_COUNT: 3,
+  MIN_CONFIDENCE: 65,
   VELOCITY_BONUS_THRESHOLD: 1.0,
   SENTIMENT_BONUS_THRESHOLD: 0.3,
   FOMO_BONUS_THRESHOLD: 0.5,
@@ -150,7 +150,7 @@ async function evaluateRobotEntry(
     .from('crypto_signals')
     .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity')
     .eq('time_window', '1h')
-    .in('signal_label', ['strong_buy', 'buy'])
+    .in('signal_label', ['strong_buy', 'buy', 'neutral'])
     .gte('weighted_score', ROBOT.MIN_WEIGHTED_SCORE)
     .gte('mention_count', ROBOT.MIN_MENTION_COUNT)
     .order('weighted_score', { ascending: false });

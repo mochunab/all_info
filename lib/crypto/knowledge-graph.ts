@@ -225,7 +225,73 @@ async function upsertNarrativeEntities(supabase: SB): Promise<number> {
   const activeCoins = new Set(mentions.map((m: { coin_symbol: string }) => m.coin_symbol));
   let created = 0;
 
+  // LLM 감지 내러티브 우선: crypto_sentiments.metadata.narratives 집계
+  const { data: sentimentsWithNarratives } = await supabase
+    .from('crypto_sentiments')
+    .select('metadata, mentioned_coins')
+    .gte('created_at', since)
+    .not('metadata', 'is', null);
+
+  const llmNarrativeCoinMap = new Map<string, Set<string>>();
+  for (const s of sentimentsWithNarratives || []) {
+    const meta = s.metadata as Record<string, unknown> | null;
+    const narratives = meta?.narratives as string[] | undefined;
+    if (!narratives || narratives.length === 0) continue;
+    const coins = (s.mentioned_coins as string[]) || [];
+    for (const narrative of narratives) {
+      const key = narrative.trim();
+      if (!key) continue;
+      if (!llmNarrativeCoinMap.has(key)) llmNarrativeCoinMap.set(key, new Set());
+      for (const coin of coins) {
+        llmNarrativeCoinMap.get(key)!.add(coin.toUpperCase());
+      }
+    }
+  }
+
+  // LLM 내러티브: 2회+ 등장 시 엔티티 생성
+  for (const [narrativeName, coins] of llmNarrativeCoinMap) {
+    if (coins.size < 2) continue;
+    const activeInNarrative = [...coins].filter((c) => activeCoins.has(c));
+    if (activeInNarrative.length < 2) continue;
+
+    const narrativeId = await upsertEntity(supabase, 'narrative', narrativeName, activeInNarrative.length, {
+      metadata: {
+        ...buildQualityMetadata({
+          mentionCount: activeInNarrative.length,
+          confidence: Math.min(0.6 + activeInNarrative.length * 0.1, 1.0),
+        }),
+        active_coins: activeInNarrative,
+        source: 'llm',
+      },
+    });
+
+    if (!narrativeId) continue;
+    created++;
+
+    for (const coinSymbol of activeInNarrative) {
+      const coinInfo = COIN_MAP.get(coinSymbol);
+      const { data: coinEntity } = await supabase
+        .from('crypto_entities')
+        .select('id')
+        .eq('entity_type', 'coin')
+        .eq('symbol', coinSymbol)
+        .single();
+
+      if (!coinEntity) continue;
+
+      await upsertRelation(
+        supabase, coinEntity.id, narrativeId,
+        'coin', 'narrative', 'part_of', 1,
+        `${coinInfo?.name || coinSymbol} → ${narrativeName} (LLM)`
+      );
+    }
+  }
+
+  // 하드코딩 fallback: LLM에서 못 잡은 클러스터
+  const llmNarrativeNames = new Set(llmNarrativeCoinMap.keys());
   for (const cluster of NARRATIVE_CLUSTERS) {
+    if (llmNarrativeNames.has(cluster.name)) continue;
+
     const activeInCluster = cluster.coins.filter((c) => activeCoins.has(c));
     if (activeInCluster.length < 2) continue;
 
@@ -236,6 +302,7 @@ async function upsertNarrativeEntities(supabase: SB): Promise<number> {
           confidence: Math.min(0.5 + activeInCluster.length * 0.1, 1.0),
         }),
         active_coins: activeInCluster,
+        source: 'hardcoded',
       },
     });
 
@@ -271,25 +338,40 @@ async function upsertEventEntities(supabase: SB): Promise<number> {
 
   const { data: sentiments } = await supabase
     .from('crypto_sentiments')
-    .select('post_id, key_phrases, mentioned_coins')
+    .select('post_id, key_phrases, mentioned_coins, metadata')
     .gte('created_at', since);
 
   if (!sentiments || sentiments.length === 0) return 0;
 
-  const eventCoinMap = new Map<string, Set<string>>();
+  type EventInfo = { coins: Set<string>; impact: string; source: string };
+  const eventMap = new Map<string, EventInfo>();
 
+  // LLM 감지 이벤트 우선
   for (const s of sentiments) {
-    if (!s.key_phrases || !s.mentioned_coins) continue;
+    const meta = s.metadata as Record<string, unknown> | null;
+    const llmEvents = meta?.events as { name: string; coins: string[]; impact: string }[] | undefined;
+    if (llmEvents && llmEvents.length > 0) {
+      for (const evt of llmEvents) {
+        const name = evt.name?.trim();
+        if (!name) continue;
+        if (!eventMap.has(name)) eventMap.set(name, { coins: new Set(), impact: evt.impact || 'neutral', source: 'llm' });
+        const entry = eventMap.get(name)!;
+        for (const coin of evt.coins || []) entry.coins.add(coin.toUpperCase());
+        for (const coin of (s.mentioned_coins as string[]) || []) entry.coins.add(coin.toUpperCase());
+      }
+      continue;
+    }
 
+    // 키워드 매칭 fallback
+    if (!s.key_phrases || !s.mentioned_coins) continue;
     for (const phrase of s.key_phrases as string[]) {
       const lower = phrase.toLowerCase();
       for (const keyword of EVENT_KEYWORDS) {
         if (lower.includes(keyword)) {
           const eventName = phrase.trim();
-          if (!eventCoinMap.has(eventName)) eventCoinMap.set(eventName, new Set());
-          for (const coin of s.mentioned_coins as string[]) {
-            eventCoinMap.get(eventName)!.add(coin);
-          }
+          if (!eventMap.has(eventName)) eventMap.set(eventName, { coins: new Set(), impact: 'neutral', source: 'keyword' });
+          const entry = eventMap.get(eventName)!;
+          for (const coin of s.mentioned_coins as string[]) entry.coins.add(coin.toUpperCase());
           break;
         }
       }
@@ -297,20 +379,25 @@ async function upsertEventEntities(supabase: SB): Promise<number> {
   }
 
   let created = 0;
-  for (const [eventName, coins] of eventCoinMap) {
-    if (coins.size === 0) continue;
+  for (const [eventName, info] of eventMap) {
+    if (info.coins.size === 0) continue;
 
-    const eventId = await upsertEntity(supabase, 'event', eventName, coins.size, {
+    const eventId = await upsertEntity(supabase, 'event', eventName, info.coins.size, {
       metadata: {
-        ...buildQualityMetadata({ mentionCount: coins.size, confidence: 0.6 }),
-        affected_coins: [...coins],
+        ...buildQualityMetadata({
+          mentionCount: info.coins.size,
+          confidence: info.source === 'llm' ? 0.75 : 0.6,
+        }),
+        affected_coins: [...info.coins],
+        impact: info.impact,
+        source: info.source,
       },
     });
 
     if (!eventId) continue;
     created++;
 
-    for (const coinSymbol of coins) {
+    for (const coinSymbol of info.coins) {
       const { data: coinEntity } = await supabase
         .from('crypto_entities')
         .select('id')
@@ -323,7 +410,7 @@ async function upsertEventEntities(supabase: SB): Promise<number> {
       await upsertRelation(
         supabase, eventId, coinEntity.id,
         'event', 'coin', 'impacts', 1,
-        `${eventName} → ${coinSymbol}`
+        `${eventName} → ${coinSymbol} (${info.impact})`
       );
     }
   }
@@ -396,7 +483,7 @@ async function updateCoinCorrelations(supabase: SB): Promise<number> {
 
 // ── 인플루언서→코인 관계 (기존, 메타엣지 검증 적용) ──
 
-async function updateInfluencerRelations(supabase: SB): Promise<number> {
+async function updateInfluencerRelations(supabase: SB): Promise<{ mentions: number; recommends: number }> {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: highScorePosts } = await supabase
@@ -407,9 +494,22 @@ async function updateInfluencerRelations(supabase: SB): Promise<number> {
     .not('author', 'is', null)
     .not('author', 'eq', '[deleted]');
 
-  if (!highScorePosts || highScorePosts.length === 0) return 0;
+  if (!highScorePosts || highScorePosts.length === 0) return { mentions: 0, recommends: 0 };
 
-  let created = 0;
+  const postIds = highScorePosts.map((p) => p.id);
+  const { data: sentiments } = await supabase
+    .from('crypto_sentiments')
+    .select('post_id, sentiment_label, confidence')
+    .in('post_id', postIds);
+
+  const sentimentMap = new Map<string, { sentiment_label: string; confidence: number }>();
+  for (const s of sentiments || []) {
+    sentimentMap.set(s.post_id, s);
+  }
+
+  let mentionCount = 0;
+  let recommendCount = 0;
+
   for (const post of highScorePosts) {
     const { data: mentions } = await supabase
       .from('crypto_mentions')
@@ -427,6 +527,8 @@ async function updateInfluencerRelations(supabase: SB): Promise<number> {
 
     if (!influencer) continue;
 
+    const sentiment = sentimentMap.get(post.id);
+
     for (const mention of mentions) {
       const { data: coinEntity } = await supabase
         .from('crypto_entities')
@@ -442,11 +544,25 @@ async function updateInfluencerRelations(supabase: SB): Promise<number> {
         'influencer', 'coin', 'mentions', 1,
         `u/${post.author} (score: ${post.score})`
       );
-      if (ok) created++;
+      if (ok) mentionCount++;
+
+      if (
+        sentiment &&
+        sentiment.sentiment_label === 'bullish' &&
+        sentiment.confidence > 0.7 &&
+        post.score >= 100
+      ) {
+        const recOk = await upsertRelation(
+          supabase, influencer.id, coinEntity.id,
+          'influencer', 'coin', 'recommends', post.score / 100,
+          `u/${post.author} bullish (confidence: ${sentiment.confidence}, score: ${post.score})`
+        );
+        if (recOk) recommendCount++;
+      }
     }
   }
 
-  return created;
+  return { mentions: mentionCount, recommends: recommendCount };
 }
 
 // ── Step 2: 관계 weight 감쇠 (Temporal Decay) ──
@@ -472,21 +588,44 @@ async function decayStaleRelations(supabase: SB): Promise<number> {
 async function decayStaleEntities(supabase: SB): Promise<number> {
   const staleThreshold = new Date(Date.now() - ENTITY_DECAY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
+  const { data: staleEntities, error: fetchErr } = await supabase
     .from('crypto_entities')
-    .update({
-      metadata: { confidence: 0.1, decayed: true, last_validated_at: new Date().toISOString() },
-    })
+    .select('id, metadata, last_seen_at')
     .lt('last_seen_at', staleThreshold)
-    .in('entity_type', ['event', 'narrative'])
-    .select('id');
+    .in('entity_type', ['event', 'narrative']);
 
-  if (error) {
-    console.warn('   ⚠️  엔티티 감쇠 오류:', error.message);
+  if (fetchErr || !staleEntities || staleEntities.length === 0) {
+    if (fetchErr) console.warn('   ⚠️  엔티티 감쇠 오류:', fetchErr.message);
     return 0;
   }
 
-  return data?.length || 0;
+  const now = Date.now();
+  let decayed = 0;
+
+  for (const entity of staleEntities) {
+    const daysSinceLastSeen = (now - new Date(entity.last_seen_at).getTime()) / (1000 * 60 * 60 * 24);
+    const daysOverThreshold = daysSinceLastSeen - ENTITY_DECAY_DAYS;
+    if (daysOverThreshold <= 0) continue;
+
+    const originalConfidence = (entity.metadata as Record<string, unknown>)?.confidence as number || 0.6;
+    const newConfidence = Math.max(0.05, originalConfidence * Math.pow(0.85, daysOverThreshold));
+
+    const { error } = await supabase
+      .from('crypto_entities')
+      .update({
+        metadata: {
+          ...(entity.metadata as Record<string, unknown>),
+          confidence: Math.round(newConfidence * 1000) / 1000,
+          decayed: newConfidence < 0.15,
+          last_validated_at: new Date().toISOString(),
+        },
+      })
+      .eq('id', entity.id);
+
+    if (!error) decayed++;
+  }
+
+  return decayed;
 }
 
 // ── 메인 오케스트레이터 ──
@@ -517,5 +656,5 @@ export async function updateKnowledgeGraph(supabase: SB): Promise<void> {
   console.log(`   🔗 코인 상관관계: ${correlations}개`);
 
   const influencerRels = await updateInfluencerRelations(supabase);
-  console.log(`   📝 인플루언서 관계: ${influencerRels}개`);
+  console.log(`   📝 인플루언서 관계: mentions ${influencerRels.mentions}개, recommends ${influencerRels.recommends}개`);
 }
