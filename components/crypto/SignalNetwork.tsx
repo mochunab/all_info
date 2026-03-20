@@ -93,11 +93,13 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    fg.cameraPosition({ x: 0, y: 0, z: 200 });
+    fg.cameraPosition({ x: 0, y: 0, z: 120 });
 
     const timer = setTimeout(() => {
-      fg.zoomToFit(600, 10);
-    }, 1500);
+      try {
+        fg.zoomToFit(400, -30);
+      } catch { /* ignore */ }
+    }, 800);
     return () => clearTimeout(timer);
   }, [nodes]);
 
@@ -124,7 +126,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       const positioned = connected.map((n, idx) => {
         const phi = Math.acos(1 - (2 * (idx + 0.5)) / connectedCount);
         const theta = Math.PI * (1 + Math.sqrt(5)) * idx;
-        const r = 30 + Math.random() * 10;
+        const r = 15 + Math.random() * 5;
         return { ...n, x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.sin(phi) * Math.sin(theta), z: r * Math.cos(phi) };
       });
 
@@ -428,10 +430,10 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     enableNodeDrag={false}
                     enableNavigationControls={true}
                     nodeRelSize={4}
-                    warmupTicks={80}
-                    cooldownTicks={0}
-                    d3AlphaDecay={0.04}
-                    d3VelocityDecay={0.3}
+                    warmupTicks={150}
+                    cooldownTicks={50}
+                    d3AlphaDecay={0.05}
+                    d3VelocityDecay={0.4}
                   />
                   <div
                     ref={hoverTipRef}
