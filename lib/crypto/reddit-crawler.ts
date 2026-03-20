@@ -56,9 +56,9 @@ async function fetchSubredditPosts(
 
 function sanitizeText(text: string): string {
   return text
+    .replace(/\x00/g, '')
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+    .replace(/[\uD800-\uDFFF]/g, '');
 }
 
 function redditPostToRow(post: RedditPost, subreddit: string) {
@@ -75,9 +75,10 @@ function redditPostToRow(post: RedditPost, subreddit: string) {
     num_comments: post.num_comments,
     num_awards: post.total_awards_received,
     score: post.score,
-    flair: post.link_flair_text,
+    flair: post.link_flair_text ? sanitizeText(post.link_flair_text) : null,
     posted_at: new Date(post.created_utc * 1000).toISOString(),
     crawled_at: new Date().toISOString(),
+    metadata: { subreddit_subscribers: post.subreddit_subscribers || 0 },
   };
 }
 
