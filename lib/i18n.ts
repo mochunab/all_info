@@ -217,7 +217,7 @@ export const translations = {
 
     // Crypto
     'crypto.title': '밈코인 예측기',
-    'crypto.subtitle': 'Reddit · Threads · Telegram 센티먼트 기반 시그널',
+    'crypto.subtitle': 'Reddit · X/Twitter · Telegram 센티먼트 기반 시그널',
     'crypto.search': '코인 검색 (예: DOGE, PEPE)',
     'crypto.noSignals': '시그널 데이터가 없습니다',
     'crypto.noSignalsHint': '크롤링이 실행되면 데이터가 표시됩니다',
@@ -266,6 +266,7 @@ export const translations = {
     'crypto.whereDiscussed': '소스 분포',
     'crypto.whatTheySay': '키워드',
     'crypto.biggerPicture': '관련 맥락',
+    'crypto.eventTimeline': '이벤트 타임라인',
     'crypto.mentionConfidenceLow': '언급 수가 적어 점수가 보정됩니다',
     'crypto.strong': '강함',
     'crypto.moderate': '보통',
@@ -487,7 +488,7 @@ export const translations = {
 
     // Crypto
     'crypto.title': 'Meme Coin Predictor',
-    'crypto.subtitle': 'Signals based on Reddit · Threads · Telegram sentiment',
+    'crypto.subtitle': 'Signals based on Reddit · X/Twitter · Telegram sentiment',
     'crypto.search': 'Search coins (e.g., DOGE, PEPE)',
     'crypto.noSignals': 'No signal data',
     'crypto.noSignalsHint': 'Data will appear after crawling runs',
@@ -536,6 +537,7 @@ export const translations = {
     'crypto.whereDiscussed': 'Source Distribution',
     'crypto.whatTheySay': 'Keywords',
     'crypto.biggerPicture': 'Related Context',
+    'crypto.eventTimeline': 'Event Timeline',
     'crypto.mentionConfidenceLow': 'Score adjusted due to low mention count',
     'crypto.strong': 'Strong',
     'crypto.moderate': 'Moderate',
@@ -757,7 +759,7 @@ export const translations = {
 
     // Crypto
     'crypto.title': 'Dự đoán Meme Coin',
-    'crypto.subtitle': 'Tín hiệu dựa trên cảm xúc Reddit · Threads · Telegram',
+    'crypto.subtitle': 'Tín hiệu dựa trên cảm xúc Reddit · X/Twitter · Telegram',
     'crypto.search': 'Tìm kiếm coin (ví dụ: DOGE, PEPE)',
     'crypto.noSignals': 'Không có dữ liệu tín hiệu',
     'crypto.noSignalsHint': 'Dữ liệu sẽ xuất hiện sau khi crawl',
@@ -806,6 +808,7 @@ export const translations = {
     'crypto.whereDiscussed': 'Phân bố nguồn',
     'crypto.whatTheySay': 'Từ khóa',
     'crypto.biggerPicture': 'Bối cảnh liên quan',
+    'crypto.eventTimeline': 'Dòng thời gian sự kiện',
     'crypto.mentionConfidenceLow': 'Điểm được điều chỉnh do số lượng đề cập thấp',
     'crypto.strong': 'Mạnh',
     'crypto.moderate': 'Trung bình',
@@ -1027,7 +1030,7 @@ export const translations = {
 
     // Crypto
     'crypto.title': '模因币预测器',
-    'crypto.subtitle': '基于Reddit · Threads · Telegram情绪的信号',
+    'crypto.subtitle': '基于Reddit · X/Twitter · Telegram情绪的信号',
     'crypto.search': '搜索代币（例如：DOGE、PEPE）',
     'crypto.noSignals': '没有信号数据',
     'crypto.noSignalsHint': '爬虫运行后将显示数据',
@@ -1076,6 +1079,7 @@ export const translations = {
     'crypto.whereDiscussed': '来源分布',
     'crypto.whatTheySay': '关键词',
     'crypto.biggerPicture': '相关背景',
+    'crypto.eventTimeline': '事件时间线',
     'crypto.mentionConfidenceLow': '由于提及次数较少，评分已调整',
     'crypto.strong': '强',
     'crypto.moderate': '中',
@@ -1297,7 +1301,7 @@ export const translations = {
 
     // Crypto
     'crypto.title': 'ミームコイン予測器',
-    'crypto.subtitle': 'Reddit · Threads · Telegramのセンチメントに基づくシグナル',
+    'crypto.subtitle': 'Reddit · X/Twitter · Telegramのセンチメントに基づくシグナル',
     'crypto.search': 'コインを検索（例：DOGE、PEPE）',
     'crypto.noSignals': 'シグナルデータがありません',
     'crypto.noSignalsHint': 'クロールの実行後にデータが表示されます',
@@ -1346,6 +1350,7 @@ export const translations = {
     'crypto.whereDiscussed': 'ソース分布',
     'crypto.whatTheySay': 'キーワード',
     'crypto.biggerPicture': '関連コンテキスト',
+    'crypto.eventTimeline': 'イベントタイムライン',
     'crypto.mentionConfidenceLow': '言及数が少ないためスコアが補正されています',
     'crypto.strong': '強い',
     'crypto.moderate': '普通',

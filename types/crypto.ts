@@ -2,7 +2,7 @@
 
 // ── DB Row Types ──
 
-export type CryptoSource = 'reddit' | 'telegram' | 'threads';
+export type CryptoSource = 'reddit' | 'telegram' | 'threads' | 'twitter';
 
 export type CryptoPost = {
   id: string;
@@ -199,7 +199,44 @@ export type ThreadsSearchKeyword = {
   weight: number;
 };
 
+// ── Twitter/X (Apify) Types ──
+
+export type TwitterSearchKeyword = {
+  query: string;
+  weight: number;
+};
+
+export type ApifyTweet = {
+  id: string;
+  text: string;
+  full_text: string;
+  created_at: string;
+  lang: string;
+  username: string;
+  user_name: string;
+  user_id: string;
+  user_followers_count: number;
+  user_verified: boolean;
+  user_is_blue_verified: boolean;
+  favorite_count: number;
+  retweet_count: number;
+  reply_count: number;
+  quote_count: number;
+  bookmark_count: number;
+  is_retweet: boolean;
+  is_quote_status: boolean;
+  hashtags: string[];
+  user_mentions: string[];
+  conversation_id: string;
+};
+
 // ── Sentiment Analysis Types ──
+
+export type CryptoSentimentEvent = {
+  name: string;
+  coins: string[];
+  impact: 'positive' | 'negative' | 'neutral';
+};
 
 export type CryptoSentimentResult = {
   sentiment_score: number;
@@ -210,6 +247,8 @@ export type CryptoSentimentResult = {
   fomo_score: number;
   fud_score: number;
   reasoning: string;
+  narratives?: string[];
+  events?: CryptoSentimentEvent[];
 };
 
 // ── Signal Types ──

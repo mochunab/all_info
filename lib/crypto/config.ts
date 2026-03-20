@@ -1,4 +1,4 @@
-import type { SubredditConfig, TelegramChannelConfig, CoinEntry, ThreadsSearchKeyword } from '@/types/crypto';
+import type { SubredditConfig, TelegramChannelConfig, CoinEntry, ThreadsSearchKeyword, TwitterSearchKeyword } from '@/types/crypto';
 
 export const CRYPTO_SUBREDDITS: readonly SubredditConfig[] = [
   { name: 'CryptoCurrency', weight: 1.0, minScore: 10 },
@@ -76,6 +76,20 @@ export const THREADS_SEARCH_KEYWORDS: readonly ThreadsSearchKeyword[] = [
 
 export const THREADS_SEARCH_LIMIT = 50;
 export const THREADS_RATE_LIMIT_MS = 500;
+
+// ── Twitter/X (Apify) 설정 ──
+
+export const TWITTER_SEARCH_KEYWORDS: readonly TwitterSearchKeyword[] = [
+  { query: 'memecoin', weight: 1.2 },
+  { query: '$DOGE OR $PEPE OR $SHIB', weight: 1.0 },
+  { query: '$BONK OR $WIF OR $FLOKI', weight: 1.0 },
+  { query: 'crypto pump OR altcoin gem', weight: 1.1 },
+  { query: '$SOL OR $ETH memecoin', weight: 0.9 },
+] as const;
+
+export const TWITTER_RESULTS_PER_KEYWORD = 20;
+export const TWITTER_APIFY_ACTOR = 'scrape.badger/twitter-tweets-scraper';
+export const TWITTER_APIFY_TIMEOUT_MS = 60_000;
 
 export const CRAWL_CONCURRENCY = 2;
 export const SENTIMENT_CONCURRENCY = 5;

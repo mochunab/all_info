@@ -96,6 +96,34 @@ async function handleCrawl(request: NextRequest) {
         }
       }
 
+      if (process.env.APIFY_API_TOKEN) {
+        const TWITTER_INTERVAL_MS = 12 * 60 * 60 * 1000;
+        const { data: lastTwitter } = await supabase
+          .from('crypto_posts')
+          .select('crawled_at')
+          .eq('source', 'twitter')
+          .order('crawled_at', { ascending: false })
+          .limit(1)
+          .single() as { data: { crawled_at: string } | null };
+
+        const sinceLastTwitter = lastTwitter
+          ? Date.now() - new Date(lastTwitter.crawled_at).getTime()
+          : Infinity;
+
+        if (sinceLastTwitter >= TWITTER_INTERVAL_MS) {
+          try {
+            const { crawlAllTwitterKeywords } = await import('@/lib/crypto/twitter-crawler');
+            const results = await crawlAllTwitterKeywords(supabase);
+            allResults.push(...results);
+          } catch (e) {
+            console.warn(`[Twitter] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+          }
+        } else {
+          const nextIn = Math.round((TWITTER_INTERVAL_MS - sinceLastTwitter) / 60000);
+          console.log(`[Twitter] 스킵 — 다음 크롤까지 ${nextIn}분 남음 (12시간 간격, Apify 무료 플랜)`);
+        }
+      }
+
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const totalNew = allResults.reduce((s, r) => s + r.postsNew, 0);
       const totalMentions = allResults.reduce((s, r) => s + r.mentionsExtracted, 0);
