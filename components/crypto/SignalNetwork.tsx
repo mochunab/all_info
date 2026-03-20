@@ -93,14 +93,14 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     const fg = graphRef.current;
     if (!fg || nodes.length === 0) return;
 
-    fg.cameraPosition({ x: 0, y: 0, z: 120 });
-
-    const timer = setTimeout(() => {
-      try {
-        fg.zoomToFit(400, -30);
-      } catch { /* ignore */ }
-    }, 800);
-    return () => clearTimeout(timer);
+    // 노드 분포 범위에 기반해 카메라 거리 계산
+    let maxDist = 0;
+    for (const n of nodes) {
+      const d = Math.sqrt((n.x || 0) ** 2 + (n.y || 0) ** 2 + (n.z || 0) ** 2);
+      if (d > maxDist) maxDist = d;
+    }
+    const cameraZ = Math.max(60, maxDist * 2.5);
+    fg.cameraPosition({ x: 0, y: 0, z: cameraZ });
   }, [nodes]);
 
   const fetchNetwork = useCallback(async (coin?: string) => {
@@ -429,9 +429,9 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     controlType="orbit"
                     enableNodeDrag={false}
                     enableNavigationControls={true}
-                    nodeRelSize={4}
-                    warmupTicks={150}
-                    cooldownTicks={50}
+                    nodeRelSize={5}
+                    warmupTicks={100}
+                    cooldownTicks={30}
                     d3AlphaDecay={0.05}
                     d3VelocityDecay={0.4}
                   />
