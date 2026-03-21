@@ -83,12 +83,9 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t(language, 'crypto.title')}</h1>
-          <p className="text-sm text-[var(--text-tertiary)]">{t(language, 'crypto.subtitle')}</p>
-        </div>
-        <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">{t(language, 'crypto.title')}</h1>
+        <p className="text-sm text-[var(--text-tertiary)]">{t(language, 'crypto.subtitle')}</p>
       </div>
 
       <MonkeyVsRobot language={language} />
@@ -97,10 +94,13 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
 
       <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} timeWindow={timeWindow} />
 
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)] shrink-0">
-          🔥 {t(language, 'crypto.trending')}
-        </h2>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)] shrink-0">
+            🔥 {t(language, 'crypto.trending')}
+          </h2>
+          <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
+        </div>
         <input
           type="text"
           value={search}

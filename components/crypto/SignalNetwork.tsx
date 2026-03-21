@@ -7,6 +7,7 @@ import SpriteText from 'three-spritetext';
 import type { CryptoSignal, TrendingExplainResponse, TimeWindow } from '@/types/crypto';
 import { useIsDark } from '@/lib/hooks/useIsDark';
 import { t } from '@/lib/i18n';
+import TimeWindowSelector from '@/components/crypto/TimeWindowSelector';
 import WhyTrendingPanel from '@/components/crypto/WhyTrendingPanel';
 
 type NetworkNode = {
@@ -58,10 +59,12 @@ function getNodeSize(mentions: number, maxMentions: number): number {
 
 const MD3_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
-export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', timeWindow = '24h' }: SignalNetworkProps) {
+export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', timeWindow: externalTimeWindow = '24h' }: SignalNetworkProps) {
   const isDark = useIsDark();
   const [isOpen, setIsOpen] = useState(false);
   const [ForceGraph3D, setForceGraph3D] = useState<any>(null);
+  const [localTimeWindow, setLocalTimeWindow] = useState<TimeWindow>(externalTimeWindow);
+  const timeWindow = localTimeWindow;
 
   useEffect(() => {
     import('react-force-graph-3d').then(mod => setForceGraph3D(() => mod.default));
@@ -196,18 +199,26 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     }
   }, [timeWindow]);
 
+  const handleLocalTimeWindowChange = useCallback((tw: TimeWindow) => {
+    setLocalTimeWindow(tw);
+  }, []);
+
+  useEffect(() => {
+    if (selectedChip) fetchExplain(selectedChip);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localTimeWindow]);
+
   const handleChipClick = useCallback(
     (symbol: string) => {
       const next = selectedChip === symbol ? null : symbol;
       setSelectedChip(next);
-      fetchNetwork(next || undefined);
       if (next) {
         fetchExplain(next);
       } else {
         setExplainData(null);
       }
     },
-    [selectedChip, fetchNetwork, fetchExplain]
+    [selectedChip, fetchExplain]
   );
 
   const maxMentions = useMemo(
@@ -252,6 +263,13 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     return dimensions.width;
   }, [selectedChip, dimensions.width]);
 
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg || nodes.length === 0) return;
+    const t = setTimeout(() => { try { fg.zoomToFit(300, 10); } catch {} }, 100);
+    return () => clearTimeout(t);
+  }, [graphWidth, nodes.length]);
+
   const bgColor = useMemo(() => isDark ? '#111827' : '#FAFAFA', [isDark]);
 
   const getNodeColor = useCallback(
@@ -259,64 +277,52 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       if (node.type === 'influencer') return '#8B5CF6';
       if (node.type === 'narrative') return '#F59E0B';
       if (node.type === 'event') return '#F43F5E';
-      if (selectedChip && node.name === selectedChip) return '#2563EB';
       return getSentimentColor(node.sentiment);
     },
-    [selectedChip]
+    []
   );
 
   const nodeThreeObject = useCallback(
     (node: NetworkNode) => {
       const group = new THREE.Group();
-      const dimmed = activeNeighborSet && !activeNeighborSet.has(node.id);
-      const isSelected = selectedChip && node.name === selectedChip;
-      const isFocused = focusedNode === node.id;
-
       const baseSize = getNodeSize(node.mentions, maxMentions);
-      let radius = baseSize * 2.5;
-      if (dimmed) radius *= 0.5;
-      if (isFocused) radius *= 1.5;
-      if (isSelected) radius *= 1.6;
-
+      const radius = baseSize * 0.8;
       const hexColor = getNodeColor(node);
       const color = new THREE.Color(hexColor);
-      const opacity = dimmed ? 0.2 : 0.92;
 
       const geometry = new THREE.SphereGeometry(radius, 32, 32);
       const material = new THREE.MeshPhongMaterial({
         color,
         shininess: 80,
         specular: new THREE.Color(0xffffff),
-        emissive: color.clone().multiplyScalar(dimmed ? 0.02 : 0.15),
+        emissive: color.clone().multiplyScalar(0.15),
         transparent: true,
-        opacity,
+        opacity: 0.92,
       });
       group.add(new THREE.Mesh(geometry, material));
 
-      if (!dimmed) {
-        const glowGeometry = new THREE.SphereGeometry(radius * 1.3, 16, 16);
-        const glowMaterial = new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: isSelected ? 0.15 : 0.06,
-        });
-        group.add(new THREE.Mesh(glowGeometry, glowMaterial));
-      }
+      const glowGeometry = new THREE.SphereGeometry(radius * 1.3, 16, 16);
+      const glowMaterial = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.06,
+      });
+      group.add(new THREE.Mesh(glowGeometry, glowMaterial));
 
-      if (!dimmed && (node.type === 'coin' || isSelected || isFocused)) {
+      if (node.type === 'coin') {
         const label = node.name.length > 8 ? node.name.slice(0, 7) + '..' : node.name;
-        const sprite = new SpriteText(label, isSelected ? 6 : 4.5, isDark ? '#E5E7EB' : '#374151');
-        sprite.fontWeight = isSelected ? '700' : '600';
+        const sprite = new SpriteText(label, 1.8, isDark ? '#E5E7EB' : '#374151');
+        sprite.fontWeight = '600';
         sprite.backgroundColor = isDark ? 'rgba(17,24,39,0.75)' : 'rgba(255,255,255,0.75)';
         sprite.borderRadius = 3;
         sprite.padding = [1.5, 3] as any;
-        (sprite as any).position.set(0, -(radius + 6), 0);
+        (sprite as any).position.set(0, -(radius + 2.5), 0);
         group.add(sprite as any);
       }
 
       return group;
     },
-    [activeNeighborSet, selectedChip, focusedNode, maxMentions, getNodeColor, isDark]
+    [maxMentions, getNodeColor, isDark]
   );
 
   const nodeLabel = useCallback(
@@ -454,20 +460,23 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                 </span>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {topCoins.map((s) => (
-                <button
-                  key={s.coin_symbol}
-                  onClick={() => handleChipClick(s.coin_symbol)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-                    selectedChip === s.coin_symbol
-                      ? 'bg-[var(--accent)] text-white shadow-sm shadow-blue-500/15'
-                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
-                  }`}
-                >
-                  {s.coin_symbol}
-                </button>
-              ))}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-2">
+                {topCoins.map((s) => (
+                  <button
+                    key={s.coin_symbol}
+                    onClick={() => handleChipClick(s.coin_symbol)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+                      selectedChip === s.coin_symbol
+                        ? 'bg-[var(--accent)] text-white shadow-sm shadow-blue-500/15'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
+                    }`}
+                  >
+                    {s.coin_symbol}
+                  </button>
+                ))}
+              </div>
+              <TimeWindowSelector selected={localTimeWindow} onChange={handleLocalTimeWindowChange} language={language} />
             </div>
           </div>
 
@@ -507,16 +516,13 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     controlType="orbit"
                     enableNodeDrag={false}
                     enableNavigationControls={true}
-                    warmupTicks={50}
-                    cooldownTicks={100}
+                    warmupTicks={150}
+                    cooldownTicks={0}
                     d3AlphaDecay={0.04}
                     d3VelocityDecay={0.3}
                     onEngineStop={() => {
                       const fg = graphRef.current;
-                      if (fg) {
-                        fg.cameraPosition({ x: 0, y: 0, z: 120 });
-                        setTimeout(() => { try { fg.zoomToFit(600, 10); } catch {} }, 100);
-                      }
+                      if (fg) setTimeout(() => { try { fg.zoomToFit(600, 10); } catch {} }, 200);
                     }}
                   />
                   <div
