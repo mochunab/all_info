@@ -8,7 +8,7 @@
 ## 백엔드 파이프라인
 
 ```
-GitHub Actions Cron (30분마다) → POST /api/crypto/crawl {phase: "crawl"}
+GitHub Actions Cron (15분마다) → POST /api/crypto/crawl {phase: "crawl"}
 
 Phase 1 (crawl): 크롤링만 — 완료 후 자동으로 Phase 2 트리거
   ├─ Reddit (✅ 동작 중, 공개 JSON 엔드포인트 — API 키 불필요)
@@ -60,7 +60,7 @@ Phase 6 (backtest): 백테스팅 — 시그널 vs 실제 가격 비교
   → evaluatePending: 미평가 건 재평가 (가격 데이터 새로 쌓인 것으로 매칭)
   → 적중 기준: hot(extremely_hot/hot)→상승, cold(cool/cold)→하락, warm→2%미만
 
-별도 Cron (30분마다): /api/crypto/crawl?phase=prices
+별도 Cron (5분마다, crypto-battle.yml): prices + battle
   → 파이프라인 전체를 안 거치고 가격만 독립 갱신
 ```
 
