@@ -192,16 +192,16 @@ async function handleCrawl(request: NextRequest) {
       });
     }
 
-    // ── Phase 3a: FOMO 시그널 + 지식그래프 ──
-    if (phase === 'signals') {
-      let fomoResult = { generated: 0 };
+    // ── Phase 3: FOMO + FUD 시그널 + 지식그래프 (raw data 1회 fetch로 양쪽 생성) ──
+    if (phase === 'signals' || phase === 'signals_fud') {
+      let signalResult = { generated: 0 };
 
       try {
         const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
-        fomoResult = await generateAllSignals(supabase, 'fomo');
-        console.log(`[시그널/FOMO] ${fomoResult.generated}개 생성`);
+        signalResult = await generateAllSignals(supabase);
+        console.log(`[시그널] FOMO+FUD 총 ${signalResult.generated}개 생성`);
       } catch (e) {
-        console.warn(`[시그널/FOMO] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[시그널] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
       try {
@@ -213,36 +213,12 @@ async function handleCrawl(request: NextRequest) {
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      await triggerNextPhase('signals_fud');
-
-      return NextResponse.json({
-        success: true,
-        phase: 'signals',
-        signals: { fomo: fomoResult.generated },
-        elapsed: `${elapsed}s`,
-        nextPhase: 'signals_fud',
-      });
-    }
-
-    // ── Phase 3b: FUD 시그널 ──
-    if (phase === 'signals_fud') {
-      let fudResult = { generated: 0 };
-
-      try {
-        const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
-        fudResult = await generateAllSignals(supabase, 'fud');
-        console.log(`[시그널/FUD] ${fudResult.generated}개 생성`);
-      } catch (e) {
-        console.warn(`[시그널/FUD] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
-      }
-
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await triggerNextPhase('prices');
 
       return NextResponse.json({
         success: true,
-        phase: 'signals_fud',
-        signals: { fud: fudResult.generated },
+        phase: 'signals',
+        signals: signalResult,
         elapsed: `${elapsed}s`,
         nextPhase: 'prices',
       });
