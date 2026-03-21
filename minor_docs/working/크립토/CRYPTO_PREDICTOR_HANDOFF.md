@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-21 (Phase H — FOMO/FUD 시그널 분리 + CoinDetail 가격 차트 + 코드 리뷰 디버깅)
+> 최종 작업일: 2026-03-21 (Phase I — 온톨로지→시그널 피드백 루프 구현 + KG Boost UI)
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -336,6 +336,34 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 110. **SignalTimeline** — signalType prop + FUD 시각 구분 (📉 아이콘, FUD 태그)
 111. **프로젝트 타당성 문서** — `PROJECT_VALIDITY.md` 작성 (학술 논문 25+ 편 출처 포함, 경쟁사 비교)
 
+**Phase I — 온톨로지 → 시그널 피드백 루프 (2026-03-21)**
+112. **KG 부스트 상수** — `config.ts`에 `KG_BOOST` 상수 추가
+    - `INFLUENCER_RECOMMENDS` ×1.15 (승수)
+    - `CORRELATED_HOT_BOOST` +5/코인 (최대 3개, +15)
+    - `NARRATIVE_MOMENTUM_BOOST` +4 (내러티브 평균 score ≥ 50)
+    - `EVENT_IMPACT_POSITIVE/NEGATIVE` ±3
+    - `MAX_TOTAL_BOOST` ±15 (상한)
+113. **`computeKGBoost()` + `KGContext` 타입** — `score-utils.ts`
+    - 4가지 KG 시그널을 boost(가산) + multiplier(승산)로 계산
+    - details 배열로 어떤 부스트가 적용됐는지 추적
+114. **`signal-generator.ts` 2-pass 계산 리팩터**
+    - `fetchWindowData`: `crypto_entities`(symbol 기반) + `crypto_relations` 조회 → 코인별 KG 컨텍스트 구성 (recommends, correlates_with, part_of, impacts)
+    - `computeSignals`: Pass 1에서 기본 점수 → Pass 2에서 상호 참조(상관 코인 hot 여부, 내러티브 평균) 해결 후 KG 부스트 적용
+    - `WindowRawData`에 `kgContextMap` 필드 추가
+    - KG 조회 실패 시 graceful fallback (기존 로직 그대로 동작)
+115. **`trending-explain` API KG 부스트 추가** — `app/api/crypto/trending-explain/route.ts`
+    - 코인별 crypto_relations 조회 → recommends, correlates_with hot, narrative peers, event impacts 계산
+    - 응답에 `kg_boost: { boost, multiplier, details }` 포함
+116. **`ScoreBreakdown.tsx` KG 부스트 UI** — amber 테마 패널
+    - "지식그래프 부스트 ×1.15 +15" 표시
+    - 디테일 태그: "인플루언서 추천", "연관 코인 상승", "내러티브 모멘텀", "이벤트 영향" (5개 언어)
+117. **`WhyTrendingPanel.tsx`** — `kgBoost` prop을 `ScoreBreakdown`에 전달
+118. **i18n** — `crypto.kgBoost` 5개 언어 (ko: 지식그래프 부스트, en: Knowledge Graph Boost, ...)
+119. **타입 업데이트** — `SignalComputeResult` + `TrendingExplainResponse`에 `kg_boost` 옵셔널 필드
+120. **버그 수정** — `crypto_entities.name`("Bitcoin") vs `crypto_signals.coin_symbol`("ETH") 불일치 → `symbol` 필드로 조회
+121. **`analyze-crypto-sentiment` Edge Function 재배포** — Gemini 2.5 Flash + 배치 모드 (2026-03-21 배포 완료)
+122. **온톨로지 리서치 문서** — `ONTOLOGY_GUIDE.md`에 20+ 프로젝트 출처, 7가지 아키텍처 패턴, 로드맵 v2 추가
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -348,7 +376,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 7. ~~**Threads 토큰 발급**~~ — ✅ 완료 (2026-03-20)
 8. ~~**analyze-threads-sentiment Edge Function 배포**~~ — ✅ 배포 완료 (2026-03-20)
 9. ~~**Threads 공개 검색 활성화**~~ — ❌ 보류 → 크롤링에서 제외 (2026-03-21)
-10. **analyze-crypto-sentiment Edge Function 재배포** — Gemini 2.5 Flash + 배치 모드 (코드 완료, 배포 필요)
+10. ~~**analyze-crypto-sentiment Edge Function 재배포**~~ — ✅ Gemini 2.5 Flash + 배치 모드 배포 완료 (2026-03-21)
 
 #### 우선순위 중간 (기능 완성도)
 10. **Discord 봇 연동** — DM 피칭 4개 서버 발송 완료 (2026-03-15), 응답 대기 중
@@ -734,11 +762,15 @@ zScoreMultiplier = z_score > 2.0 ? 1.0 + (z-2)*0.25 : 1.0, max 1.5
 crossPlatformMultiplier = sources==1 ? 0.7 : sources==2 ? 1.0 : 1.3
 eventModifier = sum of matched event keywords, clamp(-30, +25)
 
-weighted_score = clamp(
-  rawScore × mentionConfidence × marketCapDampening
-           × zScoreMultiplier × crossPlatformMultiplier
-           + eventModifier
-  , 0, 100)
+baseWeightedScore = rawScore × mentionConfidence × marketCapDampening
+                            × zScoreMultiplier × crossPlatformMultiplier
+                            + eventModifier
+
+# KG Boost (Phase I, 2026-03-21)
+kgMultiplier = hasRecommends ? 1.15 : 1.0
+kgBoost = correlatedHot×5 (max 3) + narrativeMomentum×4 + eventImpacts×±3, clamp(-15, +15)
+
+weighted_score = clamp(baseWeightedScore × kgMultiplier + kgBoost, 0, 100)
 
 contrarianWarning = bullish% > 85% → 'potential_reversal'
                   | bullish% < 15% → 'potential_bounce'
@@ -911,6 +943,19 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - [x] `BacktestReport.tsx` 색상+표시명
 - [x] DB 마이그레이션 `028_signal_label_heat.sql` 적용 (CHECK + 데이터 + 뷰)
 - [ ] Vercel 배포 후 프로덕션 CoinCard 뱃지 확인
+
+### Phase I — 온톨로지 → 시그널 피드백 루프 (2026-03-21)
+- [x] `config.ts` KG_BOOST 상수 추가
+- [x] `score-utils.ts` computeKGBoost() + KGContext 타입
+- [x] `signal-generator.ts` 2-pass 계산 + KG 컨텍스트 조회
+- [x] `trending-explain` API kg_boost 응답 포함
+- [x] `ScoreBreakdown.tsx` KG 부스트 amber 패널 UI
+- [x] i18n crypto.kgBoost 5개 언어
+- [x] 타입 업데이트 (SignalComputeResult + TrendingExplainResponse)
+- [x] 엔티티 조회 name→symbol 버그 수정
+- [x] `analyze-crypto-sentiment` Edge Function 재배포 (Gemini Flash + 배치)
+- [x] 프로덕션 API 테스트 — BTC/ETH/DOGE/COMP 모두 kg_boost 반환 확인
+- [x] 프로덕션 UI 테스트 — WHY 패널에 "지식그래프 부스트 +15" 표시 확인 (Playwright)
 
 ### Phase 8 — CoinGecko 가격 연동 (2026-03-20)
 - [x] DB 마이그레이션 `021_crypto_prices.sql` 적용 (crypto_coins + crypto_prices)

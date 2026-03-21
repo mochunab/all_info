@@ -3,7 +3,7 @@
 > 최종 갱신: 2026-03-21
 > "온톨로지 없는 시그널은 숫자일 뿐이고, 시그널 없는 온톨로지는 박물관이다."
 >
-> ⚠️ **현재 상태**: 온톨로지가 시각화 전용으로만 사용됨. `signal-generator.ts`, `score-utils.ts`, `backtester.ts`에서 `crypto_entities`/`crypto_relations` 참조 **0회**. 시그널 스코어 계산에 온톨로지가 전혀 기여하지 않는 상태. → 섹션 13 "리서치 인사이트"와 섹션 14 "로드맵 v2" 참조.
+> ✅ **현재 상태 (Phase I 완료, 2026-03-21)**: 온톨로지가 시그널 스코어에 직접 기여. `signal-generator.ts`에서 `crypto_entities`/`crypto_relations` 조회 → 4가지 KG 부스트 적용 (recommends ×1.15, correlated hot +5, narrative momentum +4, event impact ±3). `trending-explain` API + `ScoreBreakdown` UI에서 KG 부스트 시각화.
 
 ---
 
@@ -227,10 +227,10 @@ link distance: 15        — 연결 노드 간 짧은 거리
 
 ```
 lib/crypto/
-  config.ts              META_EDGES, NARRATIVE_CLUSTERS, EVENT_KEYWORDS, RELATION_DECAY_DAYS
+  config.ts              META_EDGES, NARRATIVE_CLUSTERS, EVENT_KEYWORDS, RELATION_DECAY_DAYS, **KG_BOOST 상수**
   knowledge-graph.ts     온톨로지 파이프라인 전체 (8개 함수) — LLM 내러티브/이벤트 통합, 점진적 감쇠, recommends
-  score-utils.ts         normalizeSentimentTrend() 포함 스코어링 유틸
-  signal-generator.ts    시계열 센티먼트 트렌드 계산
+  score-utils.ts         스코어링 유틸 + **computeKGBoost() + KGContext 타입**
+  signal-generator.ts    시계열 센티먼트 트렌드 계산 + **2-pass KG 부스트 (fetchWindowData에서 KG 조회)**
   batch-sentiment.ts     LLM narratives/events 응답 파싱 → metadata JSONB 저장
   backtester.ts          백테스팅 — 시그널 vs 가격 비교, 적중 평가, 미평가 건 재평가
 
@@ -239,13 +239,14 @@ types/crypto.ts          EntityType, RelationType, CryptoSentimentEvent, Backtes
 app/api/crypto/
   network/route.ts       그래프 데이터 API (nodes+links+keywords, confidence 포함)
   events/route.ts        이벤트 타임라인 API (coin 필터, days, limit)
-  trending-explain/route.ts  코인별 관계 기반 narrative/event 조회
+  trending-explain/route.ts  코인별 관계 기반 narrative/event 조회 + **kg_boost 계산/응답**
   backtest/route.ts      백테스트 정확도 API (라벨별/코인별 적중률)
 
 components/crypto/
   SignalNetwork.tsx       3D Force Graph — narrative/event 노드 클릭 하이라이트, recommends 엣지
   EventTimeline.tsx       이벤트 타임라인 컴포넌트 (impact 색상, AI 뱃지, 코인 칩)
-  WhyTrendingPanel.tsx    WHY 패널 — EventTimeline 통합
+  ScoreBreakdown.tsx      점수 분해 4개 바 + **KG 부스트 amber 패널**
+  WhyTrendingPanel.tsx    WHY 패널 — EventTimeline + **kgBoost prop** 통합
   CoinDetail.tsx          FOMO 라인 + 이벤트 ReferenceLine 추가 차트
   BacktestReport.tsx      백테스트 정확도 리포트 (아코디언, 적중률 바, 코인별, 최근 결과)
 
@@ -291,7 +292,16 @@ supabase/migrations/
 
 ## 12. 남은 작업
 
-### 프로덕션 검증
+### Phase I 완료 확인 (2026-03-21 ✅)
+
+| # | 항목 | 상태 |
+|---|------|------|
+| 1 | **KG 부스트 API 동작** | ✅ BTC/ETH/DOGE/COMP 프로덕션 kg_boost 반환 확인 |
+| 2 | **KG 부스트 UI 표시** | ✅ ScoreBreakdown amber 패널 "지식그래프 부스트 +15" Playwright 확인 |
+| 3 | **Edge Function 재배포** | ✅ analyze-crypto-sentiment (Gemini 2.5 Flash + 배치) |
+| 4 | **엔티티 name→symbol 버그 수정** | ✅ |
+
+### 프로덕션 검증 (기존)
 
 | # | 항목 | 설명 |
 |---|------|------|
@@ -439,19 +449,20 @@ supabase/migrations/
 
 ## 14. 로드맵 v2 — 온톨로지를 예측에 연결하기
 
-### Phase G — 즉시 가능: 룰 기반 KG → 시그널 피드백 (코드 변경만)
+### Phase G — 룰 기반 KG → 시그널 피드백 ✅ 완료 (2026-03-21)
 
-> 새 모델/인프라 없이 `signal-generator.ts`에서 `crypto_relations` 조회만 추가.
 > 패턴 A(시그널 통합 레이어) + 패턴 F(LLM 추론) 적용.
 
-| # | 항목 | 설명 | 난이도 |
-|---|------|------|--------|
-| 1 | **인플루언서 recommends 부스트** | recommends 관계 존재 시 해당 코인 score ×1.15~1.25 | 낮음 |
-| 2 | **correlates_with 동반 시그널** | 상관 코인이 hot이면 연결 코인 trend 보정 (+0.1~0.2) | 낮음 |
-| 3 | **이벤트 임팩트 가중** | impacts 관계의 impact 방향(+/-)을 sentiment에 반영 | 낮음 |
-| 4 | **내러티브 모멘텀** | part_of 내러티브의 소속 코인 평균 score가 높으면 개별 코인 부스트 | 낮음 |
-| 5 | **이벤트 타입별 백테스트 적중률** | backtest 데이터에서 이벤트 연관 시그널 적중률 집계 → 이벤트 발생 시 confidence 가중 | 중간 |
-| 6 | **GenTKG 방식 LLM 추론** | 코인 서브그래프를 텍스트로 직렬화 → LLM에 "향후 24h 전망" 프롬프트 → WHY 패널에 표시 | 중간 |
+| # | 항목 | 상태 |
+|---|------|------|
+| 1 | **인플루언서 recommends 부스트** — recommends 관계 존재 시 ×1.15 | ✅ `computeKGBoost()` |
+| 2 | **correlates_with 동반 시그널** — 상관 코인이 hot(≥60)이면 +5/코인 (최대 3) | ✅ |
+| 3 | **이벤트 임팩트 가중** — impacts 관계의 +/- 방향 → ±3 | ✅ |
+| 4 | **내러티브 모멘텀** — 소속 코인 평균 score ≥ 50이면 +4 | ✅ |
+| 5 | **trending-explain API + ScoreBreakdown UI** — KG 부스트 표시 | ✅ |
+| 6 | **엔티티 조회 name→symbol 버그 수정** | ✅ |
+| 7 | **이벤트 타입별 백테스트 적중률** — 미완료 (데이터 축적 필요) | ⏳ |
+| 8 | **GenTKG 방식 LLM 추론** — 미완료 (중기) | ⏳ |
 
 ### Phase H — 중기: KG 임베딩 + 시계열 KG
 
