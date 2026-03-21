@@ -172,7 +172,6 @@ function ScoreTab({ data, language, monkeyLeads }: { data: BattleResponse; langu
         animData={monkeyAnimData}
         name={t(language, 'crypto.battle.monkey')}
         portfolio={portfolio.monkey}
-        winRate={stats.monkeyWinRate}
         leads={monkeyLeads}
         color="#F59E0B"
         trophySide="right"
@@ -190,7 +189,6 @@ function ScoreTab({ data, language, monkeyLeads }: { data: BattleResponse; langu
         animData={robotAnimData}
         name={t(language, 'crypto.battle.robot')}
         portfolio={portfolio.robot}
-        winRate={stats.robotWinRate}
         leads={!monkeyLeads}
         color="#2563EB"
         trophySide="left"
@@ -202,13 +200,12 @@ function ScoreTab({ data, language, monkeyLeads }: { data: BattleResponse; langu
 }
 
 function PlayerScore({
-  animData, name, portfolio, winRate, leads, color, trophySide, language, animScale = 1,
+  animData, name, portfolio, leads, color, trophySide, language, animScale = 1,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   animData: any;
   name: string;
   portfolio: BattleResponse['portfolio']['monkey'];
-  winRate: number;
   leads: boolean;
   color: string;
   trophySide: 'left' | 'right';
