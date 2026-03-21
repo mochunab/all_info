@@ -39,16 +39,22 @@ async function triggerNextPhase(phase: string): Promise<void> {
 
   console.log(`🔄 다음 페이즈 트리거: ${phase}`);
 
-  fetch(`${siteUrl}/api/crypto/crawl`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${cronSecret}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ phase }),
-  }).catch((err) => console.error(`❌ ${phase} 트리거 실패:`, err));
-
-  await new Promise((r) => setTimeout(r, 2000));
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000);
+    await fetch(`${siteUrl}/api/crypto/crawl`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cronSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ phase }),
+      signal: controller.signal,
+    });
+  } catch {
+    // 5초 타임아웃 또는 네트워크 에러 — fire-and-forget이므로 무시
+    // 서버에서는 요청을 받았으므로 처리됨
+  }
 }
 
 async function handleCrawl(request: NextRequest) {
@@ -186,19 +192,16 @@ async function handleCrawl(request: NextRequest) {
       });
     }
 
-    // ── Phase 3: FOMO + FUD 시그널 + 지식그래프 ──
-    if (phase === 'signals' || phase === 'signals_fud') {
+    // ── Phase 3a: FOMO 시그널 + 지식그래프 ──
+    if (phase === 'signals') {
       let fomoResult = { generated: 0 };
-      let fudResult = { generated: 0 };
 
       try {
         const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
         fomoResult = await generateAllSignals(supabase, 'fomo');
         console.log(`[시그널/FOMO] ${fomoResult.generated}개 생성`);
-        fudResult = await generateAllSignals(supabase, 'fud');
-        console.log(`[시그널/FUD] ${fudResult.generated}개 생성`);
       } catch (e) {
-        console.warn(`[시그널] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[시그널/FOMO] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
       try {
@@ -210,12 +213,36 @@ async function handleCrawl(request: NextRequest) {
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      await triggerNextPhase('prices');
+      await triggerNextPhase('signals_fud');
 
       return NextResponse.json({
         success: true,
         phase: 'signals',
-        signals: { fomo: fomoResult.generated, fud: fudResult.generated },
+        signals: { fomo: fomoResult.generated },
+        elapsed: `${elapsed}s`,
+        nextPhase: 'signals_fud',
+      });
+    }
+
+    // ── Phase 3b: FUD 시그널 ──
+    if (phase === 'signals_fud') {
+      let fudResult = { generated: 0 };
+
+      try {
+        const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
+        fudResult = await generateAllSignals(supabase, 'fud');
+        console.log(`[시그널/FUD] ${fudResult.generated}개 생성`);
+      } catch (e) {
+        console.warn(`[시그널/FUD] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      await triggerNextPhase('prices');
+
+      return NextResponse.json({
+        success: true,
+        phase: 'signals_fud',
+        signals: { fud: fudResult.generated },
         elapsed: `${elapsed}s`,
         nextPhase: 'prices',
       });
