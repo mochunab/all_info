@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-21 (Phase I — 온톨로지→시그널 피드백 루프 구현 + KG Boost UI)
+> 최종 작업일: 2026-03-21 (sanitizeText 버그 수정 + 텔레그램 채널 관리 + 백테스트 추이 차트 계획)
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -364,6 +364,19 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 121. **`analyze-crypto-sentiment` Edge Function 재배포** — Gemini 2.5 Flash + 배치 모드 (2026-03-21 배포 완료)
 122. **온톨로지 리서치 문서** — `ONTOLOGY_GUIDE.md`에 20+ 프로젝트 출처, 7가지 아키텍처 패턴, 로드맵 v2 추가
 
+**Phase J — sanitizeText 버그 수정 + 텔레그램 채널 관리 (2026-03-21, 미커밋)**
+123. **sanitizeText 재작성** — Reddit/Telegram 크롤러의 정규식 기반 sanitizeText가 유효 이모지 surrogate pair를 깨뜨려 PostgreSQL `invalid input syntax for type json` 에러 발생. 크롤링 데이터의 ~80%가 조용히 버려지고 있었음.
+    - `lib/crypto/telegram-crawler.ts` — char-by-char 루프로 재작성 (lone surrogate만 제거, 유효 이모지 보존)
+    - `lib/crypto/reddit-crawler.ts` — 동일한 패턴으로 재작성
+    - **결과**: Reddit 2/10→10/10, Telegram 2/25→23/23, 데이터 수집량 ~10배 증가
+124. **safeTruncate 추가** — `telegram-crawler.ts`, `slice()`가 surrogate pair 중간을 자르는 것 방지
+125. **context 필드 sanitize** — 멘션 추출 시 `m.context`에도 sanitizeText 적용 (reddit + telegram)
+126. **텔레그램 채널 셔플 + 시간예산** — `crawlAllTelegramChannels`에 채널 순서 랜덤화 + 기본 120초 시간예산 추가. `crawl/route.ts`에서 Reddit 소요시간 뺀 나머지 전달
+127. **텔레그램 채널 정리** — config.ts TELEGRAM_CHANNELS 26개 → 23개
+    - 제거 (9개, 죽은 채널): defimillion, icospeaksnews, memecoinx, ICODrops, cryptoevolution, cryptorank_news, Memecoins_Calls, SolanaMemeCoinss, memecokr
+    - 추가 (6개, 활성 확인): coinbureau, WatcherGuru, FatPigSignals, MyCryptoParadise, AltSignals, LunarCrush
+    - ⚠️ **미커밋 상태** — 다음 세션에서 커밋 + 배포 필요
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -378,19 +391,27 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 9. ~~**Threads 공개 검색 활성화**~~ — ❌ 보류 → 크롤링에서 제외 (2026-03-21)
 10. ~~**analyze-crypto-sentiment Edge Function 재배포**~~ — ✅ Gemini 2.5 Flash + 배치 모드 배포 완료 (2026-03-21)
 
+#### 우선순위 높음 — 즉시 (미커밋)
+11. **Phase J 커밋 + 배포** — sanitizeText 수정 + 텔레그램 채널 관리 + 크롤러 셔플. 배포 즉시 데이터 수집량 ~10배 증가
+12. **백테스트 추이 차트** — 계획 완료, 구현 필요 → `BACKTEST_TREND_CHART_PLAN.md` 참조
+    - `/api/crypto/backtest?mode=trend` API 확장
+    - `BacktestTrendCharts.tsx` (적중률 추이 + 시그널 분포 + 누적 정확도, Recharts)
+    - BacktestReport 아코디언 내부에 배치
+
 #### 우선순위 중간 (기능 완성도)
-10. **Discord 봇 연동** — DM 피칭 4개 서버 발송 완료 (2026-03-15), 응답 대기 중
-11. ~~**4chan /biz/ 크롤러**~~ — 보류 (Threads로 대체)
-12. ~~**내러티브 엔티티 자동 생성**~~ — ✅ Phase B에서 LLM 동적 감지로 구현 완료
-13. ~~**시계열 트렌드 계산**~~ — ✅ Phase B에서 `normalizeSentimentTrend()` 구현 완료
-14. ~~**CoinDetail 차트**~~ — ✅ Phase C에서 FOMO 라인 + 이벤트 ReferenceLine 추가 완료
-15. **AI 채팅 개선** — 크립토 전용 Edge Function 분리 고려
+13. **Discord 봇 연동** — DM 피칭 4개 서버 발송 완료 (2026-03-15), 응답 대기 중
+14. ~~**4chan /biz/ 크롤러**~~ — 보류 (Threads로 대체)
+15. ~~**내러티브 엔티티 자동 생성**~~ — ✅ Phase B에서 LLM 동적 감지로 구현 완료
+16. ~~**시계열 트렌드 계산**~~ — ✅ Phase B에서 `normalizeSentimentTrend()` 구현 완료
+17. ~~**CoinDetail 차트**~~ — ✅ Phase C에서 FOMO 라인 + 이벤트 ReferenceLine 추가 완료
+18. **AI 채팅 개선** — 크립토 전용 Edge Function 분리 고려
 
 #### 우선순위 낮음 (확장)
-16. ~~**가격 데이터 연동**~~ — ✅ CoinGecko 완료 (2026-03-20)
-17. **알림 시스템** — trending 알림 (velocity > 2.0 AND score ≥ 60) → 이메일/푸시
-18. ~~**백테스팅**~~ — ✅ Phase D에서 구현 완료 (2026-03-21), 788개 레코드 기록, 가격 축적 대기
-19. **크립토 전용 플랫폼 분리** — 피벗 시 독립 도메인/앱으로 분리
+19. ~~**가격 데이터 연동**~~ — ✅ CoinGecko 완료 (2026-03-20)
+20. **알림 시스템** — trending 알림 (velocity > 2.0 AND score ≥ 60) → 이메일/푸시
+21. ~~**백테스팅**~~ — ✅ Phase D에서 구현 완료 (2026-03-21), 4816개 레코드, 가격 축적 대기
+22. **크립토 전용 플랫폼 분리** — 피벗 시 독립 도메인/앱으로 분리
+23. **매크로 센티먼트 레이어** — 코인 멘션 없는 게시글의 시장 공포/탐욕 지표화 (논의됨, 백테스트 데이터 우선)
 
 ---
 
@@ -411,7 +432,8 @@ Phase 1 (crawl): 크롤링만 — 완료 후 자동으로 Phase 2 트리거
   │   → crypto_posts upsert → coin-extractor → crypto_mentions
   │
   ├─ Telegram (✅ 동작 중, API 키 불필요)
-  │   → 25개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
+  │   → 23개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
+  │   → 채널 순서 매번 셔플 (공평한 크롤 기회) + 시간예산 120초 기본
   │   → Cheerio HTML 파싱 → crypto_posts upsert → crypto_mentions
   │
   ├─ Threads (❌ 비활성화 — 자기 게시물만 반환, Tech Provider 인증 보류)
@@ -485,7 +507,7 @@ Header "밈코인 예측기" (master 계정만 노출, i18n 적용)
 ### 새로 생성한 파일
 ```
 lib/crypto/
-  config.ts                 서브레딧 10개 + 텔레그램 25개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수(ZSCORE_*, CROSS_PLATFORM_*, CONTRARIAN_*, EVENT_TYPE_PATTERNS)
+  config.ts                 서브레딧 10개 + 텔레그램 23개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수(ZSCORE_*, CROSS_PLATFORM_*, CONTRARIAN_*, EVENT_TYPE_PATTERNS)
   coin-sync.ts              CoinGecko /coins/list → crypto_coins 동기화 (1일 1회 or Phase 4)
   price-fetcher.ts          CoinGecko /coins/markets → crypto_prices 가격 스냅샷 (30분 cron)
   reddit-auth.ts            Reddit OAuth2 토큰 관리 (cache.ts 활용)
@@ -716,8 +738,9 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 - **Apify 계정**: `predictable_magazine` (한결), User ID: `6ndnAzPtwdxborJRu`
 
 ### Telegram 공개 채널
-- **config.ts에 이미 11개 채널 설정 완료**: binance_announcements, cryptoVIPsignalTA, whale_alert_io 등
+- **config.ts에 23개 채널 설정**: binance_announcements, OKXannouncements, CoinTelegraph, whale_alert_io, Bitcoin, crypto, coinbureau, WatcherGuru, cryptoVIPsignalTA, BinanceKillers, WallstreetQueenOfficial, WolfOfTrading, BitcoinBullets, FatPigSignals, MyCryptoParadise, AltSignals, LunarCrush, coincodecap, CryptoSignals, CryptoSignalAlert, CryptoWorldNews, memecoinz, DEXTOOLSPUMPS
 - **공개 채널**: 봇 초대 없이 `t.me/s/채널명` 웹 스크래핑 → `telegram-crawler.ts` 구현 완료
+- **채널 순서 셔플**: 매 크롤마다 랜덤화, 시간예산 내 공평 배분
 
 ---
 
@@ -825,7 +848,7 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 - Reddit API `after` 파라미터: null이면 마지막 페이지 → 루프 종료
 - RLS 정책: 모든 테이블 읽기 전체 허용, 쓰기는 service_role 사용 (createServiceClient)
 - **린터 주의**: SignalNetwork.tsx 수정 시 린터가 `useIsDark` 훅/language prop 등을 되돌리는 경향 있음. 수정 후 즉시 커밋 필요.
-- **sanitizeText**: 각 크롤러(telegram/reddit/threads)에 `sanitizeText` 함수 적용. 제어 문자 + lone surrogate 제거. 멘션 추출 시에도 sanitized text 사용해야 `invalid input syntax for type json` 에러 방지됨 (2026-03-15 수정 완료)
+- **sanitizeText (2026-03-21 재수정)**: 기존 정규식 기반 sanitizeText가 유효 이모지 surrogate pair를 깨뜨리는 버그 있었음 → char-by-char 루프로 재작성. lone surrogate만 제거, 유효 이모지 보존. `safeTruncate()`도 추가 (slice가 surrogate pair 중간 절단 방지). context 필드에도 sanitizeText 적용. **이 버그로 크롤링 데이터의 ~80%가 조용히 버려지고 있었음**
 - **504 타임아웃 해결 (2026-03-17)**: 3-Phase 분리로 근본 해결. 각 페이즈가 독립적으로 300초 확보. 센티먼트는 200초 시간 예산 + 미완료 시 자기 재호출.
 - **Telegram fetch 타임아웃**: 개별 채널 fetch에 15초 AbortController 적용 (`fetchChannelPage`)
 - **Twitter sanitize (2026-03-21)**: Apify 응답에 lone surrogate + HTML source 필드 포함 → `sanitizeObject()` (JSON round-trip)로 전체 row 정화. hashtags도 `[{tag: "..."}]` → `string[]` 정규화 필수. context 필드에도 `sanitizeText()` 적용.

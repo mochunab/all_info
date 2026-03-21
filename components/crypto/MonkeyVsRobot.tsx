@@ -53,7 +53,7 @@ export default function MonkeyVsRobot({ language }: { language: Language }) {
   const [data, setData] = useState<BattleResponse | null>(null);
   const [tab, setTab] = useState<Tab>('score');
   const [loading, setLoading] = useState(true);
-  const [historyDays, setHistoryDays] = useState(30);
+  const [historyDays, setHistoryDays] = useState(7);
 
   const fetchData = useCallback(async () => {
     try {
@@ -140,17 +140,17 @@ export default function MonkeyVsRobot({ language }: { language: Language }) {
         {tab === 'trend' && (
           <div>
             <div className="flex gap-2 mb-4">
-              {[30, 0].map(d => (
+              {[7, 30, 90].map(d => (
                 <button
                   key={d}
-                  onClick={() => setHistoryDays(d || 9999)}
+                  onClick={() => setHistoryDays(d)}
                   className="px-3 py-1 text-xs rounded-full cursor-pointer"
                   style={{
-                    backgroundColor: historyDays === (d || 9999) ? 'var(--accent)' : 'var(--bg-tertiary)',
-                    color: historyDays === (d || 9999) ? 'white' : 'var(--text-secondary)',
+                    backgroundColor: historyDays === d ? 'var(--accent)' : 'var(--bg-tertiary)',
+                    color: historyDays === d ? 'white' : 'var(--text-secondary)',
                   }}
                 >
-                  {d === 0 ? t(language, 'crypto.battle.portfolio') : `${d}D`}
+                  {d}D
                 </button>
               ))}
             </div>
@@ -232,10 +232,7 @@ function PlayerScore({
         ${portfolio.current.toFixed(2)}
       </div>
       <PnlBadge value={portfolio.change_pct} />
-      <div className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-        {t(language, 'crypto.battle.winRate')}: {winRate.toFixed(0)}%
-      </div>
-      <div className="mt-1 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+      <div className="mt-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
         💰 ${portfolio.cash.toFixed(2)} · 📊 {portfolio.openPositions}{t(language, 'crypto.battle.openPos')}
       </div>
     </div>
@@ -255,9 +252,9 @@ function PositionsTab({ data, language }: { data: BattleResponse; language: Lang
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-4" style={{ maxHeight: 360, overflowY: 'auto' }}>
       <div>
-        <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>
           🐵 {t(language, 'crypto.battle.monkey')} ({openPositions.monkey.length})
         </div>
         <div className="space-y-2">
@@ -265,7 +262,7 @@ function PositionsTab({ data, language }: { data: BattleResponse; language: Lang
         </div>
       </div>
       <div>
-        <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>
           🤖 {t(language, 'crypto.battle.robot')} ({openPositions.robot.length})
         </div>
         <div className="space-y-2">
@@ -342,15 +339,15 @@ function PositionRow({ pos, prices, language }: { pos: BattlePosition; prices: R
 
 function TradesTab({ data, language }: { data: BattleResponse; language: Language }) {
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-4" style={{ maxHeight: 360, overflowY: 'auto' }}>
       <div>
-        <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>{t(language, 'crypto.battle.monkey')}</div>
+        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>{t(language, 'crypto.battle.monkey')}</div>
         <div className="space-y-2">
           {data.recentTrades.monkey.map(tr => <TradeRow key={tr.id} trade={tr} language={language} />)}
         </div>
       </div>
       <div>
-        <div className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>{t(language, 'crypto.battle.robot')}</div>
+        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>{t(language, 'crypto.battle.robot')}</div>
         <div className="space-y-2">
           {data.recentTrades.robot.map(tr => <TradeRow key={tr.id} trade={tr} language={language} />)}
         </div>

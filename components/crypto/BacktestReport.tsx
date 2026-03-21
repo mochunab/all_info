@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { t } from '@/lib/i18n';
 import type { BacktestResponse } from '@/types/crypto';
+import BacktestTrendCharts from '@/components/crypto/BacktestTrendCharts';
 
 type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 
@@ -42,6 +43,19 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
   const [lookupWindow, setLookupWindow] = useState<string>('24h');
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+
+  useEffect(() => {
+    if (isOpen && contentRef.current) {
+      const observer = new ResizeObserver(([entry]) => {
+        setContentHeight(entry.contentRect.height);
+      });
+      observer.observe(contentRef.current);
+      return () => observer.disconnect();
+    }
+    setContentHeight(0);
+  }, [isOpen]);
 
   const fetchData = useCallback(async (lw: string) => {
     setLoading(true);
@@ -98,12 +112,12 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
         <div
           className="overflow-hidden transition-all duration-300"
           style={{
-            maxHeight: isOpen ? '800px' : '0px',
+            maxHeight: isOpen ? `${contentHeight + 16}px` : '0px',
             opacity: isOpen ? 1 : 0,
             transitionTimingFunction: MD3_EASING,
           }}
         >
-          <div className="px-4 pb-4 pt-2">
+          <div ref={contentRef} className="px-4 pb-4 pt-2">
             {/* Lookup Window Chips */}
             <div className="flex flex-wrap gap-2 mb-4">
               {LOOKUP_OPTIONS.map((lw) => (
@@ -185,6 +199,12 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
                     </div>
                   </div>
                 )}
+
+                <BacktestTrendCharts
+                  language={language}
+                  lookupWindow={lookupWindow}
+                  signalType={signalType}
+                />
               </>
             )}
           </div>

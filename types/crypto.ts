@@ -505,6 +505,27 @@ export type BacktestResponse = {
   }[];
 };
 
+export type BacktestTrendPoint = {
+  date: string;
+  extremely_hot?: number;
+  hot?: number;
+  warm?: number;
+  cool?: number;
+  cold?: number;
+};
+
+export type BacktestCumulativePoint = {
+  date: string;
+  hit_rate: number;
+  total: number;
+};
+
+export type BacktestTrendResponse = {
+  trendData: BacktestTrendPoint[];
+  distributionData: BacktestTrendPoint[];
+  cumulativeData: BacktestCumulativePoint[];
+};
+
 // ── Config Types ──
 
 export type SubredditConfig = {

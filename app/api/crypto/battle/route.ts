@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import { lazyEvaluateExits } from '@/lib/crypto/battle-trader';
 import type { BattleResponse, BattlePortfolio, BattleTrade, BattlePosition } from '@/types/crypto';
 
 const STARTING_BALANCE = 100;
@@ -22,10 +21,9 @@ export async function GET(request: NextRequest) {
   const supabase = await createServiceClient();
   const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
-  // 1. 가격 기반 청산 즉시 실행 (손절/익절/보유 만료)
-  await lazyEvaluateExits(supabase);
+  // 청산은 crawl 파이프라인(executeBattle)에서만 실행 — GET에 side-effect 금지 (race condition 방지)
 
-  // 2. 현재 가격 조회
+  // 1. 현재 가격 조회
   const { data: priceRows } = await supabase
     .from('crypto_prices')
     .select('price_usd, crypto_coins!inner(symbol)')
@@ -40,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. 포지션/포트폴리오/거래 데이터 조회 (lazy 평가 후이므로 최신 상태)
-  const [portfolioRes, tradesRes, historyRes, monkeyPosRes, robotPosRes, monkeyTradesAll, robotTradesAll] = await Promise.all([
+  const [portfolioRes, monkeyRecentTrades, robotRecentTrades, historyRes, monkeyPosRes, robotPosRes, monkeyTradesAll, robotTradesAll] = await Promise.all([
     supabase
       .from('battle_portfolio')
       .select('*')
@@ -49,8 +47,15 @@ export async function GET(request: NextRequest) {
     supabase
       .from('battle_trades')
       .select('*')
+      .eq('player', 'monkey')
       .order('traded_at', { ascending: false })
-      .limit(20),
+      .limit(10),
+    supabase
+      .from('battle_trades')
+      .select('*')
+      .eq('player', 'robot')
+      .order('traded_at', { ascending: false })
+      .limit(10),
     supabase
       .from('battle_portfolio')
       .select('snapshot_date, player, portfolio_value')
@@ -125,12 +130,17 @@ export async function GET(request: NextRequest) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allTrades = (tradesRes.data || []) as any as BattleTrade[];
+  const monkeyRecent = (monkeyRecentTrades.data || []) as any as BattleTrade[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const robotRecent = (robotRecentTrades.data || []) as any as BattleTrade[];
 
-  const monkeyWins = monkeyPortfolio?.win_count ?? 0;
-  const robotWins = robotPortfolio?.win_count ?? 0;
-  const monkeyTotal = monkeyPortfolio?.total_trades ?? 0;
-  const robotTotal = robotPortfolio?.total_trades ?? 0;
+  // 거래 기반 승률 계산 (스냅샷 의존 제거)
+  const monkeyAllSells = (monkeyTradesAll.data || []).filter((t: { action: string }) => t.action === 'sell');
+  const robotAllSells = (robotTradesAll.data || []).filter((t: { action: string }) => t.action === 'sell');
+  const monkeyTotal = monkeyAllSells.length;
+  const robotTotal = robotAllSells.length;
+  const monkeyWins = monkeyAllSells.filter((t: { pnl: number | null }) => (t.pnl ?? 0) > 0).length;
+  const robotWins = robotAllSells.filter((t: { pnl: number | null }) => (t.pnl ?? 0) > 0).length;
 
   const prices: Record<string, number> = {};
   for (const [symbol, price] of priceMap) prices[symbol] = price;
@@ -152,8 +162,8 @@ export async function GET(request: NextRequest) {
     },
     history: { dates, monkey: monkeyValues, robot: robotValues },
     recentTrades: {
-      monkey: allTrades.filter(t => t.player === 'monkey').slice(0, 10),
-      robot: allTrades.filter(t => t.player === 'robot').slice(0, 10),
+      monkey: monkeyRecent,
+      robot: robotRecent,
     },
     openPositions: { monkey: monkeyPositions, robot: robotPositions },
     stats: {
