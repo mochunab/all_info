@@ -9,8 +9,17 @@ import {
 } from '@/lib/crypto/config';
 
 const REDDIT_PUBLIC_BASE = 'https://www.reddit.com';
+const MAX_429_RETRIES = 3;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\uFFFD/g, '')
+    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
 
 async function fetchSubredditPosts(
   subreddit: string,
@@ -19,6 +28,7 @@ async function fetchSubredditPosts(
 ): Promise<RedditPost[]> {
   const posts: RedditPost[] = [];
   let after: string | null = null;
+  let retries429 = 0;
 
   for (let page = 0; page < maxPages; page++) {
     const url = new URL(`${REDDIT_PUBLIC_BASE}/r/${subreddit}/${sort}.json`);
@@ -34,13 +44,21 @@ async function fetchSubredditPosts(
 
     if (!response.ok) {
       if (response.status === 429) {
-        console.warn(`[Reddit] Rate limited on r/${subreddit}/${sort}, waiting 2s`);
-        await sleep(2000);
+        retries429++;
+        if (retries429 > MAX_429_RETRIES) {
+          console.warn(`[Reddit] r/${subreddit}/${sort} rate limit exceeded after ${MAX_429_RETRIES} retries, skipping`);
+          break;
+        }
+        const backoff = 2000 * retries429;
+        console.warn(`[Reddit] Rate limited on r/${subreddit}/${sort}, retry ${retries429}/${MAX_429_RETRIES} (${backoff}ms)`);
+        await sleep(backoff);
+        page--;
         continue;
       }
       throw new Error(`Reddit API error: ${response.status} for r/${subreddit}/${sort}`);
     }
 
+    retries429 = 0;
     const data = (await response.json()) as RedditListingResponse;
     const children = data.data.children.map((c) => c.data);
 
@@ -54,20 +72,13 @@ async function fetchSubredditPosts(
   return posts;
 }
 
-function sanitizeText(text: string): string {
-  return text
-    .replace(/\x00/g, '')
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-    .replace(/[\uD800-\uDFFF]/g, '');
-}
-
 function redditPostToRow(post: RedditPost, subreddit: string) {
   return {
     source: 'reddit' as const,
     source_id: `reddit_${post.name}`,
     channel: subreddit,
     title: sanitizeText(post.title),
-    body: post.selftext ? sanitizeText(post.selftext) : null,
+    body: post.selftext && post.selftext.length > 0 ? sanitizeText(post.selftext) : null,
     author: post.author,
     permalink: `https://reddit.com${post.permalink}`,
     upvotes: post.ups,
@@ -78,7 +89,7 @@ function redditPostToRow(post: RedditPost, subreddit: string) {
     flair: post.link_flair_text ? sanitizeText(post.link_flair_text) : null,
     posted_at: new Date(post.created_utc * 1000).toISOString(),
     crawled_at: new Date().toISOString(),
-    metadata: { subreddit_subscribers: post.subreddit_subscribers || 0 },
+    metadata: { subreddit_subscribers: post.subreddit_subscribers ?? null },
   };
 }
 
@@ -98,10 +109,9 @@ export async function crawlSubreddit(
   };
 
   try {
-    const [hotPosts, newPosts] = await Promise.all([
-      fetchSubredditPosts(subredditName, 'hot', 2),
-      fetchSubredditPosts(subredditName, 'new', 1),
-    ]);
+    const hotPosts = await fetchSubredditPosts(subredditName, 'hot', 2);
+    await sleep(REDDIT_RATE_LIMIT_MS);
+    const newPosts = await fetchSubredditPosts(subredditName, 'new', 1);
 
     const seen = new Set<string>();
     const allPosts: RedditPost[] = [];
@@ -147,7 +157,9 @@ export async function crawlSubreddit(
       const dbId = sourceIdToDbId.get(`reddit_${post.name}`);
       if (!dbId) continue;
 
-      const mentions = await extractCoinMentionsFromDB(sanitizeText(post.title), post.selftext ? sanitizeText(post.selftext) : null, supabase);
+      const title = sanitizeText(post.title);
+      const body = post.selftext && post.selftext.length > 0 ? sanitizeText(post.selftext) : null;
+      const mentions = await extractCoinMentionsFromDB(title, body, supabase);
       for (const m of mentions) {
         mentionRows.push({
           post_id: dbId,
