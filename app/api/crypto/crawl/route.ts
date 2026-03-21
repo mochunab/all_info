@@ -159,7 +159,7 @@ async function handleCrawl(request: NextRequest) {
 
       try {
         const { processCryptoSentiments } = await import('@/lib/crypto/batch-sentiment');
-        const result = await processCryptoSentiments(supabase, 100, 200_000);
+        const result = await processCryptoSentiments(supabase, 200, 200_000);
         sentimentResult = { processed: result.processed, success: result.success, failed: result.failed };
 
         if (!result.completed) {

@@ -282,29 +282,29 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 GitHub Actions Cron (30분마다) → POST /api/crypto/crawl {phase: "crawl"}
 
 Phase 1 (crawl): 크롤링만 — 완료 후 자동으로 Phase 2 트리거
-  ├─ Reddit (REDDIT_CLIENT_ID 필요, 승인 대기 중)
-  │   → OAuth2 토큰 획득/갱신 (55분 캐시)
+  ├─ Reddit (✅ 동작 중, 공개 JSON 엔드포인트 — API 키 불필요)
+  │   → reddit.com/r/{sub}/{sort}.json 직접 호출 (OAuth 미사용)
   │   → 서브레딧별 hot + new fetch (limit=100, 최대 3페이지)
   │   → crypto_posts upsert → coin-extractor → crypto_mentions
   │
-  ├─ Telegram (API 키 불필요, ✅ 동작 중)
+  ├─ Telegram (✅ 동작 중, API 키 불필요)
   │   → 25개 공개 채널 웹 프리뷰 스크래핑 (t.me/s/, 15초 fetch 타임아웃)
   │   → Cheerio HTML 파싱 → crypto_posts upsert → crypto_mentions
   │
-  ├─ Threads (THREADS_ACCESS_TOKEN ✅ 설정 완료, 공개 검색 보류)
-  │   → 10개 키워드 검색 → crypto_posts upsert → crypto_mentions
-  │   → ⚠️ 현재 자기 게시물만 반환 (Tech Provider 인증 필요)
+  ├─ Threads (❌ 비활성화 — 자기 게시물만 반환, Tech Provider 인증 보류)
+  │   → 코드 존재하나 실질 데이터 없어 크롤링에서 제외
   │
-  └─ Twitter/X (APIFY_API_TOKEN ✅ 설정 완료, 12시간 간격)
+  └─ Twitter/X (✅ 동작 중, APIFY_API_TOKEN, 12시간 간격)
       → Apify scrape.badger Actor → Advanced Search 5개 키워드 × 20결과
       → sanitizeObject → crypto_posts upsert → crypto_mentions
       → 12시간 미경과 시 자동 스킵 (Apify 무료 $5/월 절약)
   ↓ fire-and-forget: {phase: "sentiment"}
 
 Phase 2 (sentiment): 센티먼트 분석 — 미완료 시 자기 재호출, 완료 시 Phase 3 트리거
-  → crypto_sentiments 없는 crypto_posts 조회 (최대 30건)
-  → analyze-crypto-sentiment Edge Function (Gemini 2.5 Flash Lite)
-  → 5개 동시 처리, 3회 재시도, 200초 시간 예산
+  → crypto_sentiments 없는 crypto_posts 조회 (최대 200건)
+  → analyze-crypto-sentiment Edge Function (Gemini 2.5 Flash)
+  → 10건씩 배치 처리 (1회 API 호출로 10건 분석), 3회 재시도, 200초 시간 예산
+  → 배치 실패 시 개별 처리 폴백
   → 미완료 시 자기 재호출 {phase: "sentiment"}, 완료 시 ↓
   ↓ fire-and-forget: {phase: "signals"}
 
@@ -454,7 +454,7 @@ lib/i18n.ts                           crypto.backtest.* 번역 키 7개 × 5개 
 
 | 함수 | 모델 | 용도 | 배포 완료 |
 |------|------|------|----------|
-| `analyze-crypto-sentiment` | `gemini-2.5-flash-lite` | Reddit/Telegram 센티먼트 분석 (score/label/fomo/fud/reasoning + **narratives/events**) | ✅ 재배포 (2026-03-21, narratives/events 추가) |
+| `analyze-crypto-sentiment` | `gemini-2.5-flash` | Reddit/Telegram/Twitter 센티먼트 분석 — 배치 모드(최대 10건/호출) + 단일 모드 하위 호환 (score/label/fomo/fud/reasoning + **narratives/events**) | ⚠️ 재배포 필요 (2026-03-21, Flash 업그레이드 + 배치 모드) |
 | `analyze-threads-sentiment` | `gemini-2.5-flash-lite` | Threads 센티먼트 분석 (이모지 해석, 500자 최적화 + **narratives/events**) | ✅ 재배포 (2026-03-21, narratives/events 추가) |
 
 `google_API_KEY` secret 사용 (기존 Edge Function과 공유, Dashboard에 이미 등록됨).
@@ -470,9 +470,9 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 
 | 변수 | 위치 | 용도 | 상태 |
 |------|------|------|------|
-| `REDDIT_CLIENT_ID` | `.env.local` + Vercel | Reddit OAuth2 클라이언트 ID | **미설정** (API Access Request 승인 대기 중) |
-| `REDDIT_CLIENT_SECRET` | `.env.local` + Vercel | Reddit OAuth2 클라이언트 시크릿 | **미설정** (API Access Request 승인 대기 중) |
-| `REDDIT_USER_AGENT` | `.env.local` + Vercel | Reddit API User-Agent (기본값: `InsightHub:MemePredictor:1.0`) | **미설정** (API Access Request 승인 대기 중) |
+| `REDDIT_CLIENT_ID` | `.env.local` + Vercel | Reddit OAuth2 클라이언트 ID (현재 미사용 — 공개 JSON 엔드포인트 사용) | 미설정 (불필요) |
+| `REDDIT_CLIENT_SECRET` | `.env.local` + Vercel | Reddit OAuth2 클라이언트 시크릿 (현재 미사용) | 미설정 (불필요) |
+| `REDDIT_USER_AGENT` | `.env.local` + Vercel | Reddit API User-Agent (현재 미사용) | 미설정 (불필요) |
 | `google_API_KEY` | Supabase Secrets | Gemini API (analyze-crypto-sentiment) | 기존 등록됨 |
 | `THREADS_ACCESS_TOKEN` | `.env.local` + Vercel | Threads API 장기 액세스 토큰 (60일) | ✅ 설정 완료 (2026-03-20, 만료: ~2026-05-18) |
 | `CRON_SECRET` | `.env.local` + Vercel | 크롤링 Bearer 인증 | 기존 등록됨 |
