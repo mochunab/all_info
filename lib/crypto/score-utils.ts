@@ -21,6 +21,14 @@ export function normalizeFomo(avgFomo: number): number {
   return clamp(avgFomo * 100, 0, 100);
 }
 
+export function normalizeSentimentForFud(avg: number): number {
+  return clamp(Math.abs(Math.min(avg, 0)) * 100, 0, 100);
+}
+
+export function normalizeFud(avgFud: number): number {
+  return clamp(avgFud * 100, 0, 100);
+}
+
 export function computeSignalLabel(score: number): SignalLabel {
   if (score >= 80) return 'extremely_hot';
   if (score >= 60) return 'hot';

@@ -7,6 +7,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const coin = searchParams.get('coin');
+    const window = searchParams.get('window') || '24h';
+    const signalType = searchParams.get('signal_type') || 'fomo';
     const limit = Math.min(parseInt(searchParams.get('limit') || '30', 10), 100);
 
     const supabase = await createClient();
@@ -41,7 +43,8 @@ export async function GET(request: NextRequest) {
       .from('crypto_signals')
       .select('coin_symbol, avg_sentiment, weighted_score, signal_label, mention_velocity')
       .in('coin_symbol', coinSymbols.length > 0 ? coinSymbols : ['__none__'])
-      .eq('time_window', '24h')
+      .eq('time_window', window)
+      .eq('signal_type', signalType)
       .order('computed_at', { ascending: false })
       .limit(coinSymbols.length || 1);
 

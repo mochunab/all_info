@@ -55,6 +55,7 @@ export type CryptoSignal = {
   id: string;
   coin_symbol: string;
   time_window: '1h' | '6h' | '24h' | '7d';
+  signal_type: SignalType;
   mention_count: number;
   mention_velocity: number;
   avg_sentiment: number;
@@ -121,6 +122,7 @@ export type CryptoPrice = {
 // ── Enums ──
 
 export type SignalLabel = 'extremely_hot' | 'hot' | 'warm' | 'cool' | 'cold';
+export type SignalType = 'fomo' | 'fud';
 export type EntityType = 'coin' | 'influencer' | 'event' | 'narrative';
 export type RelationType = 'mentions' | 'recommends' | 'correlates_with' | 'part_of' | 'impacts';
 export type TimeWindow = '1h' | '6h' | '24h' | '7d';
@@ -264,6 +266,7 @@ export type TopPostSummary = {
 export type SignalComputeResult = {
   coin_symbol: string;
   time_window: TimeWindow;
+  signal_type: SignalType;
   mention_count: number;
   mention_velocity: number;
   avg_sentiment: number;
@@ -444,6 +447,7 @@ export type BacktestResult = {
   id: string;
   coin_symbol: string;
   time_window: TimeWindow;
+  signal_type: SignalType;
   signal_label: SignalLabel;
   weighted_score: number;
   signal_at: string;

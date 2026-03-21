@@ -17,12 +17,20 @@ type CoinCardProps = {
   language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 };
 
-const SIGNAL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+const FOMO_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   extremely_hot: { bg: 'bg-red-500/20', text: 'text-red-400', label: '🔥 Extremely Hot' },
   hot: { bg: 'bg-orange-500/15', text: 'text-orange-400', label: '🟠 Hot' },
   warm: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', label: '🟡 Warm' },
   cool: { bg: 'bg-blue-500/10', text: 'text-blue-400', label: '🔵 Cool' },
   cold: { bg: 'bg-blue-500/20', text: 'text-blue-300', label: '❄️ Cold' },
+};
+
+const FUD_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  extremely_hot: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: '🔻 Extremely Hot' },
+  hot: { bg: 'bg-rose-500/15', text: 'text-rose-400', label: '🔻 Hot' },
+  warm: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', label: '🟡 Warm' },
+  cool: { bg: 'bg-teal-500/10', text: 'text-teal-400', label: '🔵 Cool' },
+  cold: { bg: 'bg-teal-500/20', text: 'text-teal-300', label: '❄️ Cold' },
 };
 
 function formatPrice(usd: number): string {
@@ -32,7 +40,8 @@ function formatPrice(usd: number): string {
 }
 
 export default function CoinCard({ signal, price, onClick, language = 'ko' }: CoinCardProps) {
-  const badge = SIGNAL_COLORS[signal.signal_label] || { bg: 'bg-gray-500/10', text: 'text-gray-400', label: signal.signal_label || 'N/A' };
+  const colorMap = signal.signal_type === 'fud' ? FUD_COLORS : FOMO_COLORS;
+  const badge = colorMap[signal.signal_label] || { bg: 'bg-gray-500/10', text: 'text-gray-400', label: signal.signal_label || 'N/A' };
   const velocitySign = signal.mention_velocity > 0 ? '+' : '';
   const velocityPercent = (signal.mention_velocity * 100).toFixed(0);
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { CryptoSignal, TimeWindow, CryptoPrice } from '@/types/crypto';
+import type { CryptoSignal, TimeWindow, SignalType, CryptoPrice } from '@/types/crypto';
 import { t } from '@/lib/i18n';
 import CoinCard from '@/components/crypto/CoinCard';
 
@@ -21,16 +21,17 @@ type CryptoDashboardProps = {
 export default function CryptoDashboard({ initialSignals, language }: CryptoDashboardProps) {
   const [signals, setSignals] = useState<CryptoSignal[]>(initialSignals);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
+  const [signalType, setSignalType] = useState<SignalType>('fomo');
   const [search, setSearch] = useState('');
   const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [prices, setPrices] = useState<(CryptoPrice & { crypto_coins: any })[]>([]);
 
-  const fetchSignals = useCallback(async (window: TimeWindow) => {
+  const fetchSignals = useCallback(async (window: TimeWindow, st: SignalType) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/crypto/signals?window=${window}&limit=100`);
+      const res = await fetch(`/api/crypto/signals?window=${window}&signal_type=${st}&limit=100`);
       const data = await res.json();
       setSignals(data.signals || []);
     } catch (error) {
@@ -53,10 +54,8 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
   }, [fetchPrices]);
 
   useEffect(() => {
-    if (timeWindow !== '24h') {
-      fetchSignals(timeWindow);
-    }
-  }, [timeWindow, fetchSignals]);
+    fetchSignals(timeWindow, signalType);
+  }, [timeWindow, signalType, fetchSignals]);
 
   const priceMap = useMemo(() => {
     const map = new Map<string, { price_usd: number; price_change_pct_24h: number | null; image_url: string | null }>();
@@ -90,9 +89,9 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
 
       <MonkeyVsRobot language={language} />
 
-      <BacktestReport language={language} />
+      <BacktestReport language={language} signalType={signalType} />
 
-      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} timeWindow={timeWindow} />
+      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} signalType={signalType} />
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-4">
@@ -100,6 +99,23 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
             🔥 {t(language, 'crypto.trending')}
           </h2>
           <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
+          <div className="flex gap-1">
+            {(['fomo', 'fud'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setSignalType(st)}
+                className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
+                  signalType === st
+                    ? st === 'fomo'
+                      ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                      : 'bg-red-500/20 text-red-400 shadow-sm'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)]'
+                }`}
+              >
+                {st.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
         <input
           type="text"

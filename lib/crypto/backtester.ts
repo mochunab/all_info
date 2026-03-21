@@ -10,11 +10,12 @@ const LOOKUP_MS: Record<string, number> = {
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
-const PRICE_TOLERANCE_MS = 12 * 60 * 60 * 1000; // 가격 매칭 허용 오차: 12시간 (데이터 밀도 낮을 때 대응, 30분 cron 안정화 후 축소)
+const PRICE_TOLERANCE_MS = 12 * 60 * 60 * 1000;
 
 type BacktestRow = {
   coin_symbol: string;
   time_window: string;
+  signal_type: string;
   signal_label: string;
   weighted_score: number;
   signal_at: string;
@@ -34,10 +35,15 @@ function isBearish(label: string) {
   return label === 'cold' || label === 'cool';
 }
 
-function evaluateHit(label: string, changePct: number): boolean {
+function evaluateHit(label: string, changePct: number, signalType: string): boolean {
+  if (signalType === 'fud') {
+    if (isBullish(label)) return changePct < 0;
+    if (isBearish(label)) return changePct > 0;
+    return Math.abs(changePct) < 2;
+  }
   if (isBullish(label)) return changePct > 0;
   if (isBearish(label)) return changePct < 0;
-  return Math.abs(changePct) < 2; // neutral: 2% 미만 변동이면 적중
+  return Math.abs(changePct) < 2;
 }
 
 async function getSymbolToCoingeckoMap(supabase: SupabaseClient<any>) {
@@ -90,28 +96,25 @@ export async function runBacktest(
   const symbolMap = await getSymbolToCoingeckoMap(supabase);
   if (symbolMap.size === 0) return { recorded: 0, evaluated: 0 };
 
-  // 아직 backtest에 기록되지 않은 시그널 가져오기
-  // 최근 7일 시그널만 대상
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: signals } = await supabase
     .from('crypto_signals')
-    .select('coin_symbol, time_window, weighted_score, signal_label, computed_at')
+    .select('coin_symbol, time_window, signal_type, weighted_score, signal_label, computed_at')
     .gte('computed_at', since)
     .order('computed_at', { ascending: false })
     .limit(maxSignals);
 
   if (!signals?.length) return { recorded: 0, evaluated: 0 };
 
-  // 이미 기록된 시그널 확인 (중복 방지)
   const { data: existing } = await supabase
     .from('crypto_backtest_results')
-    .select('coin_symbol, time_window, signal_at, lookup_window')
+    .select('coin_symbol, time_window, signal_type, signal_at, lookup_window')
     .gte('signal_at', since);
 
   const existingSet = new Set(
     (existing || []).map(
-      (r: any) => `${r.coin_symbol}|${r.time_window}|${r.signal_at}|${r.lookup_window}`
+      (r: any) => `${r.coin_symbol}|${r.time_window}|${r.signal_type}|${r.signal_at}|${r.lookup_window}`
     )
   );
 
@@ -127,7 +130,7 @@ export async function runBacktest(
     if (priceAtSignal === null) continue;
 
     for (const lw of LOOKUP_WINDOWS) {
-      const key = `${signal.coin_symbol}|${signal.time_window}|${signal.computed_at}|${lw}`;
+      const key = `${signal.coin_symbol}|${signal.time_window}|${signal.signal_type}|${signal.computed_at}|${lw}`;
       if (existingSet.has(key)) continue;
 
       const targetTime = new Date(signalTime.getTime() + LOOKUP_MS[lw]);
@@ -142,7 +145,7 @@ export async function runBacktest(
         priceAfter = await findClosestPrice(supabase, coingeckoId, targetTime);
         if (priceAfter !== null && priceAtSignal > 0) {
           changePct = ((priceAfter - priceAtSignal) / priceAtSignal) * 100;
-          hit = evaluateHit(signal.signal_label, changePct);
+          hit = evaluateHit(signal.signal_label, changePct, signal.signal_type);
           evaluatedAt = now.toISOString();
           evaluated++;
         }
@@ -151,6 +154,7 @@ export async function runBacktest(
       rows.push({
         coin_symbol: signal.coin_symbol,
         time_window: signal.time_window,
+        signal_type: signal.signal_type,
         signal_label: signal.signal_label,
         weighted_score: signal.weighted_score,
         signal_at: signal.computed_at,
@@ -167,7 +171,7 @@ export async function runBacktest(
   if (rows.length > 0) {
     const { error } = await supabase
       .from('crypto_backtest_results')
-      .upsert(rows, { onConflict: 'coin_symbol,time_window,signal_at,lookup_window' });
+      .upsert(rows, { onConflict: 'coin_symbol,time_window,signal_type,signal_at,lookup_window' });
 
     if (error) {
       console.error('[백테스트] upsert 실패:', error.message);
@@ -187,7 +191,7 @@ export async function evaluatePending(
 
   const { data: pending } = await supabase
     .from('crypto_backtest_results')
-    .select('id, coin_symbol, signal_at, lookup_window, price_at_signal')
+    .select('id, coin_symbol, signal_type, signal_label, signal_at, lookup_window, price_at_signal')
     .is('evaluated_at', null)
     .limit(200);
 
@@ -206,16 +210,7 @@ export async function evaluatePending(
     if (priceAfter === null) continue;
 
     const changePct = ((priceAfter - row.price_at_signal) / row.price_at_signal) * 100;
-
-    const { data: full } = await supabase
-      .from('crypto_backtest_results')
-      .select('signal_label')
-      .eq('id', row.id)
-      .single();
-
-    if (!full) continue;
-
-    const hit = evaluateHit(full.signal_label, changePct);
+    const hit = evaluateHit(row.signal_label, changePct, row.signal_type);
 
     await supabase
       .from('crypto_backtest_results')

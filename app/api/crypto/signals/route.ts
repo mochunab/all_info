@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const window = searchParams.get('window') || '24h';
     const coin = searchParams.get('coin');
+    const signalType = searchParams.get('signal_type') || 'fomo';
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200);
 
     const supabase = await createClient();
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
       .from('crypto_signals')
       .select('*')
       .eq('time_window', window)
+      .eq('signal_type', signalType)
       .order('weighted_score', { ascending: false })
       .limit(limit);
 
@@ -24,12 +26,12 @@ export async function GET(request: NextRequest) {
       query = query.eq('coin_symbol', coin.toUpperCase());
     }
 
-    // 최신 computed_at 기준으로 필터
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: latestRow } = await (supabase as any)
       .from('crypto_signals')
       .select('computed_at')
       .eq('time_window', window)
+      .eq('signal_type', signalType)
       .order('computed_at', { ascending: false })
       .limit(1)
       .single();

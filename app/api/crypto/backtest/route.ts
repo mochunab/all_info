@@ -6,12 +6,13 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const coin = searchParams.get('coin');
   const lookupWindow = searchParams.get('lookup_window') || '24h';
+  const signalType = searchParams.get('signal_type') || 'fomo';
 
-  // 집계: 라벨별 적중률
   let query = supabase
     .from('crypto_backtest_results')
     .select('signal_label, lookup_window, price_change_pct, hit, evaluated_at, coin_symbol, weighted_score, signal_at')
     .eq('lookup_window', lookupWindow)
+    .eq('signal_type', signalType)
     .not('evaluated_at', 'is', null)
     .order('signal_at', { ascending: false });
 

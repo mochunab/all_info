@@ -37,7 +37,7 @@ type SignalNetworkProps = {
   signals: CryptoSignal[];
   onCoinSelect: (symbol: string) => void;
   language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
-  timeWindow?: TimeWindow;
+  signalType?: 'fomo' | 'fud';
 };
 
 const SENTIMENT_COLORS = {
@@ -59,12 +59,12 @@ function getNodeSize(mentions: number, maxMentions: number): number {
 
 const MD3_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
-export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', timeWindow: externalTimeWindow = '24h' }: SignalNetworkProps) {
+export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', signalType = 'fomo' }: SignalNetworkProps) {
   const isDark = useIsDark();
   const [isOpen, setIsOpen] = useState(false);
   const [ForceGraph3D, setForceGraph3D] = useState<any>(null);
-  const [localTimeWindow, setLocalTimeWindow] = useState<TimeWindow>(externalTimeWindow);
-  const timeWindow = localTimeWindow;
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
+  const [ownSignals, setOwnSignals] = useState<CryptoSignal[]>(signals);
 
   useEffect(() => {
     import('react-force-graph-3d').then(mod => setForceGraph3D(() => mod.default));
@@ -83,7 +83,15 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
   const [explainLoading, setExplainLoading] = useState(false);
   const explainCache = useRef<Map<string, TrendingExplainResponse>>(new Map());
 
-  const topCoins = useMemo(() => signals.slice(0, 8), [signals]);
+  const fetchOwnSignals = useCallback(async (tw: TimeWindow) => {
+    try {
+      const res = await fetch(`/api/crypto/signals?window=${tw}&limit=100`);
+      const data = await res.json();
+      setOwnSignals(data.signals || []);
+    } catch { /* silent */ }
+  }, []);
+
+  const topCoins = useMemo(() => ownSignals.slice(0, 8), [ownSignals]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -141,9 +149,10 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
   const fetchNetwork = useCallback(async (coin?: string) => {
     setLoading(true);
     try {
-      const url = coin
+      const base = coin
         ? `/api/crypto/network?coin=${coin}&limit=30`
         : '/api/crypto/network?limit=30';
+      const url = `${base}&window=${timeWindow}`;
       const res = await fetch(url);
       const data = await res.json();
       const rawNodes: NetworkNode[] = data.nodes || [];
@@ -164,7 +173,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeWindow]);
 
   useEffect(() => {
     if (isOpen && topCoins.length > 0) {
@@ -184,7 +193,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     }
     setExplainLoading(true);
     try {
-      const res = await fetch(`/api/crypto/trending-explain?coin=${coin}&window=${timeWindow}`);
+      const res = await fetch(`/api/crypto/trending-explain?coin=${coin}&window=${timeWindow}&signal_type=${signalType}`);
       if (res.ok) {
         const data: TrendingExplainResponse = await res.json();
         explainCache.current.set(`${coin}-${timeWindow}`, data);
@@ -199,25 +208,31 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     }
   }, [timeWindow]);
 
-  const handleLocalTimeWindowChange = useCallback((tw: TimeWindow) => {
-    setLocalTimeWindow(tw);
+  const handleTimeWindowChange = useCallback((tw: TimeWindow) => {
+    setTimeWindow(tw);
   }, []);
 
-  // 시간 윈도우 변경 시 첫 번째 코인 자동 선택 + 재조회
+  // 시간 윈도우 변경 시 자체 시그널 재조회 + 네트워크 갱신
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchOwnSignals(timeWindow);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeWindow]);
+
+  // ownSignals 갱신 후 첫 번째 코인 자동 선택
   useEffect(() => {
     if (!isOpen || topCoins.length === 0) return;
     const first = topCoins[0].coin_symbol;
     setSelectedChip(first);
     fetchNetwork(first);
-    // fetchExplain은 아래에서 selectedChip 변경 감지로 호출됨
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localTimeWindow]);
+  }, [ownSignals]);
 
   // selectedChip 변경 시 explain 재조회
   useEffect(() => {
     if (selectedChip) fetchExplain(selectedChip);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChip, localTimeWindow]);
+  }, [selectedChip, timeWindow]);
 
   const handleChipClick = useCallback(
     (symbol: string) => {
@@ -461,7 +476,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                   </button>
                 ))}
               </div>
-              <TimeWindowSelector selected={localTimeWindow} onChange={handleLocalTimeWindowChange} language={language} />
+              <TimeWindowSelector selected={timeWindow} onChange={handleTimeWindowChange} language={language} />
             </div>
           </div>
 

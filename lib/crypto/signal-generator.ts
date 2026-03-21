@@ -1,37 +1,49 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { TimeWindow, SignalComputeResult, TopPostSummary } from '@/types/crypto';
+import type { TimeWindow, SignalType, SignalComputeResult, TopPostSummary } from '@/types/crypto';
 import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS } from '@/lib/crypto/config';
 import {
   clamp,
   normalizeVelocity,
   normalizeSentiment,
+  normalizeSentimentForFud,
   normalizeSentimentTrend,
   normalizeEngagement,
   normalizeFomo,
+  normalizeFud,
   computeSignalLabel,
   computeMentionConfidence,
   computeMarketCapDampening,
 } from '@/lib/crypto/score-utils';
 
-export async function generateSignalsForWindow(
+type WindowRawData = {
+  mentions: { coin_symbol: string; mention_count: number; post_id: string }[];
+  postMap: Map<string, {
+    source_id: string; title: string; score: number; channel: string;
+    upvotes: number; num_comments: number; num_awards: number;
+  }>;
+  sentimentMap: Map<string, { sentiment_score: number; fomo_score: number; fud_score: number }>;
+  prevCounts: Map<string, number>;
+  prevSentimentMap: Map<string, number[]>;
+  rankMap: Map<string, number | null>;
+};
+
+async function fetchWindowData(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   window: TimeWindow
-): Promise<SignalComputeResult[]> {
+): Promise<WindowRawData | null> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - TIME_WINDOW_MS[window]);
   const prevWindowStart = new Date(windowStart.getTime() - TIME_WINDOW_MS[window]);
 
-  // 1. 현재 윈도우 멘션
   const { data: mentions, error: mentionErr } = await supabase
     .from('crypto_mentions')
     .select('coin_symbol, mention_count, post_id')
     .gte('created_at', windowStart.toISOString())
     .lte('created_at', now.toISOString());
 
-  if (mentionErr || !mentions || mentions.length === 0) return [];
+  if (mentionErr || !mentions || mentions.length === 0) return null;
 
-  // 2. 관련 post_id 수집 → 게시물 + 센티먼트 조회
   const postIds = [...new Set(mentions.map((m: { post_id: string }) => m.post_id))];
 
   const [postsRes, sentimentsRes] = await Promise.all([
@@ -49,16 +61,11 @@ export async function generateSignalsForWindow(
     source_id: string; title: string; score: number; channel: string;
     upvotes: number; num_comments: number; num_awards: number;
   }>();
-  for (const p of postsRes.data || []) {
-    postMap.set(p.id, p);
-  }
+  for (const p of postsRes.data || []) postMap.set(p.id, p);
 
   const sentimentMap = new Map<string, { sentiment_score: number; fomo_score: number; fud_score: number }>();
-  for (const s of sentimentsRes.data || []) {
-    sentimentMap.set(s.post_id, s);
-  }
+  for (const s of sentimentsRes.data || []) sentimentMap.set(s.post_id, s);
 
-  // 3. 이전 윈도우 멘션 (velocity + sentiment_trend 계산용)
   const { data: prevData } = await supabase
     .from('crypto_mentions')
     .select('coin_symbol, mention_count, post_id')
@@ -74,7 +81,6 @@ export async function generateSignalsForWindow(
     }
   }
 
-  // 3b. 이전 윈도우 센티먼트 (sentiment_trend 계산용)
   const prevSentimentMap = new Map<string, number[]>();
   if (prevPostIds.length > 0) {
     const uniquePrevPostIds = [...new Set(prevPostIds)];
@@ -85,9 +91,7 @@ export async function generateSignalsForWindow(
 
     if (prevSentiments && prevData) {
       const prevPostToSentiment = new Map<string, number>();
-      for (const s of prevSentiments) {
-        prevPostToSentiment.set(s.post_id, s.sentiment_score);
-      }
+      for (const s of prevSentiments) prevPostToSentiment.set(s.post_id, s.sentiment_score);
       for (const m of prevData) {
         const score = prevPostToSentiment.get(m.post_id);
         if (score !== undefined) {
@@ -98,7 +102,6 @@ export async function generateSignalsForWindow(
     }
   }
 
-  // 4. 시가총액 순위 조회 (대형 코인 감쇠용)
   const allSymbols = [...new Set(mentions.map((m: { coin_symbol: string }) => m.coin_symbol))];
   const { data: coinRows } = await supabase
     .from('crypto_coins')
@@ -106,11 +109,16 @@ export async function generateSignalsForWindow(
     .in('symbol', allSymbols);
 
   const rankMap = new Map<string, number | null>();
-  for (const c of coinRows || []) {
-    rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
-  }
+  for (const c of coinRows || []) rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
 
-  // 5. 코인별 집계
+  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap };
+}
+
+function computeSignals(
+  raw: WindowRawData,
+  signalType: SignalType,
+  window: TimeWindow
+): SignalComputeResult[] {
   type CoinAgg = {
     mentions: number;
     sentiments: number[];
@@ -121,7 +129,7 @@ export async function generateSignalsForWindow(
 
   const coinMap = new Map<string, CoinAgg>();
 
-  for (const row of mentions) {
+  for (const row of raw.mentions) {
     const symbol = row.coin_symbol;
     if (!coinMap.has(symbol)) {
       coinMap.set(symbol, { mentions: 0, sentiments: [], fomos: [], engagements: [], posts: [] });
@@ -129,15 +137,21 @@ export async function generateSignalsForWindow(
     const agg = coinMap.get(symbol)!;
     agg.mentions += row.mention_count;
 
-    const post = postMap.get(row.post_id);
+    const post = raw.postMap.get(row.post_id);
     if (post) {
       const engagement = (post.upvotes || 0) * 1 + (post.num_comments || 0) * 2 + (post.num_awards || 0) * 5;
       agg.engagements.push(engagement);
 
-      const sentiment = sentimentMap.get(row.post_id);
+      const sentiment = raw.sentimentMap.get(row.post_id);
       if (sentiment) {
-        agg.sentiments.push(sentiment.sentiment_score);
-        agg.fomos.push(sentiment.fomo_score || 0);
+        const include = signalType === 'fomo'
+          ? sentiment.sentiment_score >= 0
+          : sentiment.sentiment_score <= 0;
+
+        if (include) {
+          agg.sentiments.push(sentiment.sentiment_score);
+          agg.fomos.push(signalType === 'fomo' ? (sentiment.fomo_score || 0) : (sentiment.fud_score || 0));
+        }
       }
 
       if (agg.posts.length < 5) {
@@ -152,49 +166,48 @@ export async function generateSignalsForWindow(
     }
   }
 
-  // 6. 시그널 계산
   const results: SignalComputeResult[] = [];
 
   for (const [symbol, agg] of coinMap) {
-    const prevCount = prevCounts.get(symbol) || 0;
-    const velocity = prevCount > 0
-      ? (agg.mentions - prevCount) / prevCount
-      : 0;
+    const prevCount = raw.prevCounts.get(symbol) || 0;
+    const velocity = prevCount > 0 ? (agg.mentions - prevCount) / prevCount : 0;
 
     const avgSentiment = agg.sentiments.length > 0
       ? agg.sentiments.reduce((a, b) => a + b, 0) / agg.sentiments.length
       : 0;
 
-    const avgFomo = agg.fomos.length > 0
+    const avgFomoFud = agg.fomos.length > 0
       ? agg.fomos.reduce((a, b) => a + b, 0) / agg.fomos.length
       : 0;
 
     const totalEngagement = agg.engagements.reduce((a, b) => a + b, 0);
     const engagementPerMention = agg.mentions > 0 ? totalEngagement / agg.mentions : 0;
 
-    const prevSentiments = prevSentimentMap.get(symbol);
+    const prevSentiments = raw.prevSentimentMap.get(symbol);
     const prevAvgSentiment = prevSentiments && prevSentiments.length > 0
       ? prevSentiments.reduce((a, b) => a + b, 0) / prevSentiments.length
       : null;
-    const sentimentTrend = prevAvgSentiment !== null
-      ? avgSentiment - prevAvgSentiment
-      : 0;
+    const sentimentTrend = prevAvgSentiment !== null ? avgSentiment - prevAvgSentiment : 0;
 
     const velocityNorm = normalizeVelocity(velocity);
-    const sentimentNorm = normalizeSentiment(avgSentiment);
+    const sentimentNorm = signalType === 'fomo'
+      ? normalizeSentiment(avgSentiment)
+      : normalizeSentimentForFud(avgSentiment);
     const trendNorm = normalizeSentimentTrend(sentimentTrend);
     const engagementNorm = normalizeEngagement(engagementPerMention);
-    const fomoNorm = normalizeFomo(avgFomo);
+    const fomoFudNorm = signalType === 'fomo'
+      ? normalizeFomo(avgFomoFud)
+      : normalizeFud(avgFomoFud);
 
     const mentionConfidence = computeMentionConfidence(agg.mentions);
-    const marketCapDampening = computeMarketCapDampening(rankMap.get(symbol) ?? null);
+    const marketCapDampening = computeMarketCapDampening(raw.rankMap.get(symbol) ?? null);
 
     const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +
       sentimentNorm * SIGNAL_WEIGHTS.AVG_SENTIMENT +
       trendNorm * SIGNAL_WEIGHTS.SENTIMENT_TREND +
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
-      fomoNorm * SIGNAL_WEIGHTS.FOMO_AVG;
+      fomoFudNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
     const weightedScore = clamp(rawScore * mentionConfidence * marketCapDampening, 0, 100);
 
@@ -203,6 +216,7 @@ export async function generateSignalsForWindow(
     results.push({
       coin_symbol: symbol,
       time_window: window,
+      signal_type: signalType,
       mention_count: agg.mentions,
       mention_velocity: Math.round(velocity * 10000) / 10000,
       avg_sentiment: Math.round(avgSentiment * 1000) / 1000,
@@ -217,35 +231,52 @@ export async function generateSignalsForWindow(
   return results;
 }
 
+export async function generateSignalsForWindow(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  window: TimeWindow,
+  signalType: SignalType = 'fomo'
+): Promise<SignalComputeResult[]> {
+  const raw = await fetchWindowData(supabase, window);
+  if (!raw) return [];
+  return computeSignals(raw, signalType, window);
+}
+
 export async function generateAllSignals(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>
 ): Promise<{ generated: number }> {
   let totalGenerated = 0;
   const computedAt = new Date().toISOString();
+  const signalTypes: SignalType[] = ['fomo', 'fud'];
 
   for (const window of TIME_WINDOWS) {
-    const signals = await generateSignalsForWindow(supabase, window);
+    const raw = await fetchWindowData(supabase, window);
+    if (!raw) continue;
 
-    if (signals.length > 0) {
-      const rows = signals.map((s) => ({
-        ...s,
-        top_posts: JSON.stringify(s.top_posts),
-        computed_at: computedAt,
-      }));
+    for (const signalType of signalTypes) {
+      const signals = computeSignals(raw, signalType, window);
 
-      const { error } = await supabase
-        .from('crypto_signals')
-        .upsert(rows, {
-          onConflict: 'coin_symbol,time_window,computed_at',
-          ignoreDuplicates: false,
-        });
+      if (signals.length > 0) {
+        const rows = signals.map((s) => ({
+          ...s,
+          top_posts: JSON.stringify(s.top_posts),
+          computed_at: computedAt,
+        }));
 
-      if (error) {
-        console.error(`❌ [시그널] ${window} 저장 실패:`, error.message);
-      } else {
-        totalGenerated += signals.length;
-        console.log(`   📊 [시그널] ${window}: ${signals.length}개 코인`);
+        const { error } = await supabase
+          .from('crypto_signals')
+          .upsert(rows, {
+            onConflict: 'coin_symbol,time_window,signal_type,computed_at',
+            ignoreDuplicates: false,
+          });
+
+        if (error) {
+          console.error(`❌ [시그널] ${window}/${signalType} 저장 실패:`, error.message);
+        } else {
+          totalGenerated += signals.length;
+          console.log(`   📊 [시그널] ${window}/${signalType}: ${signals.length}개 코인`);
+        }
       }
     }
   }

@@ -37,7 +37,7 @@ function WinRateBar({ rate }: { rate: number }) {
   );
 }
 
-export default function BacktestReport({ language }: { language: Language }) {
+export default function BacktestReport({ language, signalType = 'fomo' }: { language: Language; signalType?: string }) {
   const [data, setData] = useState<BacktestResponse | null>(null);
   const [lookupWindow, setLookupWindow] = useState<string>('24h');
   const [loading, setLoading] = useState(false);
@@ -46,17 +46,17 @@ export default function BacktestReport({ language }: { language: Language }) {
   const fetchData = useCallback(async (lw: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/crypto/backtest?lookup_window=${lw}`);
+      const res = await fetch(`/api/crypto/backtest?lookup_window=${lw}&signal_type=${signalType}`);
       const json = await res.json();
       setData(json);
     } catch { /* silent */ } finally {
       setLoading(false);
     }
-  }, []);
+  }, [signalType]);
 
   useEffect(() => {
     if (isOpen) fetchData(lookupWindow);
-  }, [isOpen, lookupWindow, fetchData]);
+  }, [isOpen, lookupWindow, signalType, fetchData]);
 
   return (
     <div className="mb-6">

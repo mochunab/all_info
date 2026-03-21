@@ -27,6 +27,7 @@ type PriceRow = { price_usd: number; price_change_pct_24h: number | null; volume
 export async function GET(req: NextRequest) {
   const coin = req.nextUrl.searchParams.get('coin');
   const window = req.nextUrl.searchParams.get('window') || '24h';
+  const signalType = req.nextUrl.searchParams.get('signal_type') || 'fomo';
 
   if (!coin) {
     return NextResponse.json({ error: 'coin parameter required' }, { status: 400 });
@@ -39,12 +40,12 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // 코인 카드와 동일한 시점 사용: crypto_signals의 최신 computed_at 기준
   const { data: signalRow } = await supabase
     .from('crypto_signals')
     .select('computed_at')
     .eq('coin_symbol', coin)
     .eq('time_window', window)
+    .eq('signal_type', signalType)
     .order('computed_at', { ascending: false })
     .limit(1)
     .single();
