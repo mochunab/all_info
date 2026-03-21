@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-21 (Signal Scoring V2 — Z-score/크로스플랫폼/역행감지/이벤트, 3D 그래프 nodeThreeObject)
+> 최종 작업일: 2026-03-21 (Phase H — FOMO/FUD 시그널 분리 + CoinDetail 가격 차트 + 코드 리뷰 디버깅)
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -303,6 +303,39 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 97. **CoinCard 에러 수정** — `badge.bg` undefined fallback 추가 (signal_label이 DB에 구 라벨로 남아있을 때 대응)
 98. **온체인 데이터** — Whale Alert API 검토 → 유료($29.95/월) 확인 → **기존 텔레그램 `whale_alert_io` 채널로 대체** (추가 비용 없음, 이벤트 키워드로 자동 매칭)
 
+**Phase H — FOMO/FUD 시그널 분리 + CoinDetail 가격 차트 + 디버깅 (2026-03-21)**
+99. **FOMO/FUD 시그널 분리** — 시그널 가중치 70%가 볼륨 기반이라 부정 멘션 폭증해도 "Hot" → 가격 예측 실패 문제 해결
+    - `signal_type` 컬럼 추가 (`crypto_signals`, `crypto_backtest_results`)
+    - FOMO: `sentiment_score >= 0` 게시물 기반, FUD: `sentiment_score <= 0` 게시물 기반 (중립은 양쪽 포함)
+    - `signal-generator.ts`: fetchWindowData 1회 + 필터 2회 패턴 (FOMO/FUD 독립 스코어 생성)
+    - `score-utils.ts`: `normalizeSentimentForFud()` (부정 강도만 반영), `normalizeFud()` 추가
+    - `backtester.ts`: `evaluateHit()` FUD 분기 — FUD Hot = 가격 하락이 적중
+    - `types/crypto.ts`: `SignalType = 'fomo' | 'fud'`, 3개 타입에 `signal_type` 필드 추가
+100. **DB 마이그레이션 `029_signal_type_fomo_fud.sql`**
+    - `crypto_signals`: signal_type + UNIQUE 재정의 + CHECK 제약 + 인덱스
+    - `crypto_backtest_results`: signal_type + UNIQUE 재정의 + CHECK 제약
+    - `crypto_backtest_summary` 뷰 재생성 (signal_type GROUP BY 포함)
+101. **API signal_type 필터** — 4개 API 모두 `signal_type` 파라미터 추가 (기본값: 'fomo')
+    - `signals/route.ts`, `backtest/route.ts`, `trending-explain/route.ts`, `network/route.ts`
+102. **trending-explain FUD 분기** — FUD 요청 시 `normalizeSentimentForFud`/`normalizeFud` 사용
+103. **UI FOMO/FUD 토글** — CryptoDashboard에 FOMO/FUD 토글 버튼 (emerald/red 색상)
+    - 토글이 BacktestReport, SignalNetwork, CoinCard, CoinDetail 모두에 연동
+    - `CoinCard.tsx`: FOMO/FUD 별도 색상 맵 (FUD = purple/rose 계열, 🔻 아이콘)
+104. **CoinDetail signalType 연동** — 모달에서도 FOMO/FUD에 따라 시그널 데이터 분리 표시
+105. **SignalNetwork 디버깅** — fetchOwnSignals/fetchNetwork/fetchExplain에 `signal_type` 파라미터 누락 수정 + 캐시 키에 signalType 포함 + useCallback deps 수정
+106. **CoinDetail 가격 차트 추가** — 7일 추이 차트에 가격 라인(노란색 #eab308) 추가
+    - `history/route.ts`: `crypto_prices` JOIN으로 `price_usd` 필드 추가
+    - `CoinDetail.tsx`: 가격 YAxis (auto 도메인) + Line + 범례 + 툴팁 포맷팅
+107. **레이아웃 개선** — 필터 바(트렌딩 타이틀 + FOMO/FUD + 시간 + 검색)를 BacktestReport/SignalNetwork 위로 이동
+    - FOMO/FUD 토글: 타이틀 바로 옆 배치
+    - 시간 필터 + 검색창: 우측 같은 높이로 배치
+    - BacktestReport/SignalNetwork 간격 mb-6 → mb-3으로 축소
+    - TimeWindowSelector: `whitespace-nowrap` 추가 (한글 줄바꿈 방지)
+108. **force-dynamic 추가** — `backtest/route.ts`, `trending-explain/route.ts` (캐시 방지)
+109. **i18n** — `crypto.fomo`, `crypto.fud`, `crypto.price` × 5개 언어 추가
+110. **SignalTimeline** — signalType prop + FUD 시각 구분 (📉 아이콘, FUD 태그)
+111. **프로젝트 타당성 문서** — `PROJECT_VALIDITY.md` 작성 (학술 논문 25+ 편 출처 포함, 경쟁사 비교)
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -400,20 +433,21 @@ Header "밈코인 예측기" (master 계정만 노출, i18n 적용)
   → /{locale}/crypto 접근 (URL 직접 접근은 인증 불필요)
   → 서버: 초기 시그널 SSR
   → CryptoDashboard (클라이언트, language prop)
-      ├─ TimeWindowSelector (1h/6h/24h/7d, i18n)
-      ├─ 검색 input (i18n placeholder)
-      ├─ BacktestReport (아코디언, 적중률 바, 코인별 요약, 최근 결과)
-      ├─ SignalNetwork (Force Graph + Keyword Cloud)
-      │   ├─ 필터 칩 (상위 8개 코인)
-      │   ├─ Force-directed 그래프 (코인/인플루언서 노드 + 관계 엣지)
-      │   └─ 키워드 클라우드 (선택된 코인의 AI 추출 키워드)
-      ├─ CoinCard Grid (반응형 3열, i18n)
-      │   └─ 클릭 → CoinDetail 모달
+      ├─ MonkeyVsRobot (AI vs 랜덤 배틀)
+      ├─ 글로벌 필터 바 (모든 하위 섹션에 적용)
+      │   ├─ 🔥 트렌딩 타이틀 + FOMO/FUD 토글 (좌측)
+      │   └─ TimeWindowSelector + 검색 input (우측)
+      ├─ BacktestReport (아코디언, FOMO/FUD별 적중률, 코인별 요약)
+      ├─ SignalNetwork (Force Graph + WHY Trending Panel)
+      │   ├─ 필터 칩 (상위 8개 코인) + 자체 시간 필터
+      │   ├─ 3D Force-directed 그래프 (nodeThreeObject 커스텀)
+      │   └─ WHY Panel (ScoreBreakdown/AiReasoning/Source/Phrase/Narrative/EventTimeline)
+      ├─ CoinCard Grid (반응형 3열, FOMO=🔥/🟠 FUD=🔻 뱃지)
+      │   └─ 클릭 → CoinDetail 모달 (signalType 연동)
       │       ├─ 스코어, 멘션, 센티먼트 게이지
+      │       ├─ 7일 추이 차트 (멘션+센티먼트+FOMO+가격+이벤트)
       │       ├─ 관련 엔티티 태그
-      │       └─ 관련 게시물 10개 (Reddit 링크)
-      └─ SignalTimeline 사이드바 (i18n)
-          └─ Trending / Top Signals
+      │       └─ 관련 게시물 10개
 ```
 
 ---
@@ -448,6 +482,7 @@ supabase/migrations/021_crypto_prices.sql    crypto_coins + crypto_prices 테이
 supabase/migrations/026_add_sentiments_metadata.sql  crypto_sentiments.metadata JSONB 컬럼 추가
 supabase/migrations/027_crypto_backtest.sql          crypto_backtest_results 테이블 + crypto_backtest_summary 뷰
 supabase/migrations/028_signal_label_heat.sql        signal_label buy/sell → heat 스케일 전환 (CHECK 제약 + 데이터 + 뷰)
+supabase/migrations/029_signal_type_fomo_fud.sql      signal_type 컬럼 + CHECK + UNIQUE 재정의 + backtest_summary 뷰 재생성
 supabase/migrations/031_signal_scoring_v2.sql        Signal V2 컬럼 추가 (z_score, source_count, contrarian_warning, sentiment_skew, detected_events, event_modifier)
 supabase/functions/analyze-crypto-sentiment/index.ts   Reddit/Telegram 센티먼트 분석 — narratives/events 필드 포함
 supabase/functions/analyze-threads-sentiment/index.ts  Threads 전용 센티먼트 분석 — narratives/events 필드 포함
@@ -517,6 +552,23 @@ app/api/crypto/trending-explain/route.ts  시점 통일 (now→computed_at), 폴
 app/api/crypto/crawl/route.ts         센티먼트 배치 크기 100→200 (2026-03-21)
 supabase/functions/analyze-crypto-sentiment/index.ts  Gemini 2.5 Flash + 배치 모드(최대 10건) + maxOutputTokens 4096 (2026-03-21)
 supabase/migrations/030_sentiment_filter_rpc.sql      RPC 룰베이스 필터 — 멘션≥1 + 길이≥30자 + source 반환 (2026-03-21)
+lib/crypto/signal-generator.ts           FOMO/FUD 분리 — fetchWindowData 1회 + signalType별 필터/스코어 (2026-03-21)
+lib/crypto/score-utils.ts                normalizeSentimentForFud + normalizeFud 추가 (2026-03-21)
+lib/crypto/backtester.ts                 evaluateHit FUD 분기 + signal_type 컬럼 처리 (2026-03-21)
+types/crypto.ts                          SignalType 추가, CryptoSignal/BacktestResult에 signal_type (2026-03-21)
+app/api/crypto/signals/route.ts          signal_type 필터 + force-dynamic (2026-03-21)
+app/api/crypto/backtest/route.ts         signal_type 필터 + force-dynamic (2026-03-21)
+app/api/crypto/trending-explain/route.ts signal_type 필터 + FUD normalization 분기 + force-dynamic (2026-03-21)
+app/api/crypto/network/route.ts          signal_type 필터 (2026-03-21)
+app/api/crypto/history/route.ts          crypto_prices JOIN → price_usd 필드 추가 (2026-03-21)
+components/crypto/CoinCard.tsx           FOMO/FUD 별도 색상 맵 (FUD=purple/rose, 🔻) (2026-03-21)
+components/crypto/CoinDetail.tsx         signalType prop + 가격 라인 차트 + signal_type API 전달 (2026-03-21)
+components/crypto/SignalNetwork.tsx       signal_type 전달 (fetchOwnSignals/fetchNetwork/fetchExplain) + 캐시 키 수정 + mb-3 (2026-03-21)
+components/crypto/BacktestReport.tsx     signalType prop + mb-3 (2026-03-21)
+components/crypto/SignalTimeline.tsx      signalType prop + FUD 시각 구분 (2026-03-21)
+components/crypto/TimeWindowSelector.tsx whitespace-nowrap 추가 (2026-03-21)
+app/[locale]/crypto/CryptoDashboard.tsx  FOMO/FUD 토글 + 필터 바 상단 이동 + CoinDetail signalType 전달 (2026-03-21)
+lib/i18n.ts                              crypto.fomo/fud/price × 5개 언어 추가 (2026-03-21)
 ```
 
 ---
@@ -725,12 +777,12 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | crypto_posts | id (uuid) | source_id | — |
 | crypto_mentions | id | — | post_id → crypto_posts |
 | crypto_sentiments | id | post_id | post_id → crypto_posts | metadata JSONB (narratives/events) |
-| crypto_signals | id | (coin_symbol, time_window, computed_at) | — | V2: z_score, source_count, contrarian_warning, sentiment_skew, detected_events[], event_modifier |
+| crypto_signals | id | (coin_symbol, time_window, signal_type, computed_at) | — | signal_type('fomo'/'fud') + V2: z_score, source_count, contrarian_warning, sentiment_skew, detected_events[], event_modifier |
 | crypto_entities | id | (entity_type, name) | — |
 | crypto_relations | id | — | source/target_entity_id → crypto_entities |
 | crypto_coins | id (uuid) | coingecko_id | — |
 | crypto_prices | id (uuid) | — | coingecko_id → crypto_coins |
-| crypto_backtest_results | id (uuid) | (coin_symbol, time_window, signal_at, lookup_window) | — |
+| crypto_backtest_results | id (uuid) | (coin_symbol, time_window, signal_type, signal_at, lookup_window) | — |
 
 ### 주의사항
 - **센티먼트 배치 모드 (2026-03-21)**: Edge Function이 `{posts: [...]}` 배열을 받아 10건 한 번에 분석. 배치 실패 시 개별 `{title, body}` 호출로 자동 폴백. `get_posts_without_sentiment` RPC가 멘션≥1 + 길이≥30자 필터 적용 중 — 조정 시 `030_sentiment_filter_rpc.sql` 수정

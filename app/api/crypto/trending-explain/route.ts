@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import type { TrendingExplainResponse, CryptoSource } from '@/types/crypto';
-import { SIGNAL_WEIGHTS, TIME_WINDOW_MS, NARRATIVE_CLUSTERS } from '@/lib/crypto/config';
+import { SIGNAL_WEIGHTS, TIME_WINDOW_MS, NARRATIVE_CLUSTERS, KG_BOOST as KG_BOOST_CONFIG } from '@/lib/crypto/config';
 import {
   normalizeVelocity,
   normalizeSentiment,
@@ -12,7 +12,9 @@ import {
   normalizeFomo,
   normalizeFud,
   computeMentionConfidence,
+  computeKGBoost,
 } from '@/lib/crypto/score-utils';
+import type { KGContext } from '@/lib/crypto/score-utils';
 
 type PostRow = {
   id: string; source: string; title: string; score: number;
@@ -271,6 +273,91 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // 9. KG Boost computation
+  let kgBoostResult: TrendingExplainResponse['kg_boost'] = undefined;
+  if (coinEntityRow) {
+    try {
+      const { data: allCoinRels } = await supabase
+        .from('crypto_relations')
+        .select('source_entity_id, target_entity_id, relation_type, metadata')
+        .or(`source_entity_id.eq.${coinEntityRow.id},target_entity_id.eq.${coinEntityRow.id}`)
+        .gt('weight', 0);
+
+      type KGRelRow = { source_entity_id: string; target_entity_id: string; relation_type: string; metadata: Record<string, string> | null };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const kgRels = (allCoinRels || []) as any as KGRelRow[];
+
+      const hasRecommends = kgRels.some(r => r.relation_type === 'recommends' && r.target_entity_id === coinEntityRow.id);
+
+      const correlatedEntityIds = kgRels
+        .filter(r => r.relation_type === 'correlates_with')
+        .map(r => r.source_entity_id === coinEntityRow.id ? r.target_entity_id : r.source_entity_id);
+
+      let correlatedHotCount = 0;
+      if (correlatedEntityIds.length > 0) {
+        const { data: corrEntities } = await supabase
+          .from('crypto_entities')
+          .select('name')
+          .in('id', correlatedEntityIds);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const corrSymbols = ((corrEntities || []) as any[]).map(e => e.name as string);
+        if (corrSymbols.length > 0) {
+          const { data: corrSignals } = await supabase
+            .from('crypto_signals')
+            .select('weighted_score')
+            .in('coin_symbol', corrSymbols)
+            .eq('time_window', window)
+            .eq('signal_type', signalType)
+            .gte('weighted_score', KG_BOOST_CONFIG.CORRELATED_HOT_THRESHOLD);
+          correlatedHotCount = corrSignals?.length || 0;
+        }
+      }
+
+      const narrativeEntityIds = kgRels
+        .filter(r => r.relation_type === 'part_of' && r.source_entity_id === coinEntityRow.id)
+        .map(r => r.target_entity_id);
+      let narrativeAvgScore: number | null = null;
+      if (narrativeEntityIds.length > 0) {
+        const { data: peerRels } = await supabase
+          .from('crypto_relations')
+          .select('source_entity_id')
+          .in('target_entity_id', narrativeEntityIds)
+          .eq('relation_type', 'part_of')
+          .gt('weight', 0)
+          .neq('source_entity_id', coinEntityRow.id);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const peerEntityIds = [...new Set(((peerRels || []) as any[]).map(r => r.source_entity_id as string))];
+        if (peerEntityIds.length > 0) {
+          const { data: peerEntities } = await supabase.from('crypto_entities').select('name').in('id', peerEntityIds);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const peerSymbols = ((peerEntities || []) as any[]).map(e => e.name as string);
+          if (peerSymbols.length > 0) {
+            const { data: peerSignals } = await supabase
+              .from('crypto_signals')
+              .select('weighted_score')
+              .in('coin_symbol', peerSymbols)
+              .eq('time_window', window)
+              .eq('signal_type', signalType);
+            if (peerSignals && peerSignals.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              narrativeAvgScore = (peerSignals as any[]).reduce((a, s) => a + (s.weighted_score as number), 0) / peerSignals.length;
+            }
+          }
+        }
+      }
+
+      const eventImpacts: ('positive' | 'negative' | 'neutral')[] = kgRels
+        .filter(r => r.relation_type === 'impacts' && r.target_entity_id === coinEntityRow.id)
+        .map(r => (r.metadata?.impact as 'positive' | 'negative' | 'neutral') || 'neutral');
+
+      const kgCtx: KGContext = { hasRecommends, correlatedHotCount, narrativeAvgScore, eventImpacts };
+      const { boost, multiplier, details } = computeKGBoost(kgCtx);
+      if (details.length > 0) {
+        kgBoostResult = { boost: Math.round(boost * 100) / 100, multiplier, details };
+      }
+    } catch { /* KG boost query failed, skip */ }
+  }
+
   const response: TrendingExplainResponse = {
     coin_symbol: coin,
     score_breakdown: {
@@ -287,6 +374,7 @@ export async function GET(req: NextRequest) {
     narratives,
     events,
     price,
+    kg_boost: kgBoostResult,
   };
 
   return NextResponse.json(response);

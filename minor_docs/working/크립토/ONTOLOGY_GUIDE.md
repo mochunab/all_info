@@ -2,6 +2,8 @@
 
 > 최종 갱신: 2026-03-21
 > "온톨로지 없는 시그널은 숫자일 뿐이고, 시그널 없는 온톨로지는 박물관이다."
+>
+> ⚠️ **현재 상태**: 온톨로지가 시각화 전용으로만 사용됨. `signal-generator.ts`, `score-utils.ts`, `backtester.ts`에서 `crypto_entities`/`crypto_relations` 참조 **0회**. 시그널 스코어 계산에 온톨로지가 전혀 기여하지 않는 상태. → 섹션 13 "리서치 인사이트"와 섹션 14 "로드맵 v2" 참조.
 
 ---
 
@@ -308,15 +310,17 @@ supabase/migrations/
 
 ---
 
-## 12. 로드맵
+## 12. 로드맵 (레거시 — v2는 섹션 14 참조)
 
-### Phase A — 데이터 소스 확장 (다음 우선순위)
+### Phase A — 데이터 소스 확장 ✅ 완료 (2026-03-21)
 
-| 항목 | 상태 | 임팩트 |
-|------|------|--------|
-| Reddit API 승인 → 크롤링 시작 | 승인 대기 중 | source_count ↑, confidence ↑ |
-| Threads 토큰 발급 → 크롤링 시작 | 테스터 등록 블로커 | 3번째 소스 활성화 |
-| Discord 봇 연동 | DM 피칭 4건, 응답 대기 | 커뮤니티 심층 데이터 |
+| 항목 | 상태 |
+|------|------|
+| Reddit 크롤링 | ✅ 공개 JSON 엔드포인트로 동작 중 (OAuth 미사용) |
+| Threads 토큰 발급 + 크롤링 | ✅ 토큰 발급 완료, ❌ 자기 게시물만 반환 → 비활성화 |
+| Twitter/X 크롤링 | ✅ Apify 연동 완료 (12시간 간격) |
+| Telegram 크롤링 | ✅ 25개 공개 채널 웹 스크래핑 |
+| Discord 봇 연동 | ⏳ DM 피칭 4건, 응답 대기 |
 
 ### Phase B — 온톨로지 고도화 ✅ 완료 (2026-03-21)
 
@@ -332,34 +336,150 @@ supabase/migrations/
 
 | 항목 | 상태 |
 |------|------|
-| 내러티브/이벤트 클러스터 하이라이트 (노드 클릭 → 소속 코인 하이라이트) | ✅ |
-| 이벤트 타임라인 (API + EventTimeline 컴포넌트 + WhyTrendingPanel 통합) | ✅ |
-| 추론 경로 표시 (narrative/event 노드 클릭 → 관련 경로 하이라이트) | ✅ |
-| CoinDetail 차트 강화 (FOMO 라인 + 이벤트 ReferenceLine) | ✅ |
+| 내러티브/이벤트 클러스터 하이라이트 | ✅ |
+| 이벤트 타임라인 | ✅ |
+| 추론 경로 표시 | ✅ |
+| CoinDetail 차트 강화 | ✅ |
 
 ### Phase D — 백테스팅 ✅ 완료 (2026-03-21)
 
 | 항목 | 상태 |
 |------|------|
-| DB 테이블 `crypto_backtest_results` + 집계 뷰 `crypto_backtest_summary` | ✅ |
-| 백테스트 로직 `backtester.ts` (runBacktest + evaluatePending) | ✅ |
-| API `/api/crypto/backtest` (라벨별/코인별 적중률, 최근 결과) | ✅ |
-| 파이프라인 Phase 6 (battle → backtest 체이닝) | ✅ |
-| BacktestReport UI (아코디언, 적중률 바, 코인별, 최근 결과) | ✅ |
-| i18n 7키 × 5언어 | ✅ |
-| 초기 데이터 788개 레코드 기록 (가격 축적 대기) | ✅ |
+| 백테스트 전체 파이프라인 + UI + API | ✅ |
+| 초기 데이터 788개 레코드 (가격 축적 대기) | ✅ |
 
-### Phase E — 추가 분석 (미완료)
+---
 
-| 항목 | 설명 | 난이도 |
-|------|------|--------|
-| **알림 시스템** | velocity>2.0 & score≥60 → 이메일/Discord 웹훅 알림 | 중 |
-| **AI 채팅 온톨로지 연동** | chat-insight에 그래프 컨텍스트 주입 → "DOGE가 왜 뜨는지" 관계 기반 답변 | 높음 |
+## 13. 온톨로지 × 예측 — 리서치 인사이트
 
-### Phase F — 플랫폼 분리
+> 조사일: 2026-03-21
+> 목적: 온톨로지/지식그래프가 실제 **예측**에 쓰이는 프로젝트와 학술 연구를 조사하여, 현재 "시각화 전용" 상태인 온톨로지를 시그널 계산에 연결하기 위한 근거와 방향성 확보.
 
-| 항목 | 설명 | 난이도 |
-|------|------|--------|
-| **독립 도메인** | Insight Hub에서 크립토 전용 앱으로 분리 | 높음 |
-| **Neo4j 마이그레이션** | Supabase RDBMS → Neo4j 그래프 DB (Cypher 쿼리, 경로 탐색) | 높음 |
-| **ReBAC 권한 체계** | 관계 기반 접근 제어 — 유료/무료 티어별 그래프 깊이 제한 | 높음 |
+### 13.1 핵심 발견
+
+**온톨로지는 예측에 실질적으로 기여한다.** 단, 핵심은 "어떤 메커니즘으로 KG 구조를 예측 모델에 주입하는가"이며, 현재 우리 프로젝트는 이 배선이 빠져 있다.
+
+### 13.2 금융/크립토 KG 예측 프로젝트
+
+| 프로젝트 | ⭐ | 메커니즘 | 배울 점 |
+|---------|-----|---------|---------|
+| **DANSMP** — Dual Attention Network for Stock Movement | 55 | 기업 간 산업·공급망·주주 관계로 이종 KG 구성 → 이중 어텐션(엔티티+관계)으로 시그널 전파 | 관계 **타입별 가중치**가 다르다는 점. `correlates_with`와 `recommends`의 예측력이 다름 |
+| **ChatGPT-GNN-StockPredict** | 50 | LLM으로 뉴스에서 관계 추출 → 동적 그래프 → GNN 예측 | **우리가 이미 LLM으로 관계 추출 중**. GNN만 붙이면 동일 아키텍처 |
+| **Market-Trend-Prediction** (DJIA) | 63 | KG가 가격·뉴스·센티먼트를 연결하는 **시그널 통합 레이어** 역할 | KG를 별도 시각화가 아닌 시그널 파이프라인의 중간 레이어로 배치 |
+| **Correlation GCN-LSTM** | 38 | 주식 간 상관관계 인접 행렬 → GCN → LSTM 시계열 예측 | 단순 상관관계 그래프만으로도 GNN 예측에 유의미한 구조 제공 |
+| **CryptoKG** | 0 | NLP 파이프라인으로 크립토 텍스트 → Neo4j KG 구축 | 추출 파이프라인 참고 (우리는 이미 유사하게 구현) |
+
+**출처:**
+- DANSMP: https://github.com/trytodoit227/DANSMP
+- ChatGPT-GNN: https://github.com/ZihanChen1995/ChatGPT-GNN-StockPredict
+- Market-Trend: https://github.com/Cheng-Lin-Li/Market-Trend-Prediction
+- Correlation GCN-LSTM: https://github.com/troyyxk/correlation_gcn_lstm_prediction
+- CryptoKG: https://github.com/minalbansal14/CryptoKG-Cryptocurrency-Knowledge-Graph--NLP
+
+### 13.3 범용 KG 예측 도구 & 프레임워크
+
+| 프로젝트 | ⭐ | 용도 | 배울 점 |
+|---------|-----|------|---------|
+| **PyKEEN** | 1,961 | KG 임베딩 학습 (TransE, ComplEx, RotatE 등 40+ 모델) | KG 기반 예측의 **기반 도구**. 링크 예측 = "이 관계가 앞으로 생길까?" |
+| **AmpliGraph** (Accenture) | 2,229 | 프로덕션용 KG 임베딩 | 빠른 프로토타이핑에 적합 |
+| **DGL-KE** (AWS) | 1,330 | 대규모 KG 임베딩 (멀티 GPU) | 스케일링 시 참고 |
+| **GraphCare** (ICLR 2024) | 200 | 환자별 **개인화 서브그래프** 추출 → GNN → 임상 결과 예측 | **코인별 서브그래프 추출** 패턴. 전체 KG 대신 관련 이웃만 추출하여 예측 |
+| **KGAT** (KDD 2019) | 1,158 | 그래프 어텐션으로 KG 이웃 정보 선택적 증폭 → 추천 | **어텐션 기반 시그널 부스팅**. 어떤 관계가 중요한지 모델이 자동 학습 |
+| **RippleNet** (CIKM 2018) | 592 | 관심이 KG 위에서 물결처럼 전파 | 인플루언서 → 코인 → 연관 코인으로 시그널 전파하는 패턴 |
+
+**출처:**
+- PyKEEN: https://github.com/pykeen/pykeen
+- AmpliGraph: https://github.com/Accenture/AmpliGraph
+- DGL-KE: https://github.com/awslabs/dgl-ke
+- GraphCare: https://github.com/pat-jj/GraphCare (ICLR 2024)
+- KGAT: https://github.com/xiangwang1223/knowledge_graph_attention_network (KDD 2019)
+- RippleNet: https://github.com/hwwang55/RippleNet (CIKM 2018)
+
+### 13.4 시계열 KG (Temporal Knowledge Graph) 예측
+
+| 프로젝트 | ⭐ | 메커니즘 | 배울 점 |
+|---------|-----|---------|---------|
+| **RE-GCN** | 162 | GCN(구조) + GRU(시간) 결합. 매 타임스탬프마다 그래프 구조 변화 → 엔티티 임베딩 진화 | **우리에게 가장 적합한 모델**. KG 구조 + 시간 변화 동시 학습 |
+| **CyGNet** | 107 | 반복 패턴 감지: "과거에 이 사실이 있었으면 복사, 아니면 새로 생성" | 크립토 이벤트 반복 패턴 (상장 → 펌프) 감지에 적합 |
+| **GenTKG** (NAACL 2024) | 62 | KG 데이터를 텍스트로 직렬화 → LLM이 미래 이벤트 예측 | GNN 없이 **LLM 프롬프트만으로** 시계열 KG 예측 가능. 엔지니어링 비용 최소 |
+| **xERTE** | 51 | 시계열 서브그래프 추출 + 어텐션 → **설명 가능한** 예측 | WHY 패널과 자연스럽게 결합. "이 예측의 근거가 되는 시계열 경로" 표시 |
+| **TLogic** | 53 | 시계열 논리 규칙 학습: "X가 t에 A하면 Y가 t+Δ에 B한다" | 완전 해석 가능한 규칙 기반. "고래 축적 → 3일 내 상장 → 가격 급등" 같은 패턴 |
+
+**출처:**
+- RE-GCN: https://github.com/Lee-zix/RE-GCN
+- CyGNet: https://github.com/CunchaoZ/CyGNet
+- GenTKG: https://github.com/mayhugotong/GenTKG (NAACL 2024)
+- xERTE: https://github.com/TemporalKGTeam/xERTE
+- TLogic: https://github.com/liu-yushan/TLogic
+
+### 13.5 이벤트 기반 KG 예측
+
+| 프로젝트 | ⭐ | 메커니즘 | 배울 점 |
+|---------|-----|---------|---------|
+| **EvCBR** (WWW 2023) | 18 | 케이스 기반 추론: 새 상황 → KG에서 유사 과거 사례 검색 → 결과 예측 | "지난 5번 이 패턴에서 결과가 X였다" — 백테스트 데이터와 결합 가능 |
+| **TKG-Forecasting-Evaluation** (NEC) | 36 | 시계열 KG 예측 방법론 벤치마크 | 어떤 TKG 방법이 실제로 작동하는지 비교 기준 |
+
+**출처:**
+- EvCBR: https://github.com/solashirai/WWW-EvCBR (WWW 2023)
+- TKG Evaluation: https://github.com/nec-research/TKG-Forecasting-Evaluation
+
+### 13.6 검증된 아키텍처 패턴 7가지
+
+| 패턴 | 설명 | 대표 프로젝트 | 우리 적용 가능성 |
+|------|------|-------------|----------------|
+| **A. KG = 시그널 통합 레이어** | 이종 데이터(가격, 센티먼트, 온체인, 소셜)를 관계로 연결 | Market-Trend, UUKG, GraphCare | ✅ 이미 구조 있음. 시그널 계산에 연결만 하면 됨 |
+| **B. 어텐션 기반 시그널 부스팅** | 그래프 어텐션으로 관계별 가중치 자동 학습 | KGAT (⭐1,158), DANSMP | 🟡 중기. 어떤 관계가 예측력 높은지 자동 발견 |
+| **C. 시계열 KG + 진화 임베딩** | GCN(구조) + GRU(시간) 결합 | RE-GCN (⭐162), CyGNet | 🟡 중기. 관계 변화 패턴 학습 |
+| **D. 서브그래프 추출** | 예측 대상별 이웃 서브그래프만 추출 → 경량 추론 | SumGNN, GraphCare (⭐200) | ✅ 즉시. trending-explain이 이미 서브그래프 개념 |
+| **E. KG 임베딩 + 시계열 모델** | KG 임베딩(구조) + LSTM/GRU(시간) 2레이어 | DDI-KGE-ConvLSTM, Corr-GCN-LSTM | 🔴 장기. ML 파이프라인 필요 |
+| **F. LLM = KG 추출기 + 추론기** | LLM으로 KG 구축 + KG 위에서 LLM 추론 | ChatGPT-GNN (⭐50), GenTKG | ✅ 즉시. 이미 LLM 추출 중. GenTKG 방식으로 확장 가능 |
+| **G. 케이스/규칙 기반 시계열 추론** | 과거 KG 상태 매칭 or 시계열 논리 규칙 학습 | TLogic (⭐53), EvCBR | 🟡 중기. 백테스트 데이터 축적 후 |
+
+---
+
+## 14. 로드맵 v2 — 온톨로지를 예측에 연결하기
+
+### Phase G — 즉시 가능: 룰 기반 KG → 시그널 피드백 (코드 변경만)
+
+> 새 모델/인프라 없이 `signal-generator.ts`에서 `crypto_relations` 조회만 추가.
+> 패턴 A(시그널 통합 레이어) + 패턴 F(LLM 추론) 적용.
+
+| # | 항목 | 설명 | 난이도 |
+|---|------|------|--------|
+| 1 | **인플루언서 recommends 부스트** | recommends 관계 존재 시 해당 코인 score ×1.15~1.25 | 낮음 |
+| 2 | **correlates_with 동반 시그널** | 상관 코인이 hot이면 연결 코인 trend 보정 (+0.1~0.2) | 낮음 |
+| 3 | **이벤트 임팩트 가중** | impacts 관계의 impact 방향(+/-)을 sentiment에 반영 | 낮음 |
+| 4 | **내러티브 모멘텀** | part_of 내러티브의 소속 코인 평균 score가 높으면 개별 코인 부스트 | 낮음 |
+| 5 | **이벤트 타입별 백테스트 적중률** | backtest 데이터에서 이벤트 연관 시그널 적중률 집계 → 이벤트 발생 시 confidence 가중 | 중간 |
+| 6 | **GenTKG 방식 LLM 추론** | 코인 서브그래프를 텍스트로 직렬화 → LLM에 "향후 24h 전망" 프롬프트 → WHY 패널에 표시 | 중간 |
+
+### Phase H — 중기: KG 임베딩 + 시계열 KG
+
+> 패턴 B(어텐션 부스팅) + 패턴 C(시계열 KG) + 패턴 G(케이스 추론) 적용.
+> PyKEEN 또는 AmpliGraph로 KG 임베딩 생성 → 시그널 피처로 주입.
+
+| # | 항목 | 설명 | 난이도 |
+|---|------|------|--------|
+| 7 | **KG 임베딩 생성** | PyKEEN으로 코인/인플루언서/내러티브 벡터 학습 → 코인 간 유사도 계산 | 중간 |
+| 8 | **시계열 관계 강도 기록** | crypto_relations에 시간 윈도우별 weight 스냅샷 저장 → "최근 3일간 강해진 관계" 감지 | 중간 |
+| 9 | **케이스 기반 패턴 매칭** | 현재 KG 상태를 과거 KG 스냅샷과 비교 → 유사 패턴의 가격 결과 참조 (EvCBR 방식) | 높음 |
+| 10 | **어텐션 기반 관계 가중치 학습** | 백테스트 적중률 데이터로 어떤 관계 타입이 예측력 높은지 자동 학습 | 높음 |
+
+### Phase I — 장기: GNN 예측 파이프라인
+
+> 패턴 E(KG임베딩+시계열) 적용. 별도 ML 서빙 인프라 필요.
+
+| # | 항목 | 설명 | 난이도 |
+|---|------|------|--------|
+| 11 | **GCN + GRU 모델** | RE-GCN 방식으로 KG 구조 + 시간 변화 동시 학습 → 시그널 예측 | 매우 높음 |
+| 12 | **Neo4j 마이그레이션** | Supabase RDBMS → Neo4j (Cypher 경로 쿼리, 멀티홉 추론) | 높음 |
+| 13 | **설명 가능한 예측 경로** | xERTE 방식으로 예측 근거가 되는 시계열 KG 경로 시각화 | 높음 |
+
+### 기존 Phase E/F (유지)
+
+| # | 항목 | 상태 |
+|---|------|------|
+| - | 알림 시스템 (velocity>2.0 & score≥60) | 미완료 |
+| - | AI 채팅 온톨로지 연동 | 미완료 |
+| - | 크립토 전용 플랫폼 분리 | 미완료 |
+| - | ReBAC 권한 체계 | 미완료 |

@@ -7,6 +7,7 @@ import {
   CROSS_PLATFORM_MULTIPLIERS,
   CONTRARIAN_THRESHOLD,
   EVENT_TYPE_PATTERNS,
+  KG_BOOST,
 } from '@/lib/crypto/config';
 
 export function clamp(value: number, min: number, max: number): number {
@@ -115,4 +116,44 @@ export function computeEventModifier(
     }
   }
   return { modifier: clamp(total, -30, 25), events: detected };
+}
+
+// ── Knowledge Graph Boost ──
+
+export type KGContext = {
+  hasRecommends: boolean;
+  correlatedHotCount: number;
+  narrativeAvgScore: number | null;
+  eventImpacts: ('positive' | 'negative' | 'neutral')[];
+};
+
+export function computeKGBoost(ctx: KGContext): { boost: number; multiplier: number; details: string[] } {
+  let boost = 0;
+  let multiplier = 1.0;
+  const details: string[] = [];
+
+  if (ctx.hasRecommends) {
+    multiplier = KG_BOOST.INFLUENCER_RECOMMENDS;
+    details.push('influencer_recommends');
+  }
+
+  if (ctx.correlatedHotCount > 0) {
+    boost += KG_BOOST.CORRELATED_HOT_BOOST * Math.min(ctx.correlatedHotCount, 3);
+    details.push(`correlated_hot×${Math.min(ctx.correlatedHotCount, 3)}`);
+  }
+
+  if (ctx.narrativeAvgScore !== null && ctx.narrativeAvgScore >= KG_BOOST.NARRATIVE_MOMENTUM_THRESHOLD) {
+    boost += KG_BOOST.NARRATIVE_MOMENTUM_BOOST;
+    details.push('narrative_momentum');
+  }
+
+  for (const impact of ctx.eventImpacts) {
+    if (impact === 'positive') boost += KG_BOOST.EVENT_IMPACT_POSITIVE;
+    else if (impact === 'negative') boost += KG_BOOST.EVENT_IMPACT_NEGATIVE;
+  }
+  if (ctx.eventImpacts.length > 0) details.push(`event_impacts×${ctx.eventImpacts.length}`);
+
+  boost = clamp(boost, -KG_BOOST.MAX_TOTAL_BOOST, KG_BOOST.MAX_TOTAL_BOOST);
+
+  return { boost, multiplier, details };
 }

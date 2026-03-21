@@ -50,7 +50,7 @@ export default function WhyTrendingPanel({ data, language }: Props) {
       <div className="h-px bg-[var(--border)]" />
 
       {/* A. Score Breakdown */}
-      <ScoreBreakdown breakdown={data.score_breakdown} language={language} />
+      <ScoreBreakdown breakdown={data.score_breakdown} kgBoost={data.kg_boost} language={language} />
 
       <div className="h-px bg-[var(--border)]" />
 

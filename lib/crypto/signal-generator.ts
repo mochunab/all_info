@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TimeWindow, SignalType, SignalComputeResult, TopPostSummary } from '@/types/crypto';
-import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS } from '@/lib/crypto/config';
+import { TIME_WINDOWS, TIME_WINDOW_MS, SIGNAL_WEIGHTS, KG_BOOST as KG_BOOST_CONFIG } from '@/lib/crypto/config';
 import {
   clamp,
   normalizeVelocity,
@@ -18,7 +18,9 @@ import {
   computeCrossPlatformMultiplier,
   computeContrarianWarning,
   computeEventModifier,
+  computeKGBoost,
 } from '@/lib/crypto/score-utils';
+import type { KGContext } from '@/lib/crypto/score-utils';
 import { ZSCORE_ROLLING_PERIODS } from '@/lib/crypto/config';
 
 type WindowRawData = {
@@ -33,6 +35,7 @@ type WindowRawData = {
   prevSentimentMap: Map<string, number[]>;
   rankMap: Map<string, number | null>;
   historicalCounts: Map<string, number[]>;
+  kgContextMap: Map<string, KGContext>;
 };
 
 async function fetchWindowData(
@@ -144,7 +147,95 @@ async function fetchWindowData(
     }
   }
 
-  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, historicalCounts };
+  // ── Knowledge Graph context per coin ──
+  const kgContextMap = new Map<string, KGContext>();
+  try {
+    const { data: coinEntities } = await supabase
+      .from('crypto_entities')
+      .select('id, name')
+      .eq('entity_type', 'coin')
+      .in('name', allSymbols);
+
+    if (coinEntities && coinEntities.length > 0) {
+      const entityIdToSymbol = new Map<string, string>();
+      const symbolToEntityId = new Map<string, string>();
+      for (const e of coinEntities) {
+        entityIdToSymbol.set(e.id, e.name);
+        symbolToEntityId.set(e.name, e.id);
+      }
+      const entityIds = coinEntities.map(e => e.id);
+
+      const { data: relations } = await supabase
+        .from('crypto_relations')
+        .select('source_entity_id, target_entity_id, relation_type, metadata')
+        .gt('weight', 0)
+        .or(`source_entity_id.in.(${entityIds.join(',')}),target_entity_id.in.(${entityIds.join(',')})`);
+
+      // Pre-build per-coin KG context
+      const recommendsSet = new Set<string>();
+      const correlatedCoins = new Map<string, string[]>();
+      const narrativeCoins = new Map<string, string[]>(); // narrativeEntityId → coin symbols
+      const eventImpactsMap = new Map<string, ('positive' | 'negative' | 'neutral')[]>();
+
+      for (const rel of relations || []) {
+        const srcSymbol = entityIdToSymbol.get(rel.source_entity_id);
+        const tgtSymbol = entityIdToSymbol.get(rel.target_entity_id);
+
+        if (rel.relation_type === 'recommends' && tgtSymbol) {
+          recommendsSet.add(tgtSymbol);
+        }
+        if (rel.relation_type === 'correlates_with' && srcSymbol && tgtSymbol) {
+          if (!correlatedCoins.has(srcSymbol)) correlatedCoins.set(srcSymbol, []);
+          correlatedCoins.get(srcSymbol)!.push(tgtSymbol);
+          if (!correlatedCoins.has(tgtSymbol)) correlatedCoins.set(tgtSymbol, []);
+          correlatedCoins.get(tgtSymbol)!.push(srcSymbol);
+        }
+        if (rel.relation_type === 'part_of' && srcSymbol) {
+          const narrativeId = rel.target_entity_id;
+          if (!narrativeCoins.has(narrativeId)) narrativeCoins.set(narrativeId, []);
+          narrativeCoins.get(narrativeId)!.push(srcSymbol);
+        }
+        if (rel.relation_type === 'impacts' && tgtSymbol) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const impact = (rel.metadata as any)?.impact || 'neutral';
+          if (!eventImpactsMap.has(tgtSymbol)) eventImpactsMap.set(tgtSymbol, []);
+          eventImpactsMap.get(tgtSymbol)!.push(impact);
+        }
+      }
+
+      for (const symbol of allSymbols) {
+        kgContextMap.set(symbol, {
+          hasRecommends: recommendsSet.has(symbol),
+          correlatedHotCount: 0,
+          narrativeAvgScore: null,
+          eventImpacts: eventImpactsMap.get(symbol) || [],
+        });
+      }
+
+      // correlatedHotCount and narrativeAvgScore are resolved in computeSignals (needs scores)
+      // Store raw correlations for deferred resolution
+      for (const [symbol, correlated] of correlatedCoins) {
+        const ctx = kgContextMap.get(symbol);
+        if (ctx) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (ctx as any)._correlatedSymbols = correlated;
+        }
+      }
+      for (const [narrativeId, coins] of narrativeCoins) {
+        for (const symbol of coins) {
+          const ctx = kgContextMap.get(symbol);
+          if (ctx) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (ctx as any)._narrativePeers = coins.filter(c => c !== symbol);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('⚠️ [시그널] KG 컨텍스트 조회 실패 (무시):', e instanceof Error ? e.message : 'unknown');
+  }
+
+  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, historicalCounts, kgContextMap };
 }
 
 function computeSignals(
@@ -205,6 +296,18 @@ function computeSignals(
 
   const results: SignalComputeResult[] = [];
 
+  type Intermediate = {
+    symbol: string;
+    agg: CoinAgg;
+    baseWeightedScore: number;
+    velocity: number; avgSentiment: number; sentimentTrend: number; engagementPerMention: number;
+    zScore: number; sourceCount: number;
+    contrarianWarning: 'potential_reversal' | 'potential_bounce' | null;
+    sentimentSkew: number;
+    detectedEvents: string[]; eventModifier: number;
+  };
+  const intermediates: Intermediate[] = [];
+
   for (const [symbol, agg] of coinMap) {
     const prevCount = raw.prevCounts.get(symbol) || 0;
     const velocity = prevCount > 0 ? (agg.mentions - prevCount) / prevCount : 0;
@@ -262,31 +365,69 @@ function computeSignals(
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
       fomoFudNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
-    const weightedScore = clamp(
-      rawScore * mentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + eventModifier,
-      0, 100
-    );
+    const baseWeightedScore =
+      rawScore * mentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + eventModifier;
 
     agg.posts.sort((a, b) => b.score - a.score);
 
+    intermediates.push({
+      symbol,
+      agg,
+      baseWeightedScore,
+      velocity, avgSentiment, sentimentTrend, engagementPerMention,
+      zScore, sourceCount, contrarianWarning, sentimentSkew,
+      detectedEvents, eventModifier,
+    });
+  }
+
+  // ── Pass 2: Resolve KG boosts (needs cross-coin scores) ──
+  const baseScoreMap = new Map<string, number>();
+  for (const item of intermediates) {
+    baseScoreMap.set(item.symbol, item.baseWeightedScore);
+  }
+
+  for (const item of intermediates) {
+    const kgCtx = raw.kgContextMap.get(item.symbol) || {
+      hasRecommends: false, correlatedHotCount: 0, narrativeAvgScore: null, eventImpacts: [],
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const correlatedSymbols: string[] = (kgCtx as any)._correlatedSymbols || [];
+    kgCtx.correlatedHotCount = correlatedSymbols.filter(
+      s => (baseScoreMap.get(s) || 0) >= KG_BOOST_CONFIG.CORRELATED_HOT_THRESHOLD
+    ).length;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const narrativePeers: string[] = (kgCtx as any)._narrativePeers || [];
+    if (narrativePeers.length > 0) {
+      const peerScores = narrativePeers.map(s => baseScoreMap.get(s) || 0).filter(s => s > 0);
+      kgCtx.narrativeAvgScore = peerScores.length > 0
+        ? peerScores.reduce((a, b) => a + b, 0) / peerScores.length
+        : null;
+    }
+
+    const { boost: kgBoost, multiplier: kgMultiplier, details: kgDetails } = computeKGBoost(kgCtx);
+    const weightedScore = clamp(item.baseWeightedScore * kgMultiplier + kgBoost, 0, 100);
+
     results.push({
-      coin_symbol: symbol,
+      coin_symbol: item.symbol,
       time_window: window,
       signal_type: signalType,
-      mention_count: agg.mentions,
-      mention_velocity: Math.round(velocity * 10000) / 10000,
-      avg_sentiment: Math.round(avgSentiment * 1000) / 1000,
-      sentiment_trend: Math.round(sentimentTrend * 1000) / 1000,
+      mention_count: item.agg.mentions,
+      mention_velocity: Math.round(item.velocity * 10000) / 10000,
+      avg_sentiment: Math.round(item.avgSentiment * 1000) / 1000,
+      sentiment_trend: Math.round(item.sentimentTrend * 1000) / 1000,
       weighted_score: Math.round(weightedScore * 100) / 100,
-      engagement_score: Math.round(engagementPerMention * 100) / 100,
+      engagement_score: Math.round(item.engagementPerMention * 100) / 100,
       signal_label: computeSignalLabel(weightedScore),
-      top_posts: agg.posts.slice(0, 5),
-      z_score: Math.round(zScore * 1000) / 1000,
-      source_count: sourceCount,
-      contrarian_warning: contrarianWarning,
-      sentiment_skew: sentimentSkew,
-      detected_events: detectedEvents.length > 0 ? detectedEvents : undefined,
-      event_modifier: eventModifier !== 0 ? eventModifier : undefined,
+      top_posts: item.agg.posts.slice(0, 5),
+      z_score: Math.round(item.zScore * 1000) / 1000,
+      source_count: item.sourceCount,
+      contrarian_warning: item.contrarianWarning,
+      sentiment_skew: item.sentimentSkew,
+      detected_events: item.detectedEvents.length > 0 ? item.detectedEvents : undefined,
+      event_modifier: item.eventModifier !== 0 ? item.eventModifier : undefined,
+      kg_boost: kgDetails.length > 0 ? { boost: Math.round(kgBoost * 100) / 100, multiplier: kgMultiplier, details: kgDetails } : undefined,
     });
   }
 

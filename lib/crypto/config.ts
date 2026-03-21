@@ -23,34 +23,30 @@ export const TELEGRAM_CHANNELS: readonly TelegramChannelConfig[] = [
   // 대형 — 거래소/뉴스 (10만+)
   { username: 'binance_announcements', weight: 0.7, language: 'en' },
   { username: 'OKXannouncements', weight: 0.7, language: 'en' },
-  { username: 'cryptoVIPsignalTA', weight: 1.1, language: 'en' },
   { username: 'CoinTelegraph', weight: 1.0, language: 'en' },
   { username: 'whale_alert_io', weight: 1.2, language: 'en' },
   { username: 'Bitcoin', weight: 1.0, language: 'en' },
   { username: 'crypto', weight: 1.0, language: 'en' },
+  { username: 'coinbureau', weight: 1.0, language: 'en' },
+  { username: 'WatcherGuru', weight: 1.0, language: 'en' },
   // 대형 — 트레이딩 시그널 (10만+)
+  { username: 'cryptoVIPsignalTA', weight: 1.1, language: 'en' },
   { username: 'BinanceKillers', weight: 1.0, language: 'en' },
   { username: 'WallstreetQueenOfficial', weight: 1.0, language: 'en' },
   { username: 'WolfOfTrading', weight: 1.0, language: 'en' },
   { username: 'BitcoinBullets', weight: 1.0, language: 'en' },
-  { username: 'defimillion', weight: 1.3, language: 'en' },
-  { username: 'icospeaksnews', weight: 1.1, language: 'en' },
+  { username: 'FatPigSignals', weight: 1.1, language: 'en' },
+  { username: 'MyCryptoParadise', weight: 1.0, language: 'en' },
+  { username: 'AltSignals', weight: 1.0, language: 'en' },
+  { username: 'LunarCrush', weight: 1.0, language: 'en' },
   // 중형 — 뉴스/마켓 (1만~10만)
   { username: 'coincodecap', weight: 0.9, language: 'en' },
   { username: 'CryptoSignals', weight: 1.1, language: 'en' },
   { username: 'CryptoSignalAlert', weight: 1.0, language: 'en' },
-  { username: 'memecoinz', weight: 1.1, language: 'en' },
-  { username: 'memecoinx', weight: 1.1, language: 'en' },
-  { username: 'ICODrops', weight: 0.9, language: 'en' },
   { username: 'CryptoWorldNews', weight: 0.9, language: 'en' },
-  { username: 'cryptoevolution', weight: 0.9, language: 'en' },
-  { username: 'cryptorank_news', weight: 0.9, language: 'en' },
   // 밈코인 특화
-  { username: 'Memecoins_Calls', weight: 1.2, language: 'en' },
+  { username: 'memecoinz', weight: 1.1, language: 'en' },
   { username: 'DEXTOOLSPUMPS', weight: 1.3, language: 'en' },
-  { username: 'SolanaMemeCoinss', weight: 1.2, language: 'en' },
-  // 한국어
-  { username: 'memecokr', weight: 1.2, language: 'ko' },
 ] as const;
 
 export const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
@@ -268,6 +264,19 @@ export const ZSCORE_MAX_BOOST = 1.5;
 export const CROSS_PLATFORM_MULTIPLIERS = { SINGLE: 0.7, DUAL: 1.0, MULTI: 1.3 } as const;
 
 export const CONTRARIAN_THRESHOLD = 0.85;
+
+// ── Knowledge Graph → Signal Boost ──
+
+export const KG_BOOST = {
+  INFLUENCER_RECOMMENDS: 1.15,   // recommends 관계 존재 시 ×1.15
+  CORRELATED_HOT_BOOST: 5,       // correlates_with 코인이 hot(score≥60)이면 +5점
+  CORRELATED_HOT_THRESHOLD: 60,
+  NARRATIVE_MOMENTUM_BOOST: 4,   // 내러티브 평균 score ≥ 50이면 +4점
+  NARRATIVE_MOMENTUM_THRESHOLD: 50,
+  EVENT_IMPACT_POSITIVE: 3,      // impacts 관계 impact=positive → +3
+  EVENT_IMPACT_NEGATIVE: -3,     // impacts 관계 impact=negative → -3
+  MAX_TOTAL_BOOST: 15,           // KG 부스트 합계 상한
+} as const;
 
 export const EVENT_TYPE_PATTERNS: Record<string, { keywords: string[]; modifier: number }> = {
   exchange_listing: { keywords: ['listing', 'listed on binance', 'listed on coinbase', 'coinbase listing', 'binance listing', 'upbit listing'], modifier: 15 },

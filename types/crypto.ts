@@ -281,6 +281,7 @@ export type SignalComputeResult = {
   sentiment_skew?: number;
   detected_events?: string[];
   event_modifier?: number;
+  kg_boost?: { boost: number; multiplier: number; details: string[] };
 };
 
 // ── Trending Explain Types ──
@@ -322,6 +323,12 @@ export type TrendingExplainResponse = {
     price_change_pct_24h: number | null;
     volume_24h: number | null;
   } | null;
+
+  kg_boost?: {
+    boost: number;
+    multiplier: number;
+    details: string[];
+  };
 };
 
 // ── API Response Types ──
