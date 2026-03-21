@@ -116,7 +116,7 @@ export async function crawlSubreddit(
     const seen = new Set<string>();
     const allPosts: RedditPost[] = [];
     for (const post of [...hotPosts, ...newPosts]) {
-      if (!seen.has(post.name) && post.score >= minScore) {
+      if (!seen.has(post.name) && post.score >= minScore && (post.upvote_ratio ?? 1) >= 0.5) {
         seen.add(post.name);
         allPosts.push(post);
       }

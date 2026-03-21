@@ -107,11 +107,13 @@ function extractWithMaps(
   for (const coin of coinList) {
     for (const alias of coin.aliases) {
       if (alias.length < 3) continue;
-      const idx = lowerText.indexOf(alias);
-      if (idx !== -1) {
+      const aliasRegex = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      const aliasMatch = aliasRegex.exec(lowerText);
+      if (aliasMatch) {
         const sym = coin.symbol;
         counts.set(sym, (counts.get(sym) || 0) + 1);
         if (!contexts.has(sym)) {
+          const idx = aliasMatch.index;
           const start = Math.max(0, idx - 30);
           const end = Math.min(text.length, idx + alias.length + 30);
           contexts.set(sym, text.slice(start, end).replace(/\n/g, ' ').trim());
