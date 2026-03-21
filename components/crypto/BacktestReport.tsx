@@ -26,6 +26,14 @@ const LABEL_DISPLAY: Record<string, string> = {
   cold: '❄️ Cold',
 };
 
+const LABEL_ORDER: Record<string, number> = {
+  extremely_hot: 0,
+  hot: 1,
+  warm: 2,
+  cool: 3,
+  cold: 4,
+};
+
 function WinRateBar({ rate }: { rate: number }) {
   const color = rate >= 60 ? 'bg-emerald-500' : rate >= 45 ? 'bg-yellow-500' : 'bg-red-500';
   return (
@@ -151,7 +159,7 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
                     <span className="w-16 text-right">{t(language, 'crypto.backtest.avgReturn')}</span>
                     <span className="w-8 text-right">{t(language, 'crypto.backtest.total')}</span>
                   </div>
-                  {data.summary.map((s) => (
+                  {[...data.summary].sort((a, b) => (LABEL_ORDER[a.signal_label] ?? 99) - (LABEL_ORDER[b.signal_label] ?? 99)).map((s) => (
                     <div key={s.signal_label} className="flex items-center gap-3">
                       <span className={`text-xs font-mono w-20 ${LABEL_COLORS[s.signal_label] || 'text-[var(--text-secondary)]'}`}>
                         {LABEL_DISPLAY[s.signal_label] || s.signal_label}
