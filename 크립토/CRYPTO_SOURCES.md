@@ -14,9 +14,9 @@
 ### Twitter/X (✅ 동작 중, Apify)
 - **방식**: Apify `scrape.badger/twitter-tweets-scraper` Actor의 Advanced Search 모드
 - **비용**: Apify 무료 $5/월, $0.0002/결과, 12시간 간격 = 월 ~$1.20
-- **키워드**: `memecoin`, `$DOGE OR $PEPE OR $SHIB`, `$BONK OR $WIF OR $FLOKI`, `crypto pump OR altcoin gem`, `$SOL OR $ETH memecoin`
-- **결과**: 5키워드 × 20결과 = 100트윗/크롤, 172 코인 멘션 추출 확인
-- **12시간 간격**: Apify 무료 플랜($5/월) 제약으로 12시간 간격 유지. `crawl/route.ts`에서 DB의 마지막 twitter crawled_at 체크
+- **키워드 (10개)**: `memecoin`, `$DOGE OR $PEPE OR $SHIB`, `$BONK OR $WIF OR $FLOKI`, `crypto pump OR altcoin gem`, `$SOL OR $ETH memecoin`, `#memecoin OR #memecoins`, `#100xgem OR #moonshot`, `$TRUMP OR $MELANIA OR $VIRTUAL`, `crypto whale OR whale alert`, `$AI16Z OR $AIXBT OR $TAO`
+- **결과**: 10키워드 × 20결과 = 200트윗/크롤
+- **6시간 간격**: Apify 무료 플랜($5/월), 10키워드 × 20결과 × 4회/일 = ~$4.80/월. `crawl/route.ts`에서 DB의 마지막 twitter crawled_at 체크
 - **센티먼트**: 기존 `analyze-crypto-sentiment` Edge Function 재활용
 - **sanitize 필수**: `sanitizeObject()` (JSON round-trip) — lone surrogate + HTML source 필드 정화. hashtags `[{tag: "..."}]` → `string[]` 정규화
 - **Apify 계정**: `predictable_magazine` (한결), User ID: `6ndnAzPtwdxborJRu`

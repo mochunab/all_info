@@ -119,7 +119,7 @@ async function handleCrawl(request: NextRequest) {
       }
 
       if (process.env.APIFY_API_TOKEN) {
-        const TWITTER_INTERVAL_MS = 12 * 60 * 60 * 1000;
+        const TWITTER_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6시간 간격 (10키워드 × 20결과 × 4회/일 = ~$4.80/월, Apify 무료 $5 내)
         const { data: lastTwitter } = await supabase
           .from('crypto_posts')
           .select('crawled_at')
@@ -142,7 +142,7 @@ async function handleCrawl(request: NextRequest) {
           }
         } else {
           const nextIn = Math.round((TWITTER_INTERVAL_MS - sinceLastTwitter) / 60000);
-          console.log(`[Twitter] 스킵 — 다음 크롤까지 ${nextIn}분 남음 (12시간 간격, Apify 무료 플랜)`);
+          console.log(`[Twitter] 스킵 — 다음 크롤까지 ${nextIn}분 남음 (6시간 간격, Apify 무료 플랜)`);
         }
       }
 

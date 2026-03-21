@@ -81,6 +81,11 @@ export const TWITTER_SEARCH_KEYWORDS: readonly TwitterSearchKeyword[] = [
   { query: '$BONK OR $WIF OR $FLOKI', weight: 1.0 },
   { query: 'crypto pump OR altcoin gem', weight: 1.1 },
   { query: '$SOL OR $ETH memecoin', weight: 0.9 },
+  { query: '#memecoin OR #memecoins', weight: 1.1 },
+  { query: '#100xgem OR #moonshot', weight: 1.0 },
+  { query: '$TRUMP OR $MELANIA OR $VIRTUAL', weight: 1.0 },
+  { query: 'crypto whale OR whale alert', weight: 1.1 },
+  { query: '$AI16Z OR $AIXBT OR $TAO', weight: 0.9 },
 ] as const;
 
 export const TWITTER_RESULTS_PER_KEYWORD = 20;
