@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-21 (signal_label heat 스케일 전환 반영)
+> 최종 작업일: 2026-03-21 (센티먼트 배치+필터링, AI 배틀 전략 완화, UI 정리)
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -242,18 +242,47 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
     - crypto_backtest_results: 기존 데이터 전부 변환 완료
     - crypto_backtest_summary 뷰: avg_buy/sell_return_pct → avg_hot/cold_return_pct
 
+**Phase F — 센티먼트 배치 처리 + AI 배틀 전략 완화 + UI 정리 (2026-03-21)**
+83. **센티먼트 Gemini 2.5 Flash 업그레이드** — Flash Lite → Flash (reasoning 품질 향상, 비용 차이 미미)
+84. **센티먼트 배치 모드** — 1건1호출 → 10건1호출 (API 호출 90% 감소)
+    - Edge Function: 배치 입력(`{posts: [...]}`) + 단일 모드 하위 호환
+    - `batch-sentiment.ts`: 소스별 그룹핑, 배치 실패 시 개별 폴백
+    - `maxOutputTokens`: 700 → 4096 (배치 응답 수용)
+85. **센티먼트 룰베이스 필터링** — AI 호출 전 사전 필터
+    - `get_posts_without_sentiment` RPC 수정 (DB 마이그레이션 `030_sentiment_filter_rpc.sql`)
+    - 코인 멘션 1개 이상 (`INNER JOIN crypto_mentions`) — 멘션 없으면 시그널에 불필요
+    - 제목+본문 30자 이상 — 이모지만 있는 글 제외
+    - `source` 컬럼 반환 추가 (소스별 Edge Function 라우팅)
+    - 기본 배치 크기: 30 → 200 (소스 증가 대응)
+86. **AI 배틀 전략 완화** — 데이터 부족 환경 대응
+    - 포지션: 3개→5개, 크기 25%→12% (분산 투자)
+    - 시그널 임계값: weighted_score 50→30, confidence 65→55, mention_count 3 유지
+    - 시간 윈도우: 1h 고정 → 24h→6h→1h 폴백 (데이터 누적 활용)
+    - 청산 완화: 반전 cold만, velocity_dead 0.2→0.05, 24h 기준
+87. **UI 정리**
+    - 트렌딩 사이드바 제거 → 점수순 카드 정렬로 통일
+    - "🔥 트렌딩" 타이틀 + 시간 필터 + 검색바 같은 라인
+    - SignalNetwork 내부 자체 시간 필터 추가 (코인 칩 우측)
+    - 그래프 레전드 → 좌하단 오버레이로 이동
+    - 코인 칩 클릭 시 그래프+추론 동시 연동
+    - 시간 필터 변경 시 첫 번째 코인 자동 선택
+88. **trending-explain API 시점 통일** — `now` 기준 → `crypto_signals.computed_at` 기준 (카드와 정확히 같은 데이터)
+89. **Reddit 공개 JSON 확인** — OAuth 미사용, `reddit.com/r/{sub}/{sort}.json` 직접 호출로 이미 동작 중
+90. **Threads 비활성화** — 자기 게시물만 반환, 실질 데이터 없어 크롤링에서 제외
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
-1. ~~**환경변수 설정**~~ — ✅ Reddit API Access Request 제출 완료 (2026-03-15), 승인 대기 중
+1. ~~**환경변수 설정**~~ — ✅ Reddit 공개 JSON 사용 중 (API 키 불필요)
 2. ~~**DB 마이그레이션 적용**~~ — ✅ `018_crypto_tables.sql` 적용 완료 (2026-03-15)
 3. ~~**Edge Function 배포**~~ — ✅ `analyze-crypto-sentiment` 배포 완료 (2026-03-15)
-4. **센티먼트 배치 쿼리 개선** — 현재 NOT IN 서브쿼리 → RPC 함수(`get_posts_without_sentiment`) 전환 필요
-5. **첫 크롤링 테스트** — Reddit API 승인 후 확인
+4. ~~**센티먼트 배치 쿼리 개선**~~ — ✅ RPC 함수 + 룰베이스 필터 + 배치 모드 완료 (2026-03-21)
+5. ~~**첫 크롤링 테스트**~~ — ✅ Reddit 공개 JSON으로 동작 확인
 6. ~~**서브레딧 목록 확장**~~ — ✅ 완료
 7. ~~**Threads 토큰 발급**~~ — ✅ 완료 (2026-03-20)
 8. ~~**analyze-threads-sentiment Edge Function 배포**~~ — ✅ 배포 완료 (2026-03-20)
-9. **Threads 공개 검색 활성화** — Tech Provider 인증 필요 (비즈니스 인증 = 사업자등록증, 보류)
+9. ~~**Threads 공개 검색 활성화**~~ — ❌ 보류 → 크롤링에서 제외 (2026-03-21)
+10. **analyze-crypto-sentiment Edge Function 재배포** — Gemini 2.5 Flash + 배치 모드 (코드 완료, 배포 필요)
 
 #### 우선순위 중간 (기능 완성도)
 10. **Discord 봇 연동** — DM 피칭 4개 서버 발송 완료 (2026-03-15), 응답 대기 중
