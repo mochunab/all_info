@@ -275,15 +275,13 @@ export async function GET(req: NextRequest) {
 
   // 9. KG Boost computation
   let kgBoostResult: TrendingExplainResponse['kg_boost'] = undefined;
-  console.log(`🔍 KG: coinEntityRow for ${coin}:`, coinEntityRow ? coinEntityRow.id : 'NULL');
   if (coinEntityRow) {
     try {
-      const { data: allCoinRels, error: relErr } = await supabase
+      const { data: allCoinRels } = await supabase
         .from('crypto_relations')
         .select('source_entity_id, target_entity_id, relation_type, metadata')
         .or(`source_entity_id.eq.${coinEntityRow.id},target_entity_id.eq.${coinEntityRow.id}`)
         .gt('weight', 0);
-      console.log(`🔍 KG: ${coin} relations: ${allCoinRels?.length || 0}, error: ${relErr?.message || 'none'}`);
 
       type KGRelRow = { source_entity_id: string; target_entity_id: string; relation_type: string; metadata: Record<string, string> | null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
