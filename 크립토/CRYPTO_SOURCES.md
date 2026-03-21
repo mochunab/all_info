@@ -5,11 +5,10 @@
 ## 현재 활성 소스
 
 ### Reddit (✅ 동작 중)
-- **방식**: 공개 JSON 엔드포인트 (`reddit.com/r/{sub}/{sort}.json`)
-- OAuth 미사용, API 키 불필요
-- Rate limit: IP 기반 ~60 req/min, 서브레딧 간 1초 딜레이로 대응
-- `is_self` 필터: 텍스트 게시물만
-- `raw_json=1`: HTML 엔티티 디코딩된 원문
+- **방식**: RSS (Atom XML) — `scripts/crypto-reddit-crawl.ts` (GitHub Actions에서 실행)
+- Vercel IP가 Reddit에 차단됨 → GitHub Actions에서 RSS로 크롤링하여 우회
+- Vercel route에도 JSON fallback 코드 존재 (로컬 테스트용)
+- API 키 불필요, 10개 서브레딧 × hot+new
 
 ### Twitter/X (✅ 동작 중, Apify)
 - **방식**: Apify `scrape.badger/twitter-tweets-scraper` Actor의 Advanced Search 모드

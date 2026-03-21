@@ -24,7 +24,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 - 기존 Insight Hub 인프라 최대 활용 — Reddit API + Apify(X/Twitter) + Telegram 스크래핑 + 기존 AI 파이프라인 재활용
 
 ### 핵심 기능 4개
-1. **멀티소스 센티먼트 추적** — X/Twitter(Apify) + Reddit + Telegram → 코인 멘션 추출 → LLM 센티먼트 분석
+1. **멀티소스 센티먼트 추적** — X/Twitter(Apify) + Reddit(RSS) + Telegram → 코인 멘션 추출 → LLM 센티먼트 분석 (15분 크론)
 2. **가중 시그널 스코어 (V2)** — 5요소 가중치 × mentionConfidence × marketCapDampening × zScoreMultiplier × crossPlatformMultiplier + eventModifier + KG Boost → 0~100점 + signal_label (Heat 스케일) + contrarianWarning
 3. **지식그래프** — 코인/인플루언서/내러티브/이벤트 엔티티 + 5종 관계 → LLM 동적 감지 + 점진적 감쇠 + 시그널 피드백 루프
 4. **Signal Network 시각화** — Force-directed 3D 그래프 + WHY Trending 추론 패널 (점수 분해·AI 근거·소스 분포·키워드·내러티브·이벤트 타임라인)

@@ -7,7 +7,7 @@
 ### 백엔드 라이브러리
 ```
 lib/crypto/
-  config.ts                 서브레딧 10개 + 텔레그램 25개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수(ZSCORE_*, CROSS_PLATFORM_*, CONTRARIAN_*, EVENT_TYPE_PATTERNS) + KG_BOOST 상수
+  config.ts                 서브레딧 10개 + 텔레그램 23개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수 + KG_BOOST 상수
   coin-sync.ts              CoinGecko /coins/list → crypto_coins 동기화
   price-fetcher.ts          CoinGecko /coins/markets → crypto_prices 가격 스냅샷 (30분 cron)
   reddit-auth.ts            Reddit OAuth2 토큰 관리 (cache.ts 활용)
@@ -97,10 +97,17 @@ components/crypto/
   MonkeyVsRobot.tsx         AI vs 랜덤 배틀 UI
 ```
 
+### 스크립트
+```
+scripts/
+  crypto-reddit-crawl.ts    Reddit RSS 크롤러 (GitHub Actions 전용 — Vercel IP 차단 우회, Atom XML 파싱)
+```
+
 ### GitHub Actions
 ```
 .github/workflows/
-  crypto-crawl.yml          30분마다 /api/crypto/crawl POST 호출
+  crypto-crawl.yml          15분마다 Reddit RSS + Vercel crawl POST 호출
+  crypto-battle.yml         5분마다 prices + battle (독립 갱신)
 ```
 
 ---
