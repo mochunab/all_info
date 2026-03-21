@@ -258,3 +258,24 @@ for (const coin of COIN_LIST) {
   }
   ALIAS_MAP.set(coin.symbol.toLowerCase(), coin.symbol);
 }
+
+// ── Signal Scoring V2 ──
+
+export const ZSCORE_ROLLING_PERIODS = 10;
+export const ZSCORE_SPIKE_THRESHOLD = 2.0;
+export const ZSCORE_MAX_BOOST = 1.5;
+
+export const CROSS_PLATFORM_MULTIPLIERS = { SINGLE: 0.7, DUAL: 1.0, MULTI: 1.3 } as const;
+
+export const CONTRARIAN_THRESHOLD = 0.85;
+
+export const EVENT_TYPE_PATTERNS: Record<string, { keywords: string[]; modifier: number }> = {
+  exchange_listing: { keywords: ['listing', 'listed on binance', 'listed on coinbase', 'coinbase listing', 'binance listing', 'upbit listing'], modifier: 15 },
+  security_incident: { keywords: ['hacked', 'exploit', 'rug pull', 'rugpull', 'rugged', 'vulnerability', 'breach', 'drained', 'funds stolen'], modifier: -20 },
+  whale_buy: { keywords: ['whale buy', 'whale accumulation', 'whale bought', 'whales accumulating', 'large purchase'], modifier: 10 },
+  whale_sell: { keywords: ['whale sell', 'whale dump', 'whale sold', 'whales dumping', 'large sell-off'], modifier: -10 },
+  regulatory_positive: { keywords: ['etf approved', 'sec approves', 'regulation positive', 'legal win', 'etf approval'], modifier: 10 },
+  regulatory_negative: { keywords: ['sec lawsuit', 'sec sues', 'banned', 'delisted', 'crackdown', 'regulation negative'], modifier: -15 },
+  partnership: { keywords: ['partnership', 'partners with', 'integrates with', 'collaboration', 'strategic alliance'], modifier: 8 },
+  airdrop: { keywords: ['airdrop', 'token distribution', 'free tokens'], modifier: 5 },
+};

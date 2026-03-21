@@ -275,6 +275,12 @@ export type SignalComputeResult = {
   engagement_score: number;
   signal_label: SignalLabel;
   top_posts: TopPostSummary[];
+  z_score?: number;
+  source_count?: number;
+  contrarian_warning?: 'potential_reversal' | 'potential_bounce' | null;
+  sentiment_skew?: number;
+  detected_events?: string[];
+  event_modifier?: number;
 };
 
 // ── Trending Explain Types ──
@@ -439,6 +445,7 @@ export type BattleResponse = {
     monkeyWinRate: number;
     robotWinRate: number;
   };
+  prices: Record<string, number>;
 };
 
 // ── Backtest Types ──

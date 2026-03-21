@@ -112,6 +112,9 @@ export async function GET(request: NextRequest) {
   const monkeyTotal = monkeyPortfolio?.total_trades ?? 0;
   const robotTotal = robotPortfolio?.total_trades ?? 0;
 
+  const prices: Record<string, number> = {};
+  for (const [symbol, price] of priceMap) prices[symbol] = price;
+
   const response: BattleResponse = {
     portfolio: {
       monkey: {
@@ -140,6 +143,7 @@ export async function GET(request: NextRequest) {
       monkeyWinRate: monkeyTotal > 0 ? (monkeyWins / monkeyTotal) * 100 : 0,
       robotWinRate: robotTotal > 0 ? (robotWins / robotTotal) * 100 : 0,
     },
+    prices,
   };
 
   return NextResponse.json(response);

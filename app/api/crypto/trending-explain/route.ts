@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import type { TrendingExplainResponse, CryptoSource } from '@/types/crypto';
@@ -5,8 +7,10 @@ import { SIGNAL_WEIGHTS, TIME_WINDOW_MS, NARRATIVE_CLUSTERS } from '@/lib/crypto
 import {
   normalizeVelocity,
   normalizeSentiment,
+  normalizeSentimentForFud,
   normalizeEngagement,
   normalizeFomo,
+  normalizeFud,
   computeMentionConfidence,
 } from '@/lib/crypto/score-utils';
 
@@ -119,16 +123,17 @@ export async function GET(req: NextRequest) {
   const sentScores = sentiments.map(s => s.sentiment_score);
   const avgSentiment = sentScores.length > 0 ? sentScores.reduce((a, b) => a + b, 0) / sentScores.length : 0;
 
-  const fomoScores = sentiments.map(s => s.fomo_score || 0);
-  const avgFomo = fomoScores.length > 0 ? fomoScores.reduce((a, b) => a + b, 0) / fomoScores.length : 0;
+  const isFud = signalType === 'fud';
+  const directionScores = sentiments.map(s => isFud ? (s.fud_score || 0) : (s.fomo_score || 0));
+  const avgDirection = directionScores.length > 0 ? directionScores.reduce((a, b) => a + b, 0) / directionScores.length : 0;
 
   const totalEngagement = posts.reduce((a, p) => a + (p.upvotes || 0) + (p.num_comments || 0) * 2 + (p.num_awards || 0) * 5, 0);
   const engPerMention = totalMentions > 0 ? totalEngagement / totalMentions : 0;
 
   const velNorm = normalizeVelocity(velocity);
-  const sentNorm = normalizeSentiment(avgSentiment);
+  const sentNorm = isFud ? normalizeSentimentForFud(avgSentiment) : normalizeSentiment(avgSentiment);
   const engNorm = normalizeEngagement(engPerMention);
-  const fomoNorm = normalizeFomo(avgFomo);
+  const fomoNorm = isFud ? normalizeFud(avgDirection) : normalizeFomo(avgDirection);
   const mentionConfidence = computeMentionConfidence(totalMentions);
 
   const rawScore =

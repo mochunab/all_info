@@ -85,11 +85,11 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
 
   const fetchOwnSignals = useCallback(async (tw: TimeWindow) => {
     try {
-      const res = await fetch(`/api/crypto/signals?window=${tw}&limit=100`);
+      const res = await fetch(`/api/crypto/signals?window=${tw}&signal_type=${signalType}&limit=100`);
       const data = await res.json();
       setOwnSignals(data.signals || []);
     } catch { /* silent */ }
-  }, []);
+  }, [signalType]);
 
   const topCoins = useMemo(() => ownSignals.slice(0, 8), [ownSignals]);
 
@@ -152,7 +152,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       const base = coin
         ? `/api/crypto/network?coin=${coin}&limit=30`
         : '/api/crypto/network?limit=30';
-      const url = `${base}&window=${timeWindow}`;
+      const url = `${base}&window=${timeWindow}&signal_type=${signalType}`;
       const res = await fetch(url);
       const data = await res.json();
       const rawNodes: NetworkNode[] = data.nodes || [];
@@ -173,7 +173,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     } finally {
       setLoading(false);
     }
-  }, [timeWindow]);
+  }, [timeWindow, signalType]);
 
   useEffect(() => {
     if (isOpen && topCoins.length > 0) {
@@ -186,7 +186,8 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
   }, [isOpen]);
 
   const fetchExplain = useCallback(async (coin: string) => {
-    const cached = explainCache.current.get(`${coin}-${timeWindow}`);
+    const cacheKey = `${coin}-${timeWindow}-${signalType}`;
+    const cached = explainCache.current.get(cacheKey);
     if (cached) {
       setExplainData(cached);
       return;
@@ -196,7 +197,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
       const res = await fetch(`/api/crypto/trending-explain?coin=${coin}&window=${timeWindow}&signal_type=${signalType}`);
       if (res.ok) {
         const data: TrendingExplainResponse = await res.json();
-        explainCache.current.set(`${coin}-${timeWindow}`, data);
+        explainCache.current.set(cacheKey, data);
         setExplainData(data);
       } else {
         setExplainData(null);
@@ -206,18 +207,18 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     } finally {
       setExplainLoading(false);
     }
-  }, [timeWindow]);
+  }, [timeWindow, signalType]);
 
   const handleTimeWindowChange = useCallback((tw: TimeWindow) => {
     setTimeWindow(tw);
   }, []);
 
-  // 시간 윈도우 변경 시 자체 시그널 재조회 + 네트워크 갱신
+  // 시간 윈도우 또는 시그널 타입 변경 시 자체 시그널 재조회
   useEffect(() => {
     if (!isOpen) return;
     fetchOwnSignals(timeWindow);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeWindow]);
+  }, [timeWindow, signalType]);
 
   // ownSignals 갱신 후 첫 번째 코인 자동 선택
   useEffect(() => {

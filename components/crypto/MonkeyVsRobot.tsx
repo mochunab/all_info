@@ -243,7 +243,7 @@ function PlayerScore({
 }
 
 function PositionsTab({ data, language }: { data: BattleResponse; language: Language }) {
-  const { openPositions } = data;
+  const { openPositions, prices } = data;
   const hasPositions = openPositions.monkey.length > 0 || openPositions.robot.length > 0;
 
   if (!hasPositions) {
@@ -261,7 +261,7 @@ function PositionsTab({ data, language }: { data: BattleResponse; language: Lang
           🐵 {t(language, 'crypto.battle.monkey')} ({openPositions.monkey.length})
         </div>
         <div className="space-y-2">
-          {openPositions.monkey.map(pos => <PositionRow key={pos.id} pos={pos} language={language} />)}
+          {openPositions.monkey.map(pos => <PositionRow key={pos.id} pos={pos} prices={prices} language={language} />)}
         </div>
       </div>
       <div>
@@ -269,33 +269,60 @@ function PositionsTab({ data, language }: { data: BattleResponse; language: Lang
           🤖 {t(language, 'crypto.battle.robot')} ({openPositions.robot.length})
         </div>
         <div className="space-y-2">
-          {openPositions.robot.map(pos => <PositionRow key={pos.id} pos={pos} language={language} />)}
+          {openPositions.robot.map(pos => <PositionRow key={pos.id} pos={pos} prices={prices} language={language} />)}
         </div>
       </div>
     </div>
   );
 }
 
-function PositionRow({ pos, language }: { pos: BattlePosition; language: Language }) {
+function formatPrice(price: number): string {
+  if (price >= 1) return price.toFixed(2);
+  if (price >= 0.01) return price.toFixed(4);
+  return price.toFixed(6);
+}
+
+function PositionRow({ pos, prices, language }: { pos: BattlePosition; prices: Record<string, number>; language: Language }) {
   const holdUntil = pos.hold_until ? new Date(pos.hold_until) : null;
   const timeLeft = holdUntil ? Math.max(0, (holdUntil.getTime() - Date.now()) / 3600_000) : null;
   const tpLabel = pos.take_profit_stage > 0 ? `TP${pos.take_profit_stage}` : null;
+
+  const currentPrice = prices[pos.coin_symbol];
+  const pnlPct = currentPrice ? ((currentPrice - pos.entry_price) / pos.entry_price) * 100 : null;
+  const unrealizedPnl = currentPrice ? pos.remaining_size * (currentPrice / pos.entry_price) - pos.remaining_size : null;
 
   return (
     <div className="p-2.5 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
       <div className="flex items-center justify-between mb-1">
         <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{pos.coin_symbol}</span>
-        <span className="tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
-          ${pos.remaining_size.toFixed(2)}
-        </span>
+        <div className="flex items-center gap-2">
+          {pnlPct != null && (
+            <span className="tabular-nums font-semibold" style={{ color: pnlPct >= 0 ? '#047857' : '#DC2626' }}>
+              {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+            </span>
+          )}
+          <span className="tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
+            ${pos.remaining_size.toFixed(2)}
+          </span>
+        </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span style={{ color: 'var(--text-tertiary)' }}>
-          @ ${pos.entry_price < 1 ? pos.entry_price.toFixed(6) : pos.entry_price.toFixed(2)}
+          @ ${formatPrice(pos.entry_price)}
         </span>
+        {currentPrice && (
+          <span style={{ color: 'var(--text-secondary)' }}>
+            → ${formatPrice(currentPrice)}
+          </span>
+        )}
+        {unrealizedPnl != null && (
+          <span className="tabular-nums font-medium" style={{ color: unrealizedPnl >= 0 ? '#047857' : '#DC2626' }}>
+            ({unrealizedPnl >= 0 ? '+' : ''}{unrealizedPnl.toFixed(2)})
+          </span>
+        )}
         {pos.stop_loss_price && (
           <span className="px-1.5 py-0.5 rounded text-[10px]" style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}>
-            SL ${pos.stop_loss_price < 1 ? pos.stop_loss_price.toFixed(6) : pos.stop_loss_price.toFixed(2)}
+            SL ${formatPrice(pos.stop_loss_price)}
           </span>
         )}
         {tpLabel && (
@@ -352,6 +379,9 @@ function TradeRow({ trade, language }: { trade: BattleTrade; language: Language 
   const reasonLabel = trade.reason && trade.reason !== 'entry'
     ? ` · ${trade.reason.replace(/_/g, ' ')}`
     : '';
+  const pnlPct = settled && trade.trade_size > 0
+    ? (trade.pnl! / trade.trade_size) * 100
+    : null;
 
   return (
     <div className="flex items-center gap-2 text-xs p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
@@ -363,8 +393,13 @@ function TradeRow({ trade, language }: { trade: BattleTrade; language: Language 
         {trade.traded_at ? new Date(trade.traded_at).toLocaleDateString() : trade.trade_date}
         {reasonLabel}
       </span>
-      <span className="ml-auto font-bold tabular-nums" style={{ color: settled ? (trade.pnl! >= 0 ? '#047857' : '#DC2626') : 'var(--text-tertiary)' }}>
+      <span className="ml-auto flex items-center gap-1.5 font-bold tabular-nums" style={{ color: settled ? (trade.pnl! >= 0 ? '#047857' : '#DC2626') : 'var(--text-tertiary)' }}>
         {settled ? `${trade.pnl! >= 0 ? '+' : ''}$${trade.pnl!.toFixed(2)}` : `$${trade.trade_size.toFixed(2)}`}
+        {pnlPct != null && (
+          <span className="text-[10px] font-medium opacity-75">
+            ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%)
+          </span>
+        )}
       </span>
     </div>
   );
