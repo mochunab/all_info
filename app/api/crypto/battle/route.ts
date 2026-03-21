@@ -38,12 +38,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. 포지션/포트폴리오/거래 데이터 조회 (lazy 평가 후이므로 최신 상태)
-  const [portfolioRes, monkeyRecentTrades, robotRecentTrades, historyRes, monkeyPosRes, robotPosRes, monkeyTradesAll, robotTradesAll] = await Promise.all([
-    supabase
-      .from('battle_portfolio')
-      .select('*')
-      .order('snapshot_date', { ascending: false })
-      .limit(2),
+  const [monkeyRecentTrades, robotRecentTrades, historyRes, monkeyPosRes, robotPosRes, monkeyTradesAll, robotTradesAll] = await Promise.all([
     supabase
       .from('battle_trades')
       .select('*')
@@ -82,11 +77,6 @@ export async function GET(request: NextRequest) {
       .select('action, trade_size, pnl')
       .eq('player', 'robot'),
   ]);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const latestPortfolio = (portfolioRes.data || []) as any as BattlePortfolio[];
-  const monkeyPortfolio = latestPortfolio.find(p => p.player === 'monkey');
-  const robotPortfolio = latestPortfolio.find(p => p.player === 'robot');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const monkeyPositions = (monkeyPosRes.data || []) as any as BattlePosition[];

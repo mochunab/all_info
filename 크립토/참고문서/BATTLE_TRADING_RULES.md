@@ -1,7 +1,7 @@
 # 원숭이 vs AI 로봇 — 매매 기준서
 
 > 최종 수정일: 2026-03-21
-> 코드: `lib/crypto/battle-trader.ts`
+> 코드: `lib/crypto/battle-trader.ts`, `app/api/crypto/battle/route.ts`
 > 초기 자본: 각 $100
 
 ---
@@ -177,8 +177,30 @@ RETURNING id
 ```
 
 - 반환 0건 = 이미 다른 호출이 청산함 → trade insert 스킵
-- `lazyEvaluateExits`는 API GET에서 제거 (side-effect 금지, race condition 방지)
 - 청산은 크롤 파이프라인(`executeBattle`)에서만 실행
+- API GET에서는 side-effect 금지 (race condition 방지)
+
+---
+
+## API 응답 구조 (`/api/crypto/battle`)
+
+```
+GET /api/crypto/battle?days=30
+
+→ {
+    portfolio: { monkey: {current, change_pct, cash, openPositions}, robot: {...} },
+    history: { dates: [...], monkey: [...], robot: [...] },
+    recentTrades: { monkey: BattleTrade[10], robot: BattleTrade[10] },
+    openPositions: { monkey: BattlePosition[], robot: BattlePosition[] },
+    stats: { totalTrades, monkeyWins, robotWins, monkeyWinRate, robotWinRate },
+    prices: { [symbol]: price }
+  }
+```
+
+- `recentTrades`: **player별 독립 조회** (각 최근 10건) — 한쪽이 활발해도 상대 거래가 밀리지 않음
+- `stats.winRate`: `battle_trades` sell 건 기반 직접 계산 (스냅샷 의존 제거)
+- `portfolio.current`: 실시간 계산 (cash + 보유 포지션 × 현재가/진입가)
+- `prices`: 현재 CoinGecko 가격 맵 (보유 포지션 PnL 계산용)
 
 ---
 
@@ -189,3 +211,14 @@ RETURNING id
 | `battle_positions` | 포지션 추적 (open/closed, TP 단계, 시그널 스냅샷, 부분 청산) |
 | `battle_trades` | 개별 거래 로그 (진입/청산, reason, position_id 연결) — **현금 계산의 단일 진실** |
 | `battle_portfolio` | 일별 포트폴리오 스냅샷 (차트용, 30분 크론에서 갱신) |
+
+---
+
+## UI 탭 구조 (`MonkeyVsRobot.tsx`)
+
+| 탭 | 내용 |
+|----|------|
+| **스코어** | 원숭이/로봇 Lottie 애니메이션 + 포트폴리오 가치 + 변동률 + 현금/포지션 수 |
+| **보유 포지션** | 양쪽 오픈 포지션 그리드 (코인, 진입가→현재가, PnL%, 잔여금, SL/TP 태그, 남은 시간) |
+| **추세** | 7/30/90일 포트폴리오 가치 라인 차트 (Recharts) |
+| **거래내역** | 양쪽 최근 거래 10건 (매수/매도 뱃지, 코인, 날짜, reason, PnL) |
