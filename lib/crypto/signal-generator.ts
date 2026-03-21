@@ -118,24 +118,30 @@ async function fetchWindowData(
   const allSymbols = [...new Set(mentions.map((m: { coin_symbol: string }) => m.coin_symbol))];
   const { data: coinRows } = await supabase
     .from('crypto_coins')
-    .select('symbol, market_cap_rank')
+    .select('symbol, market_cap_rank, coingecko_id')
     .in('symbol', allSymbols);
 
   const rankMap = new Map<string, number | null>();
-  for (const c of coinRows || []) rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
-
-  // 시총 USD 조회 (최신 스냅샷)
-  const { data: priceRows } = await supabase
-    .from('crypto_prices')
-    .select('symbol, market_cap')
-    .in('symbol', allSymbols)
-    .order('fetched_at', { ascending: false });
+  const symbolByGeckoId = new Map<string, string>();
+  for (const c of coinRows || []) {
+    rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
+    if (c.coingecko_id) symbolByGeckoId.set(c.coingecko_id, c.symbol.toUpperCase());
+  }
 
   const marketCapMap = new Map<string, number | null>();
-  if (priceRows) {
-    for (const p of priceRows) {
-      const sym = p.symbol.toUpperCase();
-      if (!marketCapMap.has(sym)) marketCapMap.set(sym, p.market_cap ? Number(p.market_cap) : null);
+  const geckoIds = [...symbolByGeckoId.keys()];
+  if (geckoIds.length > 0) {
+    const { data: priceRows } = await supabase
+      .from('crypto_prices')
+      .select('coingecko_id, market_cap')
+      .in('coingecko_id', geckoIds)
+      .order('fetched_at', { ascending: false });
+
+    if (priceRows) {
+      for (const p of priceRows) {
+        const sym = symbolByGeckoId.get(p.coingecko_id);
+        if (sym && !marketCapMap.has(sym)) marketCapMap.set(sym, p.market_cap ? Number(p.market_cap) : null);
+      }
     }
   }
 
