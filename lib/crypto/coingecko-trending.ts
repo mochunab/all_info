@@ -56,7 +56,7 @@ export function trendingRankToScore(rank: number): number {
 export async function crawlCoinGeckoTrending(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>
-): Promise<{ result: CryptoCrawlResult; trendingSymbols: Set<string> }> {
+): Promise<CryptoCrawlResult> {
   const result: CryptoCrawlResult = {
     source: 'coingecko',
     channel: 'trending',
@@ -66,25 +66,20 @@ export async function crawlCoinGeckoTrending(
     errors: [],
   };
 
-  const trendingSymbols = new Set<string>();
-
   try {
     const data = await fetchTrendingCoins();
     const coins = data.coins || [];
     result.postsFound = coins.length;
 
-    if (coins.length === 0) return { result, trendingSymbols };
+    if (coins.length === 0) return result;
 
     const now = new Date().toISOString();
     const rows = coins.map((c) => {
       const rank = c.item.score + 1;
       const symbol = c.item.symbol.toUpperCase();
-      trendingSymbols.add(symbol);
 
       const title = `CoinGecko Trending #${rank}: ${c.item.name} (${symbol})`;
-      const body = c.item.data?.price_change_percentage_24h
-        ? `24h change: ${JSON.stringify(c.item.data.price_change_percentage_24h)}`
-        : null;
+      const body = null; // 메타 시그널이므로 센티먼트 분석 대상 아님
 
       return {
         source: 'coingecko' as const,
@@ -110,6 +105,13 @@ export async function crawlCoinGeckoTrending(
       };
     });
 
+    const sourceIds = rows.map((r) => r.source_id);
+    const { data: existing } = await supabase
+      .from('crypto_posts')
+      .select('source_id')
+      .in('source_id', sourceIds);
+    const existingSet = new Set((existing || []).map((e: { source_id: string }) => e.source_id));
+
     const { data: upserted, error: upsertError } = await supabase
       .from('crypto_posts')
       .upsert(rows, { onConflict: 'source_id', ignoreDuplicates: false })
@@ -117,11 +119,11 @@ export async function crawlCoinGeckoTrending(
 
     if (upsertError) {
       result.errors.push(`upsert error: ${upsertError.message}`);
-      return { result, trendingSymbols };
+      return result;
     }
 
     const upsertedPosts = upserted || [];
-    result.postsNew = upsertedPosts.length;
+    result.postsNew = upsertedPosts.filter((r: { source_id: string }) => !existingSet.has(r.source_id)).length;
 
     const sourceIdToDbId = new Map<string, string>();
     for (const row of upsertedPosts) {
@@ -185,5 +187,5 @@ export async function crawlCoinGeckoTrending(
     result.errors.push(error instanceof Error ? error.message : 'Unknown error');
   }
 
-  return { result, trendingSymbols };
+  return result;
 }

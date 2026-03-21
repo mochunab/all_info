@@ -429,7 +429,7 @@ function computeSignals(
     // CoinGecko Trending boost: rank-based event modifier
     const trendingRank = raw.trendingMap.get(symbol);
     let cgTrendingModifier = 0;
-    if (trendingRank) {
+    if (trendingRank !== undefined) {
       cgTrendingModifier = trendingRank <= 3 ? 12 : trendingRank <= 7 ? 8 : 5;
       detectedEvents.push('coingecko_trending');
     }
@@ -439,7 +439,7 @@ function computeSignals(
     const { warning: contrarianWarning, skew: sentimentSkew } = computeContrarianWarning(allSentimentScores);
 
     // Early detection: CoinGecko trending이면 mentionConfidence 최소 0.4 보장
-    const adjustedMentionConfidence = trendingRank
+    const adjustedMentionConfidence = trendingRank !== undefined
       ? Math.max(mentionConfidence, 0.4)
       : mentionConfidence;
 

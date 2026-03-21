@@ -295,5 +295,4 @@ export const EVENT_TYPE_PATTERNS: Record<string, { keywords: string[]; modifier:
   regulatory_negative: { keywords: ['sec lawsuit', 'sec sues', 'banned', 'delisted', 'crackdown', 'regulation negative'], modifier: -15 },
   partnership: { keywords: ['partnership', 'partners with', 'integrates with', 'collaboration', 'strategic alliance'], modifier: 8 },
   airdrop: { keywords: ['airdrop', 'token distribution', 'free tokens'], modifier: 5 },
-  coingecko_trending: { keywords: ['coingecko trending'], modifier: 8 },
 };

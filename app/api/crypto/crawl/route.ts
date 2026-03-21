@@ -107,7 +107,7 @@ async function handleCrawl(request: NextRequest) {
       // CoinGecko Trending (무료, 매 크롤마다 실행)
       try {
         const { crawlCoinGeckoTrending } = await import('@/lib/crypto/coingecko-trending');
-        const { result: cgResult } = await crawlCoinGeckoTrending(supabase);
+        const cgResult = await crawlCoinGeckoTrending(supabase);
         allResults.push(cgResult);
         if (cgResult.errors.length > 0) {
           console.warn(`[CoinGecko] 오류: ${cgResult.errors.join('; ')}`);
