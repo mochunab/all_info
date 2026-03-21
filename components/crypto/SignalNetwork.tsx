@@ -430,36 +430,8 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
             transitionTimingFunction: MD3_EASING,
           }}
         >
-          {/* Legend + Filter Chips */}
+          {/* Filter Chips + Time Window */}
           <div className="px-4 pb-2">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                  Bullish
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-neutral-400 inline-block" />
-                  Neutral
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                  Bearish
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm bg-purple-500 inline-block" style={{ transform: 'rotate(45deg)', width: 7, height: 7 }} />
-                  Influencer
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                  Narrative
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm bg-rose-500 inline-block" />
-                  Event
-                </span>
-              </div>
-            </div>
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex flex-wrap gap-2">
                 {topCoins.map((s) => (
@@ -484,6 +456,15 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
           <div className="flex flex-col md:flex-row" ref={containerRef}>
             {/* 3D Force Graph */}
             <div className="relative" style={{ width: graphWidth, height: dimensions.height }}>
+              {/* Legend overlay */}
+              <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md px-2 py-1.5">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Bullish</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-neutral-400 inline-block" /> Neutral</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Bearish</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-purple-500 inline-block" style={{ transform: 'rotate(45deg)', width: 7, height: 7 }} /> Influencer</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Narrative</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500 inline-block" /> Event</span>
+              </div>
               {!ForceGraph3D || (loading && nodes.length === 0) ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-tertiary)]">
                   Loading network...
