@@ -76,7 +76,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
   const graphRef = useRef<any>(null);
   const hoverTipRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 600, height: 420 });
+  const [dimensions, setDimensions] = useState({ width: 600, height: 420, mobile: false });
 
   // WHY panel state
   const [explainData, setExplainData] = useState<TrendingExplainResponse | null>(null);
@@ -98,7 +98,8 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     if (!el) return;
     const obs = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width;
-      setDimensions({ width: Math.max(300, w), height: 420 });
+      const mob = w < 640;
+      setDimensions({ width: Math.max(300, w), height: mob ? 300 : 420, mobile: mob });
     });
     obs.observe(el);
     return () => obs.disconnect();
@@ -287,10 +288,13 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
 
   const activeNeighborSet = focusNeighborSet || neighborSet;
 
+  const isMobile = dimensions.mobile;
+
   const graphWidth = useMemo(() => {
+    if (isMobile) return dimensions.width;
     if (selectedChip) return Math.floor(dimensions.width * 0.6);
     return dimensions.width;
-  }, [selectedChip, dimensions.width]);
+  }, [selectedChip, dimensions.width, isMobile]);
 
   useEffect(() => {
     const fg = graphRef.current;
@@ -452,10 +456,11 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
 
         {/* Accordion Content */}
         <div
-          className="overflow-hidden transition-all duration-300"
+          className="transition-all duration-300"
           style={{
-            maxHeight: isOpen ? '900px' : '0px',
+            maxHeight: isOpen ? '80vh' : '0px',
             opacity: isOpen ? 1 : 0,
+            overflow: isOpen ? 'auto' : 'hidden',
             transitionTimingFunction: MD3_EASING,
           }}
         >
@@ -486,7 +491,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
             {/* 3D Force Graph */}
             <div className="relative" style={{ width: graphWidth, height: dimensions.height }}>
               {/* Legend overlay */}
-              <div className="absolute bottom-3 left-3 z-10 flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md px-2 py-1.5">
+              <div className="absolute bottom-3 left-3 z-10 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md px-2 py-1.5">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Bullish</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-neutral-400 inline-block" /> Neutral</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Bearish</span>
@@ -546,14 +551,14 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
               )}
             </div>
 
-            {/* WHY Trending Panel (right side) */}
+            {/* WHY Trending Panel (right side / below on mobile) */}
             {selectedChip ? (
               <div
                 className="border-t md:border-t-0 md:border-l border-[var(--border)]"
-                style={{ width: dimensions.width - graphWidth, minHeight: dimensions.height }}
+                style={{ width: isMobile ? '100%' : dimensions.width - graphWidth, minHeight: isMobile ? 'auto' : dimensions.height }}
               >
                 {explainLoading ? (
-                  <div className="flex items-center justify-center h-full text-sm text-[var(--text-tertiary)]">
+                  <div className="flex items-center justify-center py-8 md:h-full text-sm text-[var(--text-tertiary)]">
                     <svg className="animate-spin w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -561,9 +566,9 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                     Loading...
                   </div>
                 ) : explainData ? (
-                  <WhyTrendingPanel data={explainData} language={language} />
+                  <WhyTrendingPanel data={explainData} language={language} isMobile={isMobile} />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-xs text-[var(--text-tertiary)] px-4 text-center">
+                  <div className="flex items-center justify-center py-8 md:h-full text-xs text-[var(--text-tertiary)] px-4 text-center">
                     {t(language, 'crypto.selectCoinHint')}
                   </div>
                 )}
@@ -573,7 +578,6 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
                 className="hidden md:flex border-l border-[var(--border)] items-center justify-center"
                 style={{ width: dimensions.width - graphWidth, height: dimensions.height }}
               >
-                {/* Empty state only shows when no chip selected on desktop — graph takes full width */}
               </div>
             )}
           </div>

@@ -177,11 +177,11 @@ function ScoreTab({ data, language, monkeyLeads }: { data: BattleResponse; langu
         trophySide="right"
         language={language}
       />
-      <div className="flex flex-col items-center justify-center px-4 sm:px-8 pt-6">
-        <div className="text-3xl sm:text-4xl font-bold select-none" style={{ background: 'linear-gradient(180deg, #F59E0B, #2563EB)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+      <div className="flex flex-col items-center justify-center px-2 sm:px-8 pt-6">
+        <div className="text-2xl sm:text-4xl font-bold select-none" style={{ background: 'linear-gradient(180deg, #F59E0B, #2563EB)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           VS
         </div>
-        <div className="mt-4 text-xs tabular-nums text-center" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="mt-4 text-[10px] sm:text-xs tabular-nums text-center" style={{ color: 'var(--text-tertiary)' }}>
           {stats.totalTrades} {t(language, 'crypto.battle.trades')}
         </div>
       </div>
@@ -215,7 +215,7 @@ function PlayerScore({
   return (
     <div className="flex flex-col items-center text-center">
       <div className="relative">
-        <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl p-3 mx-auto overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="w-20 h-20 sm:w-36 sm:h-36 rounded-2xl sm:rounded-3xl p-2 sm:p-3 mx-auto overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)', boxShadow: 'var(--shadow-sm)' }}>
           <Lottie animationData={animData} loop autoplay style={{ width: '100%', height: '100%', transform: `scale(${animScale})` }} />
         </div>
         {leads && (
@@ -229,7 +229,7 @@ function PlayerScore({
         ${portfolio.current.toFixed(2)}
       </div>
       <PnlBadge value={portfolio.change_pct} />
-      <div className="mt-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+      <div className="mt-2 text-[9px] sm:text-[10px] whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
         💰 ${portfolio.cash.toFixed(2)} · 📊 {portfolio.openPositions}{t(language, 'crypto.battle.openPos')}
       </div>
     </div>
@@ -237,6 +237,7 @@ function PlayerScore({
 }
 
 function PositionsTab({ data, language }: { data: BattleResponse; language: Language }) {
+  const [player, setPlayer] = useState<'monkey' | 'robot'>('monkey');
   const { openPositions, prices } = data;
   const hasPositions = openPositions.monkey.length > 0 || openPositions.robot.length > 0;
 
@@ -248,23 +249,13 @@ function PositionsTab({ data, language }: { data: BattleResponse; language: Lang
     );
   }
 
+  const positions = player === 'monkey' ? openPositions.monkey : openPositions.robot;
+
   return (
-    <div className="grid grid-cols-2 gap-4" style={{ maxHeight: 360, overflowY: 'auto' }}>
-      <div>
-        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>
-          🐵 {t(language, 'crypto.battle.monkey')} ({openPositions.monkey.length})
-        </div>
-        <div className="space-y-2">
-          {openPositions.monkey.map(pos => <PositionRow key={pos.id} pos={pos} prices={prices} language={language} />)}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>
-          🤖 {t(language, 'crypto.battle.robot')} ({openPositions.robot.length})
-        </div>
-        <div className="space-y-2">
-          {openPositions.robot.map(pos => <PositionRow key={pos.id} pos={pos} prices={prices} language={language} />)}
-        </div>
+    <div>
+      <PlayerSubTabs selected={player} onChange={setPlayer} language={language} />
+      <div className="max-h-[300px] overflow-y-auto overscroll-contain space-y-1.5">
+        {positions.map(pos => <PositionRow key={pos.id} pos={pos} prices={prices} language={language} />)}
       </div>
     </div>
   );
@@ -334,20 +325,40 @@ function PositionRow({ pos, prices, language }: { pos: BattlePosition; prices: R
   );
 }
 
-function TradesTab({ data, language }: { data: BattleResponse; language: Language }) {
+function PlayerSubTabs({ selected, onChange, language }: { selected: 'monkey' | 'robot'; onChange: (v: 'monkey' | 'robot') => void; language: Language }) {
+  const items = [
+    { key: 'monkey' as const, label: `🐵 ${t(language, 'crypto.battle.monkey')}` },
+    { key: 'robot' as const, label: `🤖 ${t(language, 'crypto.battle.robot')}` },
+  ];
   return (
-    <div className="grid grid-cols-2 gap-4" style={{ maxHeight: 360, overflowY: 'auto' }}>
-      <div>
-        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>{t(language, 'crypto.battle.monkey')}</div>
-        <div className="space-y-2">
-          {data.recentTrades.monkey.map(tr => <TradeRow key={tr.id} trade={tr} language={language} />)}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs font-medium mb-2 sticky top-0 py-1" style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-secondary)' }}>{t(language, 'crypto.battle.robot')}</div>
-        <div className="space-y-2">
-          {data.recentTrades.robot.map(tr => <TradeRow key={tr.id} trade={tr} language={language} />)}
-        </div>
+    <div className="flex gap-1 mb-3 p-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+      {items.map(item => (
+        <button
+          key={item.key}
+          onClick={() => onChange(item.key)}
+          className="flex-1 px-3 py-1.5 text-xs font-medium rounded-full transition-colors cursor-pointer"
+          style={{
+            backgroundColor: selected === item.key ? 'var(--bg-primary)' : 'transparent',
+            color: selected === item.key ? 'var(--text-primary)' : 'var(--text-tertiary)',
+            boxShadow: selected === item.key ? 'var(--shadow-sm)' : 'none',
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TradesTab({ data, language }: { data: BattleResponse; language: Language }) {
+  const [player, setPlayer] = useState<'monkey' | 'robot'>('monkey');
+  const trades = player === 'monkey' ? data.recentTrades.monkey : data.recentTrades.robot;
+
+  return (
+    <div>
+      <PlayerSubTabs selected={player} onChange={setPlayer} language={language} />
+      <div className="max-h-[300px] overflow-y-auto overscroll-contain space-y-1.5">
+        {trades.map(tr => <TradeRow key={tr.id} trade={tr} language={language} />)}
       </div>
     </div>
   );
@@ -371,30 +382,34 @@ function TradeRow({ trade, language }: { trade: BattleTrade; language: Language 
   const isBuy = trade.action === 'buy';
   const settled = trade.pnl != null && trade.action === 'sell';
   const reasonLabel = trade.reason && trade.reason !== 'entry'
-    ? ` · ${trade.reason.replace(/_/g, ' ')}`
+    ? trade.reason.replace(/_/g, ' ')
     : '';
   const pnlPct = settled && trade.trade_size > 0
     ? (trade.pnl! / trade.trade_size) * 100
     : null;
 
   return (
-    <div className="flex items-center gap-2 text-xs p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: isBuy ? '#DCFCE7' : '#FEE2E2', color: isBuy ? '#047857' : '#DC2626' }}>
-        {t(language, isBuy ? 'crypto.battle.buy' : 'crypto.battle.sell')}
-      </span>
-      <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>{trade.coin_symbol}</span>
-      <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-        {trade.traded_at ? new Date(trade.traded_at).toLocaleDateString() : trade.trade_date}
-        {reasonLabel}
-      </span>
-      <span className="ml-auto flex items-center gap-1.5 font-bold tabular-nums" style={{ color: settled ? (trade.pnl! >= 0 ? '#047857' : '#DC2626') : 'var(--text-tertiary)' }}>
-        {settled ? `${trade.pnl! >= 0 ? '+' : ''}$${trade.pnl!.toFixed(2)}` : `$${trade.trade_size.toFixed(2)}`}
-        {pnlPct != null && (
-          <span className="text-[10px] font-medium opacity-75">
-            ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%)
+    <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ backgroundColor: isBuy ? '#DCFCE7' : '#FEE2E2', color: isBuy ? '#047857' : '#DC2626' }}>
+            {t(language, isBuy ? 'crypto.battle.buy' : 'crypto.battle.sell')}
           </span>
-        )}
-      </span>
+          <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>{trade.coin_symbol}</span>
+        </div>
+        <span className="font-bold tabular-nums" style={{ color: settled ? (trade.pnl! >= 0 ? '#047857' : '#DC2626') : 'var(--text-tertiary)' }}>
+          {settled ? `${trade.pnl! >= 0 ? '+' : ''}$${trade.pnl!.toFixed(2)}` : `$${trade.trade_size.toFixed(2)}`}
+          {pnlPct != null && (
+            <span className="text-[10px] font-medium opacity-75 ml-1">
+              {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+        {trade.traded_at ? new Date(trade.traded_at).toLocaleDateString() : trade.trade_date}
+        {reasonLabel && <span> · {reasonLabel}</span>}
+      </div>
     </div>
   );
 }

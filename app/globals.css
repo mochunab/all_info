@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* iOS overscroll bounce prevention */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ============================================
    Design Tokens - Insight Hub
    ============================================ */

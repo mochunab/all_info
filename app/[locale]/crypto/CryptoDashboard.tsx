@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CryptoSignal, TimeWindow, SignalType, CryptoPrice } from '@/types/crypto';
 import { t } from '@/lib/i18n';
 import CoinCard from '@/components/crypto/CoinCard';
@@ -76,6 +76,19 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
     setTimeWindow(window);
   }, []);
 
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = searchRef.current;
+    if (!el) return;
+    const mq = window.matchMedia('(min-width: 640px)');
+    const update = () => {
+      el.placeholder = mq.matches ? t(language, 'crypto.search') : t(language, 'crypto.searchShort');
+    };
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, [language]);
+
   const filteredSignals = search
     ? signals.filter((s) => s.coin_symbol.toLowerCase().includes(search.toLowerCase()))
     : signals;
@@ -116,10 +129,11 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
         <div className="flex items-center gap-3">
           <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
           <input
+            ref={searchRef}
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t(language, 'crypto.search')}
+            placeholder={t(language, 'crypto.searchShort')}
             className="w-full max-w-xs px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           />
         </div>

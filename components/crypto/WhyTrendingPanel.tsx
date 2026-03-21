@@ -13,16 +13,17 @@ type Language = 'ko' | 'en' | 'vi' | 'zh' | 'ja';
 type Props = {
   data: TrendingExplainResponse;
   language: Language;
+  isMobile?: boolean;
 };
 
-export default function WhyTrendingPanel({ data, language }: Props) {
+export default function WhyTrendingPanel({ data, language, isMobile }: Props) {
   const priceChange = data.price?.price_change_pct_24h;
   const changeColor = priceChange
     ? priceChange > 0 ? 'text-emerald-500' : 'text-red-500'
     : '';
 
   return (
-    <div className="overflow-y-auto flex flex-col gap-4 p-4" style={{ maxHeight: 420 }}>
+    <div className="overflow-y-auto flex flex-col gap-4 p-4" style={{ maxHeight: isMobile ? 'none' : 420 }}>
       {/* Header: Coin + Price */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -117,7 +117,7 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
             transitionTimingFunction: MD3_EASING,
           }}
         >
-          <div ref={contentRef} className="px-4 pb-4 pt-2">
+          <div ref={contentRef} className="px-4 pb-4 pt-2 max-h-[60vh] overflow-y-auto">
             {/* Lookup Window Chips */}
             <div className="flex flex-wrap gap-2 mb-4">
               {LOOKUP_OPTIONS.map((lw) => (
