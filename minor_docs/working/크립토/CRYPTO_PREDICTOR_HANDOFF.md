@@ -475,6 +475,14 @@ lib/crypto/threads-crawler.ts         extractCoinMentionsFromDB로 전환
 app/api/crypto/crawl/route.ts         Phase 4 (prices) + Phase 1d (Twitter, 12시간 간격) + Phase 6 (backtest) 추가 + parsePhase query param 지원
 types/crypto.ts                       BacktestResult, BacktestSummary, BacktestCoinSummary, BacktestResponse 타입 추가 (2026-03-21)
 lib/i18n.ts                           crypto.backtest.* 번역 키 7개 × 5개 언어 추가 (2026-03-21)
+lib/crypto/battle-trader.ts           AI 로봇 전략 완화 — 5포지션/12%/score≥30/confidence≥55/24h→6h→1h 폴백 (2026-03-21)
+lib/crypto/batch-sentiment.ts         배치 모드 전환 — 10건/호출, 소스별 그룹핑, 배치 실패→개별 폴백, 200건/배치 (2026-03-21)
+app/[locale]/crypto/CryptoDashboard.tsx  트렌딩 사이드바 제거, 시간 필터→트렌딩 라인 이동, SignalTimeline import 제거 (2026-03-21)
+components/crypto/SignalNetwork.tsx    자체 시간 필터 추가, 레전드 좌하단 오버레이, 코인칩→그래프+추론 동시 연동 (2026-03-21)
+app/api/crypto/trending-explain/route.ts  시점 통일 (now→computed_at), 폴백 윈도우 제거 (2026-03-21)
+app/api/crypto/crawl/route.ts         센티먼트 배치 크기 100→200 (2026-03-21)
+supabase/functions/analyze-crypto-sentiment/index.ts  Gemini 2.5 Flash + 배치 모드(최대 10건) + maxOutputTokens 4096 (2026-03-21)
+supabase/migrations/030_sentiment_filter_rpc.sql      RPC 룰베이스 필터 — 멘션≥1 + 길이≥30자 + source 반환 (2026-03-21)
 ```
 
 ---
@@ -483,8 +491,8 @@ lib/i18n.ts                           crypto.backtest.* 번역 키 7개 × 5개 
 
 | 함수 | 모델 | 용도 | 배포 완료 |
 |------|------|------|----------|
-| `analyze-crypto-sentiment` | `gemini-2.5-flash` | Reddit/Telegram/Twitter 센티먼트 분석 — 배치 모드(최대 10건/호출) + 단일 모드 하위 호환 (score/label/fomo/fud/reasoning + **narratives/events**) | ⚠️ 재배포 필요 (2026-03-21, Flash 업그레이드 + 배치 모드) |
-| `analyze-threads-sentiment` | `gemini-2.5-flash-lite` | Threads 센티먼트 분석 (이모지 해석, 500자 최적화 + **narratives/events**) | ✅ 재배포 (2026-03-21, narratives/events 추가) |
+| `analyze-crypto-sentiment` | `gemini-2.5-flash` | Reddit/Telegram/Twitter 센티먼트 분석 — 배치 모드(최대 10건/호출) + 단일 모드 하위 호환 (score/label/fomo/fud/reasoning + **narratives/events**) | ✅ 배포 완료 (2026-03-21, Flash 업그레이드 + 배치 모드) |
+| `analyze-threads-sentiment` | `gemini-2.5-flash-lite` | Threads 센티먼트 분석 — **미사용** (Threads 크롤링 비활성화) | 배포됨 (미사용) |
 
 `google_API_KEY` secret 사용 (기존 Edge Function과 공유, Dashboard에 이미 등록됨).
 
@@ -679,7 +687,9 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | crypto_backtest_results | id (uuid) | (coin_symbol, time_window, signal_at, lookup_window) | — |
 
 ### 주의사항
-- `batch-sentiment.ts`의 NOT IN 서브쿼리가 Supabase JS에서 직접 지원 안 될 수 있음 → fallback으로 RPC 함수 또는 LEFT JOIN 방식 구현 필요 (코드에 fallback 분기 있음)
+- **센티먼트 배치 모드 (2026-03-21)**: Edge Function이 `{posts: [...]}` 배열을 받아 10건 한 번에 분석. 배치 실패 시 개별 `{title, body}` 호출로 자동 폴백. `get_posts_without_sentiment` RPC가 멘션≥1 + 길이≥30자 필터 적용 중 — 조정 시 `030_sentiment_filter_rpc.sql` 수정
+- **Reddit 공개 JSON (2026-03-21)**: OAuth 미사용, `reddit.com/r/{sub}/{sort}.json` 직접 호출. API 키 불필요. rate limit은 IP 기반 (~60 req/min), 서브레딧 간 1초 딜레이로 대응
+- **Threads 비활성화 (2026-03-21)**: `THREADS_ACCESS_TOKEN` 있어도 자기 게시물만 반환. 코드는 남아있으나 실질 데이터 없음
 - `signal-generator.ts`의 JOIN 쿼리가 복잡해서 Supabase JS의 nested select가 정확히 동작하지 않을 수 있음 → fallback으로 simple mention count 방식 구현되어 있음
 - `crypto_signals`의 UNIQUE 제약 `(coin_symbol, time_window, computed_at)` — computed_at이 동일 시각이어야 upsert 동작. 크롤링 실행마다 새 computed_at 생성됨
 - Reddit API `after` 파라미터: null이면 마지막 페이지 → 루프 종료
