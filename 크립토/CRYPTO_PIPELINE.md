@@ -14,7 +14,7 @@ GitHub Actions Cron (*/15, crypto-crawl.yml)
 
 Phase 1 (crawl): 크롤링 → sentiment 트리거
   ├─ Reddit (GitHub Actions에서 RSS로 메인 실행, Vercel route는 fallback)
-  │   → .rss (Atom XML, GitHub Actions) 또는 .json (Vercel)
+  │   → .rss (Atom XML, GitHub Actions — hot만 반환) 또는 .json (Vercel — hot+new)
   │   → 10개 서브레딧 × hot+new → crypto_posts upsert → crypto_mentions
   │
   ├─ Telegram (✅ 23개 공개 채널, 매번 셔플 + 시간예산)

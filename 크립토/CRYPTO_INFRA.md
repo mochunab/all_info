@@ -63,7 +63,7 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 | crypto_entities | id | (entity_type, name) | 코인/인플루언서/내러티브/이벤트 |
 | crypto_relations | id | — | FK: source/target_entity_id → crypto_entities |
 | crypto_coins | id (uuid) | coingecko_id | CoinGecko 코인 마스터 |
-| crypto_prices | id (uuid) | — | FK: coingecko_id → crypto_coins |
+| crypto_prices | id (uuid) | — | FK: coingecko_id → crypto_coins, IDX: (coingecko_id, fetched_at DESC) |
 | crypto_backtest_results | id (uuid) | (coin_symbol, time_window, signal_type, signal_at, lookup_window) | 시그널 vs 가격 비교 |
 
 ### 뷰

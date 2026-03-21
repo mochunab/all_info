@@ -2,7 +2,7 @@
 
 // ── DB Row Types ──
 
-export type CryptoSource = 'reddit' | 'telegram' | 'threads' | 'twitter';
+export type CryptoSource = 'reddit' | 'telegram' | 'threads' | 'twitter' | 'coingecko';
 
 export type CryptoPost = {
   id: string;
@@ -377,6 +377,7 @@ export type BattlePosition = {
   realized_pnl: number;
   signal_snapshot: BattleSignalSnapshot | null;
   hold_until: string | null;
+  peak_price: number | null;
   opened_at: string;
   closed_at: string | null;
 };
@@ -388,6 +389,9 @@ export type BattleSignalSnapshot = {
   mention_velocity: number;
   fomo_avg: number;
   confidence: number;
+  signal_type?: string;
+  contrarian_warning?: string | null;
+  event_modifier?: number | null;
 };
 
 export type BattleCloseReason =
@@ -397,7 +401,12 @@ export type BattleCloseReason =
   | 'signal_reversal'
   | 'sentiment_drop'
   | 'velocity_dead'
-  | 'hold_expired';
+  | 'hold_expired'
+  | 'panic_sell'
+  | 'euphoria_sell'
+  | 'trailing_stop'
+  | 'contrarian_exit'
+  | 'fud_surge';
 
 export type BattleTrade = {
   id: string;

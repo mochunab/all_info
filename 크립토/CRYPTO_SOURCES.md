@@ -9,13 +9,14 @@
 - Vercel IP가 Reddit에 차단됨 → GitHub Actions에서 RSS로 크롤링하여 우회
 - Vercel route에도 JSON fallback 코드 존재 (로컬 테스트용)
 - API 키 불필요, 10개 서브레딧 × hot+new
+- `r/CryptoCurrencies` → `r/wallstreetbetscrypto`로 교체 (2026-03-21): 범용 잡음 ↓, 트레이더 시그널 ↑
 
 ### Twitter/X (✅ 동작 중, Apify)
 - **방식**: Apify `scrape.badger/twitter-tweets-scraper` Actor의 Advanced Search 모드
 - **비용**: Apify 무료 $5/월, $0.0002/결과, 12시간 간격 = 월 ~$1.20
 - **키워드**: `memecoin`, `$DOGE OR $PEPE OR $SHIB`, `$BONK OR $WIF OR $FLOKI`, `crypto pump OR altcoin gem`, `$SOL OR $ETH memecoin`
 - **결과**: 5키워드 × 20결과 = 100트윗/크롤, 172 코인 멘션 추출 확인
-- **12시간 간격**: `crawl/route.ts`에서 DB의 마지막 twitter crawled_at 체크
+- **12시간 간격**: Apify 무료 플랜($5/월) 제약으로 12시간 간격 유지. `crawl/route.ts`에서 DB의 마지막 twitter crawled_at 체크
 - **센티먼트**: 기존 `analyze-crypto-sentiment` Edge Function 재활용
 - **sanitize 필수**: `sanitizeObject()` (JSON round-trip) — lone surrogate + HTML source 필드 정화. hashtags `[{tag: "..."}]` → `string[]` 정규화
 - **Apify 계정**: `predictable_magazine` (한결), User ID: `6ndnAzPtwdxborJRu`
@@ -28,6 +29,7 @@
 - 봇 초대 없이 웹 스크래핑, API 키 불필요
 - 15초 fetch 타임아웃 (AbortController)
 - config.ts에 채널 목록: binance_announcements, cryptoVIPsignalTA, whale_alert_io 등
+- **비활성 채널 감지**: 크롤링 완료 후 7일간 게시물 0개 채널을 콘솔 경고로 출력 (`telegram-crawler.ts`)
 
 ---
 
@@ -42,6 +44,16 @@
 ### 4chan /biz/ (보류)
 - 크립토 비율 ~28%, 나머지는 노이즈
 - 익명(인플루언서 감지 불가), score 없음, NSFW → 보류
+
+### CoinGecko Trending (✅ 동작 중)
+- **방식**: CoinGecko 무료 API `/api/v3/search/trending` — 검색량 급등 Top 15 코인
+- API 키 불필요, 매 크롤마다 실행 (15분 간격)
+- `crypto_posts`에 `coingecko` 소스로 저장 → 기존 멘션 추출 파이프라인 재활용
+- **시그널 연동 3중 부스트**:
+  1. `crossPlatformMultiplier` — 4번째 소스로 교차 검증 (0.7→1.0→1.3 자동 반영)
+  2. `eventModifier` — rank 1~3 → +12, 4~7 → +8, 8~15 → +5
+  3. 조기 감지 — trending이면 `mentionConfidence` 최소 0.4 보장 (소셜 멘션 적어도 시그널 억제 방지)
+- `source_id`: `cg_trending_{coingecko_id}_{시간}` (시간 단위 중복 방지)
 
 ---
 

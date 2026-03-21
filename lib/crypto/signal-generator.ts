@@ -37,6 +37,7 @@ type WindowRawData = {
   marketCapMap: Map<string, number | null>;
   historicalCounts: Map<string, number[]>;
   kgContextMap: Map<string, KGContext>;
+  trendingMap: Map<string, number>; // symbol → trending rank (1-based)
 };
 
 async function fetchWindowData(
@@ -264,7 +265,46 @@ async function fetchWindowData(
     console.error('⚠️ [시그널] KG 컨텍스트 조회 실패 (무시):', e instanceof Error ? e.message : 'unknown');
   }
 
-  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, marketCapMap, historicalCounts, kgContextMap };
+  // CoinGecko trending: 최근 6시간 내 trending 게시물에서 rank 추출
+  const trendingMap = new Map<string, number>();
+  const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+  const { data: trendingPosts } = await supabase
+    .from('crypto_posts')
+    .select('title, metadata')
+    .eq('source', 'coingecko')
+    .gte('crawled_at', sixHoursAgo);
+
+  if (trendingPosts) {
+    for (const p of trendingPosts) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = p.metadata as any;
+      if (meta?.coingecko_id) {
+        const sym = symbolByGeckoId.get(meta.coingecko_id);
+        if (sym) {
+          const existing = trendingMap.get(sym);
+          if (!existing || meta.trending_rank < existing) {
+            trendingMap.set(sym, meta.trending_rank);
+          }
+        }
+      }
+    }
+  }
+
+  // symbolByGeckoId에 없는 trending 코인은 title에서 심볼 추출
+  if (trendingPosts) {
+    for (const p of trendingPosts) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = p.metadata as any;
+      if (meta?.trending_rank) {
+        const symbolMatch = p.title?.match(/\(([A-Z]{2,10})\)/);
+        if (symbolMatch && !trendingMap.has(symbolMatch[1])) {
+          trendingMap.set(symbolMatch[1], meta.trending_rank);
+        }
+      }
+    }
+  }
+
+  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, marketCapMap, historicalCounts, kgContextMap, trendingMap };
 }
 
 function computeSignals(
@@ -386,9 +426,22 @@ function computeSignals(
     // V2: Event-type scoring
     const { modifier: eventModifier, events: detectedEvents } = computeEventModifier(agg.keyPhrases);
 
+    // CoinGecko Trending boost: rank-based event modifier
+    const trendingRank = raw.trendingMap.get(symbol);
+    let cgTrendingModifier = 0;
+    if (trendingRank) {
+      cgTrendingModifier = trendingRank <= 3 ? 12 : trendingRank <= 7 ? 8 : 5;
+      detectedEvents.push('coingecko_trending');
+    }
+
     // V2: Contrarian detection
     const allSentimentScores = agg.sentiments;
     const { warning: contrarianWarning, skew: sentimentSkew } = computeContrarianWarning(allSentimentScores);
+
+    // Early detection: CoinGecko trending이면 mentionConfidence 최소 0.4 보장
+    const adjustedMentionConfidence = trendingRank
+      ? Math.max(mentionConfidence, 0.4)
+      : mentionConfidence;
 
     const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +
@@ -397,8 +450,9 @@ function computeSignals(
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
       fomoFudNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
+    const totalEventModifier = clamp(eventModifier + cgTrendingModifier, -30, 25);
     const baseWeightedScore =
-      rawScore * mentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + eventModifier;
+      rawScore * adjustedMentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + totalEventModifier;
 
     agg.posts.sort((a, b) => b.score - a.score);
 
@@ -408,7 +462,7 @@ function computeSignals(
       baseWeightedScore,
       velocity, avgSentiment, sentimentTrend, engagementPerMention,
       zScore, sourceCount, contrarianWarning, sentimentSkew,
-      detectedEvents, eventModifier,
+      detectedEvents, eventModifier: totalEventModifier,
     });
   }
 

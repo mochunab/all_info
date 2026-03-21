@@ -31,9 +31,14 @@ zScoreMultiplier = z_score > 2.0 ? 1.0 + (z-2)*0.25 : 1.0, max 1.5
 crossPlatformMultiplier = sources==1 ? 0.7 : sources==2 ? 1.0 : 1.3
 eventModifier = sum of matched event keywords, clamp(-30, +25)
 
-baseWeightedScore = rawScore × mentionConfidence × marketCapDampening
+// CoinGecko Trending 부스트
+cgTrendingModifier = rank 1~3 → +12, 4~7 → +8, 8~15 → +5 (없으면 0)
+adjustedMentionConfidence = trending ? max(mentionConfidence, 0.4) : mentionConfidence
+totalEventModifier = clamp(eventModifier + cgTrendingModifier, -30, +25)
+
+baseWeightedScore = rawScore × adjustedMentionConfidence × marketCapDampening
                             × zScoreMultiplier × crossPlatformMultiplier
-                            + eventModifier
+                            + totalEventModifier
 
 # KG Boost (Phase I → 비례 스코어링)
 recommendsStrength = max(influencer_confidence × relation_weight / 10), clamp(0, 1)
@@ -76,6 +81,7 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | whale_sell | -10 |
 | regulatory_negative | -15 |
 | security_incident | -20 |
+| coingecko_trending | +5~12 (rank 1~3: +12, 4~7: +8, 8~15: +5) |
 
 총합 clamp(-30, +25)
 

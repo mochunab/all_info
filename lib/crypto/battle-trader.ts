@@ -7,32 +7,43 @@ const STARTING_BALANCE = 100;
 
 const ROBOT = {
   MAX_POSITIONS: 5,
-  POSITION_SIZE_PCT: 0.12,
   MIN_CASH_PCT: 0.20,
   STOP_LOSS_PCT: 0.10,
   TP1_PCT: 0.20,
   TP1_CLOSE_RATIO: 1 / 3,
   TP2_PCT: 0.40,
   TP2_CLOSE_RATIO: 1 / 3,
+  TRAILING_STOP_PCT: 0.15,
   MIN_WEIGHTED_SCORE: 30,
   MIN_MENTION_COUNT: 3,
   MIN_CONFIDENCE: 55,
   VELOCITY_BONUS_THRESHOLD: 0.5,
   SENTIMENT_BONUS_THRESHOLD: 0.2,
   FOMO_BONUS_THRESHOLD: 0.3,
+  EVENT_BONUS_THRESHOLD: 10,
   SIGNAL_TIME_WINDOWS: ['24h', '6h', '1h'] as string[],
   SIGNAL_REVERSAL_LABELS: ['cold'] as string[],
   SENTIMENT_DROP_THRESHOLD: -0.5,
   VELOCITY_DEAD_THRESHOLD: 0.05,
+  // 시그널 강도별 포지션 크기
+  SIZE_BY_LABEL: { extremely_hot: 0.18, hot: 0.12, warm: 0.08 } as Record<string, number>,
+  // 크로스 윈도우: 1h hot + 24h cold → 단기 펌프, 사이즈 축소
+  CROSS_WINDOW_PENALTY: 0.5,
 } as const;
 
 const MONKEY = {
   MAX_POSITIONS: 5,
-  ENTRY_CHANCE: 0.5,
+  ENTRY_CHANCE: 0.65,
   MIN_SIZE_PCT: 0.05,
-  MAX_SIZE_PCT: 0.15,
-  MIN_HOLD_HOURS: 1,
-  MAX_HOLD_HOURS: 168, // 7 days
+  MAX_SIZE_PCT: 0.30,
+  MIN_HOLD_HOURS: 0.25, // 15분
+  MAX_HOLD_HOURS: 24,
+  PANIC_SELL_THRESHOLD: -0.08,
+  PANIC_SELL_CHANCE: 0.4,
+  EUPHORIA_THRESHOLD: 0.15,
+  EUPHORIA_SELL_CHANCE: 0.5,
+  ALLOW_DOUBLE_DOWN: true,
+  DOUBLE_DOWN_THRESHOLD: -0.05,
 } as const;
 
 // ── 메인 함수 ──
@@ -79,7 +90,7 @@ async function runPlayer(
     if (!currentPrice) continue;
 
     const closeResult = player === 'monkey'
-      ? evaluateMonkeyExit(pos)
+      ? evaluateMonkeyExit(pos, currentPrice)
       : await evaluateRobotExit(supabase, pos, currentPrice);
 
     if (closeResult) {
@@ -93,8 +104,9 @@ async function runPlayer(
   const maxPositions = player === 'monkey' ? MONKEY.MAX_POSITIONS : ROBOT.MAX_POSITIONS;
 
   if (currentOpen < maxPositions) {
+    const currentPositions = player === 'monkey' ? await getOpenPositions(supabase, player) : [];
     const entry = player === 'monkey'
-      ? evaluateMonkeyEntry(tradableSymbols, prices)
+      ? evaluateMonkeyEntry(tradableSymbols, prices, currentPositions)
       : await evaluateRobotEntry(supabase, tradableSymbols, prices);
 
     if (entry) {
@@ -114,22 +126,55 @@ async function runPlayer(
 function evaluateMonkeyEntry(
   symbols: string[],
   prices: Map<string, number>,
+  openPositions: BattlePosition[],
 ): { coin: string; size: number; holdHours: number } | null {
   if (Math.random() > MONKEY.ENTRY_CHANCE) return null;
 
   const coin = pickRandom(symbols);
   if (!prices.has(coin)) return null;
 
+  // 물타기 체크: 이미 보유 중인 코인이면 -5% 이하일 때만 허용
+  const existingPos = openPositions.find(p => p.coin_symbol === coin);
+  if (existingPos) {
+    if (!MONKEY.ALLOW_DOUBLE_DOWN) return null;
+    const currentPrice = prices.get(coin)!;
+    const pnlPct = (currentPrice - existingPos.entry_price) / existingPos.entry_price;
+    if (pnlPct > MONKEY.DOUBLE_DOWN_THRESHOLD) return null;
+  }
+
   const sizePct = MONKEY.MIN_SIZE_PCT + Math.random() * (MONKEY.MAX_SIZE_PCT - MONKEY.MIN_SIZE_PCT);
-  const holdHours = MONKEY.MIN_HOLD_HOURS + Math.random() * (MONKEY.MAX_HOLD_HOURS - MONKEY.MIN_HOLD_HOURS);
+
+  // 지수 분포: 단타(15분) 확률 높고, 장기(24시간) 확률 낮음
+  const lambda = 3;
+  const expRandom = -Math.log(1 - Math.random()) / lambda;
+  const normalized = Math.min(expRandom / lambda, 1);
+  const holdHours = MONKEY.MIN_HOLD_HOURS + normalized * (MONKEY.MAX_HOLD_HOURS - MONKEY.MIN_HOLD_HOURS);
 
   return { coin, size: sizePct * STARTING_BALANCE, holdHours };
 }
 
-function evaluateMonkeyExit(pos: BattlePosition): { reason: BattleCloseReason; closeAll: boolean } | null {
+function evaluateMonkeyExit(
+  pos: BattlePosition,
+  currentPrice?: number,
+): { reason: BattleCloseReason; closeAll: boolean } | null {
   if (pos.hold_until && new Date(pos.hold_until) <= new Date()) {
     return { reason: 'hold_expired', closeAll: true };
   }
+
+  if (currentPrice) {
+    const pnlPct = (currentPrice - pos.entry_price) / pos.entry_price;
+
+    // 패닉셀: -8% 이하에서 40% 확률로 공포에 질려 던짐
+    if (pnlPct <= MONKEY.PANIC_SELL_THRESHOLD && Math.random() < MONKEY.PANIC_SELL_CHANCE) {
+      return { reason: 'panic_sell', closeAll: true };
+    }
+
+    // 환호 익절: +15% 이상에서 50% 확률로 신나서 익절
+    if (pnlPct >= MONKEY.EUPHORIA_THRESHOLD && Math.random() < MONKEY.EUPHORIA_SELL_CHANCE) {
+      return { reason: 'euphoria_sell', closeAll: true };
+    }
+  }
+
   return null;
 }
 
@@ -143,17 +188,22 @@ async function evaluateRobotEntry(
   const cash = await getCashBalance(supabase, 'robot');
   const portfolioValue = await getPortfolioValue(supabase, 'robot', prices);
   const minCash = portfolioValue * ROBOT.MIN_CASH_PCT;
-  const positionSize = portfolioValue * ROBOT.POSITION_SIZE_PCT;
 
-  if (cash - positionSize < minCash) return null;
+  type SignalRow = {
+    coin_symbol: string; signal_label: string; weighted_score: number;
+    mention_count: number; avg_sentiment: number; mention_velocity: number;
+    signal_type: string | null; contrarian_warning: string | null;
+    event_modifier: number | null; fomo_avg: number | null;
+  };
 
-  type SignalRow = { coin_symbol: string; signal_label: string; weighted_score: number; mention_count: number; avg_sentiment: number; mention_velocity: number };
   let signals: SignalRow[] = [];
+  let usedWindow = '';
   for (const tw of ROBOT.SIGNAL_TIME_WINDOWS) {
     const { data } = await supabase
       .from('crypto_signals')
-      .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity')
+      .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity, signal_type, contrarian_warning, event_modifier, fomo_avg')
       .eq('time_window', tw)
+      .eq('signal_type', 'fomo') // FUD 시그널 제외 — FOMO만 진입
       .in('signal_label', ['extremely_hot', 'hot', 'warm'])
       .gte('weighted_score', ROBOT.MIN_WEIGHTED_SCORE)
       .gte('mention_count', ROBOT.MIN_MENTION_COUNT)
@@ -161,11 +211,30 @@ async function evaluateRobotEntry(
 
     if (data && data.length > 0) {
       signals = data as SignalRow[];
+      usedWindow = tw;
       break;
     }
   }
 
   if (signals.length === 0) return null;
+
+  // 크로스 윈도우 비교: 사용된 윈도우가 1h/6h면 24h 시그널도 조회
+  let longTermSignals: Map<string, SignalRow> | null = null;
+  if (usedWindow !== '24h') {
+    const { data: ltData } = await supabase
+      .from('crypto_signals')
+      .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity, signal_type, contrarian_warning, event_modifier, fomo_avg')
+      .eq('time_window', '24h')
+      .eq('signal_type', 'fomo')
+      .in('coin_symbol', signals.map(s => s.coin_symbol));
+
+    if (ltData && ltData.length > 0) {
+      longTermSignals = new Map();
+      for (const s of ltData as SignalRow[]) {
+        longTermSignals.set(s.coin_symbol, s);
+      }
+    }
+  }
 
   const openPositions = await getOpenPositions(supabase, 'robot');
   const openSymbols = new Set(openPositions.map(p => p.coin_symbol));
@@ -175,15 +244,31 @@ async function evaluateRobotEntry(
     if (!symbols.includes(sig.coin_symbol)) continue;
     if (openSymbols.has(sig.coin_symbol)) continue;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fomo = (sig as any).fomo_avg ?? 0;
+    // contrarian_warning → potential_reversal이면 진입 회피
+    if (sig.contrarian_warning === 'potential_reversal') continue;
+
+    const fomo = sig.fomo_avg ?? 0;
     let confidence = 50;
     if (sig.weighted_score >= 50) confidence += 15;
     if (sig.mention_velocity > ROBOT.VELOCITY_BONUS_THRESHOLD) confidence += 15;
     if (sig.avg_sentiment > ROBOT.SENTIMENT_BONUS_THRESHOLD) confidence += 10;
     if (fomo > ROBOT.FOMO_BONUS_THRESHOLD) confidence += 10;
+    // 이벤트 보너스: exchange_listing(+15) 등 강한 이벤트
+    if ((sig.event_modifier ?? 0) >= ROBOT.EVENT_BONUS_THRESHOLD) confidence += 10;
 
     if (confidence < ROBOT.MIN_CONFIDENCE) continue;
+
+    // 시그널 강도별 포지션 크기
+    const baseSizePct = ROBOT.SIZE_BY_LABEL[sig.signal_label] ?? 0.12;
+    let sizePct = baseSizePct;
+
+    // 크로스 윈도우 체크: 단기 hot인데 장기 cold/cool → 단기 펌프 의심, 사이즈 축소
+    const ltSig = longTermSignals?.get(sig.coin_symbol);
+    const isShortTermPump = ltSig && ['cold', 'cool'].includes(ltSig.signal_label);
+    if (isShortTermPump) sizePct *= ROBOT.CROSS_WINDOW_PENALTY;
+
+    const positionSize = portfolioValue * sizePct;
+    if (cash - positionSize < minCash) continue;
 
     return {
       coin: sig.coin_symbol,
@@ -195,6 +280,9 @@ async function evaluateRobotEntry(
         mention_velocity: sig.mention_velocity,
         fomo_avg: fomo,
         confidence,
+        signal_type: sig.signal_type,
+        contrarian_warning: sig.contrarian_warning,
+        event_modifier: sig.event_modifier,
       },
     };
   }
@@ -511,7 +599,7 @@ export async function lazyEvaluateExits(supabase: SupabaseClient): Promise<numbe
       if (!currentPrice) continue;
 
       const result = player === 'monkey'
-        ? evaluateMonkeyExit(pos)
+        ? evaluateMonkeyExit(pos, currentPrice)
         : evaluateRobotPriceExit(pos, currentPrice);
 
       if (result) {

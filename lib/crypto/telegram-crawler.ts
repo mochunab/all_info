@@ -245,7 +245,7 @@ export async function crawlAllTelegramChannels(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   timeBudgetMs: number = 120_000
-): Promise<{ results: CryptoCrawlResult[]; completed: boolean }> {
+): Promise<{ results: CryptoCrawlResult[]; completed: boolean; inactiveChannels?: string[] }> {
   const results: CryptoCrawlResult[] = [];
   const callStart = Date.now();
   const channels = shuffleArray(TELEGRAM_CHANNELS);
@@ -269,5 +269,22 @@ export async function crawlAllTelegramChannels(
     await sleep(TELEGRAM_RATE_LIMIT_MS);
   }
 
-  return { results, completed: true };
+  // 비활성 채널 감지: 7일간 게시물 0개 채널 로깅
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: activeChannels } = await supabase
+    .from('crypto_posts')
+    .select('channel')
+    .eq('source', 'telegram')
+    .gte('posted_at', sevenDaysAgo);
+
+  const activeSet = new Set((activeChannels || []).map((r: { channel: string }) => r.channel));
+  const inactiveChannels = TELEGRAM_CHANNELS.filter((ch) => !activeSet.has(ch.username));
+
+  if (inactiveChannels.length > 0) {
+    console.warn(
+      `⚠️ [Telegram] 7일간 게시물 없는 채널 (${inactiveChannels.length}개): ${inactiveChannels.map((c) => c.username).join(', ')}`
+    );
+  }
+
+  return { results, completed: true, inactiveChannels: inactiveChannels.map((c) => c.username) };
 }

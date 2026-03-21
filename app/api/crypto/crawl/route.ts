@@ -104,6 +104,20 @@ async function handleCrawl(request: NextRequest) {
         }
       }
 
+      // CoinGecko Trending (무료, 매 크롤마다 실행)
+      try {
+        const { crawlCoinGeckoTrending } = await import('@/lib/crypto/coingecko-trending');
+        const { result: cgResult } = await crawlCoinGeckoTrending(supabase);
+        allResults.push(cgResult);
+        if (cgResult.errors.length > 0) {
+          console.warn(`[CoinGecko] 오류: ${cgResult.errors.join('; ')}`);
+        } else {
+          console.log(`✅ [CoinGecko] Trending ${cgResult.postsFound}개 발견, ${cgResult.mentionsExtracted}개 멘션`);
+        }
+      } catch (e) {
+        console.warn(`[CoinGecko] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
       if (process.env.APIFY_API_TOKEN) {
         const TWITTER_INTERVAL_MS = 12 * 60 * 60 * 1000;
         const { data: lastTwitter } = await supabase

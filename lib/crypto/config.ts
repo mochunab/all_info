@@ -10,7 +10,7 @@ export const CRYPTO_SUBREDDITS: readonly SubredditConfig[] = [
   { name: 'CryptoMarkets', weight: 0.9, minScore: 10 },
   { name: 'solana', weight: 1.0, minScore: 5 },
   { name: 'Dogecoin', weight: 0.8, minScore: 5 },
-  { name: 'CryptoCurrencies', weight: 0.7, minScore: 5 },
+  { name: 'wallstreetbetscrypto', weight: 1.0, minScore: 5 },
 ] as const;
 
 export const REDDIT_RATE_LIMIT_MS = 1000;
@@ -290,4 +290,5 @@ export const EVENT_TYPE_PATTERNS: Record<string, { keywords: string[]; modifier:
   regulatory_negative: { keywords: ['sec lawsuit', 'sec sues', 'banned', 'delisted', 'crackdown', 'regulation negative'], modifier: -15 },
   partnership: { keywords: ['partnership', 'partners with', 'integrates with', 'collaboration', 'strategic alliance'], modifier: 8 },
   airdrop: { keywords: ['airdrop', 'token distribution', 'free tokens'], modifier: 5 },
+  coingecko_trending: { keywords: ['coingecko trending'], modifier: 8 },
 };
