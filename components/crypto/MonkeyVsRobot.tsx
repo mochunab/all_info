@@ -331,14 +331,14 @@ function PlayerSubTabs({ selected, onChange, language }: { selected: 'monkey' | 
     { key: 'robot' as const, label: `🤖 ${t(language, 'crypto.battle.robot')}` },
   ];
   return (
-    <div className="flex gap-1 mb-3 p-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+    <div className="flex gap-1 mb-3 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
       {items.map(item => (
         <button
           key={item.key}
           onClick={() => onChange(item.key)}
-          className="flex-1 px-3 py-1.5 text-xs font-medium rounded-full transition-colors cursor-pointer"
+          className="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer"
           style={{
-            backgroundColor: selected === item.key ? 'var(--bg-primary)' : 'transparent',
+            backgroundColor: selected === item.key ? 'var(--bg-secondary)' : 'transparent',
             color: selected === item.key ? 'var(--text-primary)' : 'var(--text-tertiary)',
             boxShadow: selected === item.key ? 'var(--shadow-sm)' : 'none',
           }}

@@ -133,7 +133,7 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t(language, 'crypto.searchShort')}
+            placeholder={t(language, 'crypto.search')}
             className="w-full max-w-xs px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           />
         </div>
