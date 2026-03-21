@@ -13,18 +13,27 @@ import {
   computeSignalLabel,
   computeMentionConfidence,
   computeMarketCapDampening,
+  computeZScore,
+  computeZScoreMultiplier,
+  computeCrossPlatformMultiplier,
+  computeContrarianWarning,
+  computeEventModifier,
 } from '@/lib/crypto/score-utils';
+import { ZSCORE_ROLLING_PERIODS } from '@/lib/crypto/config';
+import { fetchWhaleTransactions, aggregateWhaleSignals, storeWhaleEvents } from '@/lib/crypto/onchain-fetcher';
 
 type WindowRawData = {
   mentions: { coin_symbol: string; mention_count: number; post_id: string }[];
   postMap: Map<string, {
     source_id: string; title: string; score: number; channel: string;
     upvotes: number; num_comments: number; num_awards: number;
+    source: string;
   }>;
-  sentimentMap: Map<string, { sentiment_score: number; fomo_score: number; fud_score: number }>;
+  sentimentMap: Map<string, { sentiment_score: number; fomo_score: number; fud_score: number; key_phrases: string[] }>;
   prevCounts: Map<string, number>;
   prevSentimentMap: Map<string, number[]>;
   rankMap: Map<string, number | null>;
+  historicalCounts: Map<string, number[]>;
 };
 
 async function fetchWindowData(
@@ -49,22 +58,23 @@ async function fetchWindowData(
   const [postsRes, sentimentsRes] = await Promise.all([
     supabase
       .from('crypto_posts')
-      .select('id, source_id, title, score, channel, upvotes, num_comments, num_awards')
+      .select('id, source_id, title, score, channel, upvotes, num_comments, num_awards, source')
       .in('id', postIds),
     supabase
       .from('crypto_sentiments')
-      .select('post_id, sentiment_score, fomo_score, fud_score')
+      .select('post_id, sentiment_score, fomo_score, fud_score, key_phrases')
       .in('post_id', postIds),
   ]);
 
   const postMap = new Map<string, {
     source_id: string; title: string; score: number; channel: string;
     upvotes: number; num_comments: number; num_awards: number;
+    source: string;
   }>();
   for (const p of postsRes.data || []) postMap.set(p.id, p);
 
-  const sentimentMap = new Map<string, { sentiment_score: number; fomo_score: number; fud_score: number }>();
-  for (const s of sentimentsRes.data || []) sentimentMap.set(s.post_id, s);
+  const sentimentMap = new Map<string, { sentiment_score: number; fomo_score: number; fud_score: number; key_phrases: string[] }>();
+  for (const s of sentimentsRes.data || []) sentimentMap.set(s.post_id, { ...s, key_phrases: s.key_phrases || [] });
 
   const { data: prevData } = await supabase
     .from('crypto_mentions')
@@ -111,7 +121,31 @@ async function fetchWindowData(
   const rankMap = new Map<string, number | null>();
   for (const c of coinRows || []) rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
 
-  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap };
+  // Historical mention counts for Z-score (last N periods)
+  const windowMs = TIME_WINDOW_MS[window];
+  const historyStart = new Date(now.getTime() - windowMs * (ZSCORE_ROLLING_PERIODS + 1));
+  const { data: histMentions } = await supabase
+    .from('crypto_mentions')
+    .select('coin_symbol, mention_count, created_at')
+    .gte('created_at', historyStart.toISOString())
+    .lt('created_at', windowStart.toISOString());
+
+  const historicalCounts = new Map<string, number[]>();
+  if (histMentions) {
+    const buckets = new Map<string, Map<number, number>>();
+    for (const m of histMentions) {
+      const t = new Date(m.created_at).getTime();
+      const bucketIdx = Math.floor((t - historyStart.getTime()) / windowMs);
+      if (!buckets.has(m.coin_symbol)) buckets.set(m.coin_symbol, new Map());
+      const coinBuckets = buckets.get(m.coin_symbol)!;
+      coinBuckets.set(bucketIdx, (coinBuckets.get(bucketIdx) || 0) + m.mention_count);
+    }
+    for (const [symbol, coinBuckets] of buckets) {
+      historicalCounts.set(symbol, [...coinBuckets.values()]);
+    }
+  }
+
+  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, historicalCounts };
 }
 
 function computeSignals(
@@ -125,6 +159,8 @@ function computeSignals(
     fomos: number[];
     engagements: number[];
     posts: TopPostSummary[];
+    sources: Set<string>;
+    keyPhrases: string[][];
   };
 
   const coinMap = new Map<string, CoinAgg>();
@@ -132,18 +168,20 @@ function computeSignals(
   for (const row of raw.mentions) {
     const symbol = row.coin_symbol;
     if (!coinMap.has(symbol)) {
-      coinMap.set(symbol, { mentions: 0, sentiments: [], fomos: [], engagements: [], posts: [] });
+      coinMap.set(symbol, { mentions: 0, sentiments: [], fomos: [], engagements: [], posts: [], sources: new Set(), keyPhrases: [] });
     }
     const agg = coinMap.get(symbol)!;
     agg.mentions += row.mention_count;
 
     const post = raw.postMap.get(row.post_id);
     if (post) {
+      if (post.source) agg.sources.add(post.source);
       const engagement = (post.upvotes || 0) * 1 + (post.num_comments || 0) * 2 + (post.num_awards || 0) * 5;
       agg.engagements.push(engagement);
 
       const sentiment = raw.sentimentMap.get(row.post_id);
       if (sentiment) {
+        if (sentiment.key_phrases?.length) agg.keyPhrases.push(sentiment.key_phrases);
         const include = signalType === 'fomo'
           ? sentiment.sentiment_score >= 0
           : sentiment.sentiment_score <= 0;
@@ -202,6 +240,22 @@ function computeSignals(
     const mentionConfidence = computeMentionConfidence(agg.mentions);
     const marketCapDampening = computeMarketCapDampening(raw.rankMap.get(symbol) ?? null);
 
+    // V2: Z-score anomaly detection
+    const history = raw.historicalCounts.get(symbol) || [];
+    const zScore = computeZScore(agg.mentions, history);
+    const zScoreMultiplier = computeZScoreMultiplier(zScore);
+
+    // V2: Cross-platform confirmation
+    const sourceCount = agg.sources.size;
+    const crossPlatformMultiplier = computeCrossPlatformMultiplier(sourceCount);
+
+    // V2: Event-type scoring
+    const { modifier: eventModifier, events: detectedEvents } = computeEventModifier(agg.keyPhrases);
+
+    // V2: Contrarian detection
+    const allSentimentScores = agg.sentiments;
+    const { warning: contrarianWarning, skew: sentimentSkew } = computeContrarianWarning(allSentimentScores);
+
     const rawScore =
       velocityNorm * SIGNAL_WEIGHTS.MENTION_VELOCITY +
       sentimentNorm * SIGNAL_WEIGHTS.AVG_SENTIMENT +
@@ -209,7 +263,10 @@ function computeSignals(
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
       fomoFudNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
-    const weightedScore = clamp(rawScore * mentionConfidence * marketCapDampening, 0, 100);
+    const weightedScore = clamp(
+      rawScore * mentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + eventModifier,
+      0, 100
+    );
 
     agg.posts.sort((a, b) => b.score - a.score);
 
@@ -225,6 +282,12 @@ function computeSignals(
       engagement_score: Math.round(engagementPerMention * 100) / 100,
       signal_label: computeSignalLabel(weightedScore),
       top_posts: agg.posts.slice(0, 5),
+      z_score: Math.round(zScore * 1000) / 1000,
+      source_count: sourceCount,
+      contrarian_warning: contrarianWarning,
+      sentiment_skew: sentimentSkew,
+      detected_events: detectedEvents.length > 0 ? detectedEvents : undefined,
+      event_modifier: eventModifier !== 0 ? eventModifier : undefined,
     });
   }
 
@@ -250,36 +313,64 @@ export async function generateAllSignals(
   const computedAt = new Date().toISOString();
   const signalTypes: SignalType[] = ['fomo', 'fud'];
 
-  for (const window of TIME_WINDOWS) {
-    const raw = await fetchWindowData(supabase, window);
-    if (!raw) continue;
-
-    for (const signalType of signalTypes) {
-      const signals = computeSignals(raw, signalType, window);
-
-      if (signals.length > 0) {
-        const rows = signals.map((s) => ({
-          ...s,
-          top_posts: JSON.stringify(s.top_posts),
-          computed_at: computedAt,
-        }));
-
-        const { error } = await supabase
-          .from('crypto_signals')
-          .upsert(rows, {
-            onConflict: 'coin_symbol,time_window,signal_type,computed_at',
-            ignoreDuplicates: false,
-          });
-
-        if (error) {
-          console.error(`❌ [시그널] ${window}/${signalType} 저장 실패:`, error.message);
-        } else {
-          totalGenerated += signals.length;
-          console.log(`   📊 [시그널] ${window}/${signalType}: ${signals.length}개 코인`);
-        }
-      }
-    }
+  // On-chain: Whale Alert 데이터 수집 + 저장
+  const whaleSignals = await fetchWhaleTransactions(35);
+  const whaleScores = aggregateWhaleSignals(whaleSignals);
+  if (whaleSignals.length > 0) {
+    const stored = await storeWhaleEvents(supabase, whaleSignals);
+    console.log(`   🐋 Whale 이벤트 ${stored}건 저장`);
   }
+
+  const windowResults = await Promise.all(
+    TIME_WINDOWS.map(async (window) => {
+      let count = 0;
+      try {
+        const raw = await fetchWindowData(supabase, window);
+        if (!raw) return 0;
+
+        for (const signalType of signalTypes) {
+          const signals = computeSignals(raw, signalType, window);
+
+          for (const s of signals) {
+            const whale = whaleScores.get(s.coin_symbol);
+            if (whale) {
+              const whaleModifier = signalType === 'fomo' ? Math.max(whale.score, 0) : Math.abs(Math.min(whale.score, 0));
+              s.weighted_score = clamp(s.weighted_score + whaleModifier, 0, 100);
+              s.signal_label = computeSignalLabel(s.weighted_score);
+              s.event_modifier = (s.event_modifier || 0) + whale.score;
+              s.detected_events = [...(s.detected_events || []), ...whale.events.map(e => e.split(':')[0].trim())];
+            }
+          }
+
+          if (signals.length > 0) {
+            const rows = signals.map((s) => ({
+              ...s,
+              top_posts: JSON.stringify(s.top_posts),
+              computed_at: computedAt,
+            }));
+
+            const { error } = await supabase
+              .from('crypto_signals')
+              .upsert(rows, {
+                onConflict: 'coin_symbol,time_window,signal_type,computed_at',
+                ignoreDuplicates: false,
+              });
+
+            if (error) {
+              console.error(`❌ [시그널] ${window}/${signalType} 저장 실패:`, error.message);
+            } else {
+              count += signals.length;
+              console.log(`   📊 [시그널] ${window}/${signalType}: ${signals.length}개 코인`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`❌ [시그널] ${window} 처리 오류:`, e instanceof Error ? e.message : 'unknown');
+      }
+      return count;
+    })
+  );
+  totalGenerated = windowResults.reduce((a, b) => a + b, 0);
 
   return { generated: totalGenerated };
 }
