@@ -50,17 +50,28 @@ export function computeMentionConfidence(mentions: number): number {
   return clamp(mentions / MIN_MENTION_CONFIDENCE, 0, 1);
 }
 
-// 시가총액 순위 기반 감쇠 — rank 낮을수록(대형) 강하게 감쇠
-// rank 1(BTC) → 0.3, rank 10 → 0.43, rank 50 → 0.74, rank 100 → 0.87, rank 200+ → 1.0
 export function normalizeSentimentTrend(trend: number): number {
   return clamp((trend + 1) * 50, 0, 100);
 }
 
-export function computeMarketCapDampening(marketCapRank: number | null): number {
+// 시총 USD 기반 감쇠 — 시총 클수록 강하게 감쇠
+// $50M 이하 → 1.0, $1B → 0.28, $10B → 0.19, $250B → 0.14, $1.3T → 0.12
+// fallback: market_cap 없으면 rank 기반
+export function computeMarketCapDampening(
+  marketCapRank: number | null,
+  marketCapUsd?: number | null,
+): number {
+  const { REFERENCE_CAP_USD, MIN_FACTOR, POWER, MAX_RANK, RANK_MIN_FACTOR } = MARKET_CAP_DAMPENING;
+
+  if (marketCapUsd && marketCapUsd > 0) {
+    if (marketCapUsd <= REFERENCE_CAP_USD) return 1.0;
+    return clamp(Math.pow(REFERENCE_CAP_USD / marketCapUsd, POWER), MIN_FACTOR, 1.0);
+  }
+
+  // fallback: rank 기반
   if (!marketCapRank || marketCapRank <= 0) return 1.0;
-  const { MAX_RANK, MIN_FACTOR } = MARKET_CAP_DAMPENING;
   const logRatio = Math.log10(marketCapRank) / Math.log10(MAX_RANK);
-  return clamp(MIN_FACTOR + (1 - MIN_FACTOR) * logRatio, MIN_FACTOR, 1.0);
+  return clamp(RANK_MIN_FACTOR + (1 - RANK_MIN_FACTOR) * logRatio, RANK_MIN_FACTOR, 1.0);
 }
 
 // ── Signal Scoring V2 ──
@@ -121,8 +132,9 @@ export function computeEventModifier(
 // ── Knowledge Graph Boost ──
 
 export type KGContext = {
-  hasRecommends: boolean;
-  correlatedHotCount: number;
+  recommendsStrength: number; // 0~1: max(influencer_confidence × relation_weight)
+  correlatedWeights: number[]; // relation weights for hot correlated coins
+  entityConfidence: number; // 0.3~1.0: coin entity confidence
   narrativeAvgScore: number | null;
   eventImpacts: ('positive' | 'negative' | 'neutral')[];
 };
@@ -132,21 +144,30 @@ export function computeKGBoost(ctx: KGContext): { boost: number; multiplier: num
   let multiplier = 1.0;
   const details: string[] = [];
 
-  if (ctx.hasRecommends) {
-    multiplier = KG_BOOST.INFLUENCER_RECOMMENDS;
-    details.push('influencer_recommends');
+  // 1. Influencer recommends — strength-weighted multiplier
+  if (ctx.recommendsStrength > 0) {
+    multiplier = 1.0 + KG_BOOST.INFLUENCER_RECOMMENDS_MAX * clamp(ctx.recommendsStrength, 0, 1);
+    details.push(`influencer_recommends(${ctx.recommendsStrength.toFixed(2)})`);
   }
 
-  if (ctx.correlatedHotCount > 0) {
-    boost += KG_BOOST.CORRELATED_HOT_BOOST * Math.min(ctx.correlatedHotCount, 3);
-    details.push(`correlated_hot×${Math.min(ctx.correlatedHotCount, 3)}`);
+  // 2. Correlated coins — weight-proportional boost (weight/CAP × max per coin)
+  const cap = KG_BOOST.CORRELATED_WEIGHT_CAP;
+  for (const w of ctx.correlatedWeights.slice(0, 3)) {
+    boost += KG_BOOST.CORRELATED_HOT_BOOST * clamp(w / cap, 0, 1);
+  }
+  if (ctx.correlatedWeights.length > 0) {
+    details.push(`correlated_hot×${Math.min(ctx.correlatedWeights.length, 3)}(w)`);
   }
 
-  if (ctx.narrativeAvgScore !== null && ctx.narrativeAvgScore >= KG_BOOST.NARRATIVE_MOMENTUM_THRESHOLD) {
-    boost += KG_BOOST.NARRATIVE_MOMENTUM_BOOST;
-    details.push('narrative_momentum');
+  // 3. Narrative momentum — bidirectional continuous scale
+  // avg 100 → +4, avg 75 → +2, avg 50 → 0, avg 25 → -2, avg 0 → -4
+  if (ctx.narrativeAvgScore !== null) {
+    const maxBoost = KG_BOOST.NARRATIVE_MOMENTUM_MAX_BOOST;
+    boost += ((ctx.narrativeAvgScore - 50) / 50) * maxBoost;
+    details.push(`narrative_momentum(${ctx.narrativeAvgScore.toFixed(0)})`);
   }
 
+  // 4. Event impacts
   for (const impact of ctx.eventImpacts) {
     if (impact === 'positive') boost += KG_BOOST.EVENT_IMPACT_POSITIVE;
     else if (impact === 'negative') boost += KG_BOOST.EVENT_IMPACT_NEGATIVE;
@@ -154,6 +175,11 @@ export function computeKGBoost(ctx: KGContext): { boost: number; multiplier: num
   if (ctx.eventImpacts.length > 0) details.push(`event_impacts×${ctx.eventImpacts.length}`);
 
   boost = clamp(boost, -KG_BOOST.MAX_TOTAL_BOOST, KG_BOOST.MAX_TOTAL_BOOST);
+
+  // 5. Entity confidence modifier — scale total boost
+  const confidence = clamp(ctx.entityConfidence, 0.3, 1.0);
+  boost *= confidence;
+  if (confidence < 1.0) details.push(`entity_conf(${confidence.toFixed(2)})`);
 
   return { boost, multiplier, details };
 }

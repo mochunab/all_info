@@ -34,6 +34,7 @@ type WindowRawData = {
   prevCounts: Map<string, number>;
   prevSentimentMap: Map<string, number[]>;
   rankMap: Map<string, number | null>;
+  marketCapMap: Map<string, number | null>;
   historicalCounts: Map<string, number[]>;
   kgContextMap: Map<string, KGContext>;
 };
@@ -123,6 +124,21 @@ async function fetchWindowData(
   const rankMap = new Map<string, number | null>();
   for (const c of coinRows || []) rankMap.set(c.symbol.toUpperCase(), c.market_cap_rank);
 
+  // 시총 USD 조회 (최신 스냅샷)
+  const { data: priceRows } = await supabase
+    .from('crypto_prices')
+    .select('symbol, market_cap')
+    .in('symbol', allSymbols)
+    .order('fetched_at', { ascending: false });
+
+  const marketCapMap = new Map<string, number | null>();
+  if (priceRows) {
+    for (const p of priceRows) {
+      const sym = p.symbol.toUpperCase();
+      if (!marketCapMap.has(sym)) marketCapMap.set(sym, p.market_cap ? Number(p.market_cap) : null);
+    }
+  }
+
   // Historical mention counts for Z-score (last N periods)
   const windowMs = TIME_WINDOW_MS[window];
   const historyStart = new Date(now.getTime() - windowMs * (ZSCORE_ROLLING_PERIODS + 1));
@@ -152,29 +168,32 @@ async function fetchWindowData(
   try {
     const { data: coinEntities } = await supabase
       .from('crypto_entities')
-      .select('id, symbol')
+      .select('id, symbol, metadata')
       .eq('entity_type', 'coin')
       .in('symbol', allSymbols);
 
     if (coinEntities && coinEntities.length > 0) {
       const entityIdToSymbol = new Map<string, string>();
       const symbolToEntityId = new Map<string, string>();
+      const entityConfidenceMap = new Map<string, number>();
       for (const e of coinEntities) {
         entityIdToSymbol.set(e.id, e.symbol);
         symbolToEntityId.set(e.symbol, e.id);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        entityConfidenceMap.set(e.symbol, ((e as any).metadata?.confidence as number) ?? 1.0);
       }
       const entityIds = coinEntities.map(e => e.id);
 
       const { data: relations } = await supabase
         .from('crypto_relations')
-        .select('source_entity_id, target_entity_id, relation_type, metadata')
+        .select('source_entity_id, target_entity_id, relation_type, weight, metadata')
         .gt('weight', 0)
         .or(`source_entity_id.in.(${entityIds.join(',')}),target_entity_id.in.(${entityIds.join(',')})`);
 
-      // Pre-build per-coin KG context
-      const recommendsSet = new Set<string>();
-      const correlatedCoins = new Map<string, string[]>();
-      const narrativeCoins = new Map<string, string[]>(); // narrativeEntityId → coin symbols
+      const recommendsStrengthMap = new Map<string, number>();
+      // correlatedCoins: symbol → [{symbol, weight}]
+      const correlatedCoins = new Map<string, { symbol: string; weight: number }[]>();
+      const narrativeCoins = new Map<string, string[]>();
       const eventImpactsMap = new Map<string, ('positive' | 'negative' | 'neutral')[]>();
 
       for (const rel of relations || []) {
@@ -182,13 +201,17 @@ async function fetchWindowData(
         const tgtSymbol = entityIdToSymbol.get(rel.target_entity_id);
 
         if (rel.relation_type === 'recommends' && tgtSymbol) {
-          recommendsSet.add(tgtSymbol);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const influencerConf = ((rel.metadata as any)?.confidence as number) ?? 1.0;
+          const strength = influencerConf * (rel.weight / 10);
+          const prev = recommendsStrengthMap.get(tgtSymbol) || 0;
+          if (strength > prev) recommendsStrengthMap.set(tgtSymbol, Math.min(strength, 1));
         }
         if (rel.relation_type === 'correlates_with' && srcSymbol && tgtSymbol) {
           if (!correlatedCoins.has(srcSymbol)) correlatedCoins.set(srcSymbol, []);
-          correlatedCoins.get(srcSymbol)!.push(tgtSymbol);
+          correlatedCoins.get(srcSymbol)!.push({ symbol: tgtSymbol, weight: rel.weight });
           if (!correlatedCoins.has(tgtSymbol)) correlatedCoins.set(tgtSymbol, []);
-          correlatedCoins.get(tgtSymbol)!.push(srcSymbol);
+          correlatedCoins.get(tgtSymbol)!.push({ symbol: srcSymbol, weight: rel.weight });
         }
         if (rel.relation_type === 'part_of' && srcSymbol) {
           const narrativeId = rel.target_entity_id;
@@ -205,20 +228,20 @@ async function fetchWindowData(
 
       for (const symbol of allSymbols) {
         kgContextMap.set(symbol, {
-          hasRecommends: recommendsSet.has(symbol),
-          correlatedHotCount: 0,
+          recommendsStrength: recommendsStrengthMap.get(symbol) || 0,
+          correlatedWeights: [],
+          entityConfidence: entityConfidenceMap.get(symbol) ?? 1.0,
           narrativeAvgScore: null,
           eventImpacts: eventImpactsMap.get(symbol) || [],
         });
       }
 
-      // correlatedHotCount and narrativeAvgScore are resolved in computeSignals (needs scores)
-      // Store raw correlations for deferred resolution
+      // Store raw correlations for deferred resolution (needs cross-coin scores)
       for (const [symbol, correlated] of correlatedCoins) {
         const ctx = kgContextMap.get(symbol);
         if (ctx) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (ctx as any)._correlatedSymbols = correlated;
+          (ctx as any)._correlatedPeers = correlated;
         }
       }
       for (const [, coins] of narrativeCoins) {
@@ -235,7 +258,7 @@ async function fetchWindowData(
     console.error('⚠️ [시그널] KG 컨텍스트 조회 실패 (무시):', e instanceof Error ? e.message : 'unknown');
   }
 
-  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, historicalCounts, kgContextMap };
+  return { mentions, postMap, sentimentMap, prevCounts, prevSentimentMap, rankMap, marketCapMap, historicalCounts, kgContextMap };
 }
 
 function computeSignals(
@@ -340,7 +363,10 @@ function computeSignals(
       : normalizeFud(avgFomoFud);
 
     const mentionConfidence = computeMentionConfidence(agg.mentions);
-    const marketCapDampening = computeMarketCapDampening(raw.rankMap.get(symbol) ?? null);
+    const marketCapDampening = computeMarketCapDampening(
+      raw.rankMap.get(symbol) ?? null,
+      raw.marketCapMap.get(symbol) ?? null,
+    );
 
     // V2: Z-score anomaly detection
     const history = raw.historicalCounts.get(symbol) || [];
@@ -388,14 +414,14 @@ function computeSignals(
 
   for (const item of intermediates) {
     const kgCtx = raw.kgContextMap.get(item.symbol) || {
-      hasRecommends: false, correlatedHotCount: 0, narrativeAvgScore: null, eventImpacts: [],
+      recommendsStrength: 0, correlatedWeights: [], entityConfidence: 1.0, narrativeAvgScore: null, eventImpacts: [],
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const correlatedSymbols: string[] = (kgCtx as any)._correlatedSymbols || [];
-    kgCtx.correlatedHotCount = correlatedSymbols.filter(
-      s => (baseScoreMap.get(s) || 0) >= KG_BOOST_CONFIG.CORRELATED_HOT_THRESHOLD
-    ).length;
+    const correlatedPeers: { symbol: string; weight: number }[] = (kgCtx as any)._correlatedPeers || [];
+    kgCtx.correlatedWeights = correlatedPeers
+      .filter(p => (baseScoreMap.get(p.symbol) || 0) >= KG_BOOST_CONFIG.CORRELATED_HOT_THRESHOLD)
+      .map(p => p.weight);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const narrativePeers: string[] = (kgCtx as any)._narrativePeers || [];

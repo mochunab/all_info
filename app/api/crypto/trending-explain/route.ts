@@ -206,13 +206,13 @@ export async function GET(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: coinEntityData } = await supabase
     .from('crypto_entities')
-    .select('id')
+    .select('id, metadata')
     .eq('entity_type', 'coin')
     .eq('symbol', coin)
     .single();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const coinEntityRow = coinEntityData as any as { id: string } | null;
+  const coinEntityRow = coinEntityData as any as { id: string; metadata: Record<string, unknown> | null } | null;
 
   if (coinEntityRow) {
     const { data: coinRels } = await supabase
@@ -279,37 +279,55 @@ export async function GET(req: NextRequest) {
     try {
       const { data: allCoinRels } = await supabase
         .from('crypto_relations')
-        .select('source_entity_id, target_entity_id, relation_type, metadata')
+        .select('source_entity_id, target_entity_id, relation_type, weight, metadata')
         .or(`source_entity_id.eq.${coinEntityRow.id},target_entity_id.eq.${coinEntityRow.id}`)
         .gt('weight', 0);
 
-      type KGRelRow = { source_entity_id: string; target_entity_id: string; relation_type: string; metadata: Record<string, string> | null };
+      type KGRelRow = { source_entity_id: string; target_entity_id: string; relation_type: string; weight: number; metadata: Record<string, string> | null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const kgRels = (allCoinRels || []) as any as KGRelRow[];
 
-      const hasRecommends = kgRels.some(r => r.relation_type === 'recommends' && r.target_entity_id === coinEntityRow.id);
+      // Recommends strength: max(influencer_confidence × relation_weight / 10)
+      let recommendsStrength = 0;
+      for (const r of kgRels) {
+        if (r.relation_type === 'recommends' && r.target_entity_id === coinEntityRow.id) {
+          const infConf = (r.metadata?.confidence as unknown as number) ?? 1.0;
+          const s = infConf * (r.weight / 10);
+          if (s > recommendsStrength) recommendsStrength = Math.min(s, 1);
+        }
+      }
 
-      const correlatedEntityIds = kgRels
+      // Correlated coins with weights
+      const correlatedRels = kgRels
         .filter(r => r.relation_type === 'correlates_with')
-        .map(r => r.source_entity_id === coinEntityRow.id ? r.target_entity_id : r.source_entity_id);
+        .map(r => ({
+          entityId: r.source_entity_id === coinEntityRow.id ? r.target_entity_id : r.source_entity_id,
+          weight: r.weight,
+        }));
 
-      let correlatedHotCount = 0;
-      if (correlatedEntityIds.length > 0) {
+      const correlatedWeights: number[] = [];
+      if (correlatedRels.length > 0) {
         const { data: corrEntities } = await supabase
           .from('crypto_entities')
-          .select('symbol')
-          .in('id', correlatedEntityIds);
+          .select('id, symbol')
+          .in('id', correlatedRels.map(r => r.entityId));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const corrSymbols = ((corrEntities || []) as any[]).map(e => e.symbol as string).filter(Boolean);
+        const idToSymbol = new Map(((corrEntities || []) as any[]).map(e => [e.id as string, e.symbol as string]));
+        const corrSymbols = [...idToSymbol.values()].filter(Boolean);
         if (corrSymbols.length > 0) {
           const { data: corrSignals } = await supabase
             .from('crypto_signals')
-            .select('weighted_score')
+            .select('coin_symbol, weighted_score')
             .in('coin_symbol', corrSymbols)
             .eq('time_window', window)
             .eq('signal_type', signalType)
             .gte('weighted_score', KG_BOOST_CONFIG.CORRELATED_HOT_THRESHOLD);
-          correlatedHotCount = corrSignals?.length || 0;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hotSymbols = new Set(((corrSignals || []) as any[]).map(s => s.coin_symbol as string));
+          for (const cr of correlatedRels) {
+            const sym = idToSymbol.get(cr.entityId);
+            if (sym && hotSymbols.has(sym)) correlatedWeights.push(cr.weight);
+          }
         }
       }
 
@@ -350,7 +368,8 @@ export async function GET(req: NextRequest) {
         .filter(r => r.relation_type === 'impacts' && r.target_entity_id === coinEntityRow.id)
         .map(r => (r.metadata?.impact as 'positive' | 'negative' | 'neutral') || 'neutral');
 
-      const kgCtx: KGContext = { hasRecommends, correlatedHotCount, narrativeAvgScore, eventImpacts };
+      const entityConfidence = (coinEntityRow.metadata?.confidence as number) ?? 1.0;
+      const kgCtx: KGContext = { recommendsStrength, correlatedWeights, entityConfidence, narrativeAvgScore, eventImpacts };
       const { boost, multiplier, details } = computeKGBoost(kgCtx);
       if (details.length > 0) {
         kgBoostResult = { boost: Math.round(boost * 100) / 100, multiplier, details };

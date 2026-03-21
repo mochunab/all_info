@@ -37,6 +37,7 @@ Phase 2 (sentiment): 센티먼트 분석 — 미완료 시 자기 재호출, 완
   ↓ fire-and-forget: {phase: "signals"}
 
 Phase 3a (signals): FOMO 시그널 생성
+  → crypto_prices에서 최신 market_cap 조회 → 시총 기반 dampening 계산
   → 시간 윈도우별(1h/6h/24h/7d) FOMO 시그널 생성 → crypto_signals upsert
   ↓ fire-and-forget: {phase: "signals_fud"}
 

@@ -114,8 +114,11 @@ export const MIN_MENTION_CONFIDENCE = 5;
 
 // 시가총액 순위 기반 감쇠 — 대형 코인의 "당연한 언급량" 보정
 export const MARKET_CAP_DAMPENING = {
+  REFERENCE_CAP_USD: 50_000_000,
+  MIN_FACTOR: 0.05,
+  POWER: 0.3,
   MAX_RANK: 200,
-  MIN_FACTOR: 0.3,
+  RANK_MIN_FACTOR: 0.15,
 } as const;
 
 // 시그널 가중치
@@ -268,14 +271,14 @@ export const CONTRARIAN_THRESHOLD = 0.85;
 // ── Knowledge Graph → Signal Boost ──
 
 export const KG_BOOST = {
-  INFLUENCER_RECOMMENDS: 1.15,   // recommends 관계 존재 시 ×1.15
-  CORRELATED_HOT_BOOST: 5,       // correlates_with 코인이 hot(score≥60)이면 +5점
+  INFLUENCER_RECOMMENDS_MAX: 0.15,  // 1.0 + 0.15 × recommendsStrength
+  CORRELATED_HOT_BOOST: 5,
   CORRELATED_HOT_THRESHOLD: 60,
-  NARRATIVE_MOMENTUM_BOOST: 4,   // 내러티브 평균 score ≥ 50이면 +4점
-  NARRATIVE_MOMENTUM_THRESHOLD: 50,
-  EVENT_IMPACT_POSITIVE: 3,      // impacts 관계 impact=positive → +3
-  EVENT_IMPACT_NEGATIVE: -3,     // impacts 관계 impact=negative → -3
-  MAX_TOTAL_BOOST: 15,           // KG 부스트 합계 상한
+  CORRELATED_WEIGHT_CAP: 10,       // weight ≥ 10 → 최대 boost
+  NARRATIVE_MOMENTUM_MAX_BOOST: 4,  // avg 100 → +4, avg 0 → -4 (양방향 연속)
+  EVENT_IMPACT_POSITIVE: 3,
+  EVENT_IMPACT_NEGATIVE: -3,
+  MAX_TOTAL_BOOST: 15,
 } as const;
 
 export const EVENT_TYPE_PATTERNS: Record<string, { keywords: string[]; modifier: number }> = {
