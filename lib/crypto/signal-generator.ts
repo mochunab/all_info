@@ -221,7 +221,7 @@ async function fetchWindowData(
           (ctx as any)._correlatedSymbols = correlated;
         }
       }
-      for (const [narrativeId, coins] of narrativeCoins) {
+      for (const [, coins] of narrativeCoins) {
         for (const symbol of coins) {
           const ctx = kgContextMap.get(symbol);
           if (ctx) {
