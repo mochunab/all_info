@@ -203,22 +203,35 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
     setLocalTimeWindow(tw);
   }, []);
 
+  // 시간 윈도우 변경 시 첫 번째 코인 자동 선택 + 재조회
+  useEffect(() => {
+    if (!isOpen || topCoins.length === 0) return;
+    const first = topCoins[0].coin_symbol;
+    setSelectedChip(first);
+    fetchNetwork(first);
+    // fetchExplain은 아래에서 selectedChip 변경 감지로 호출됨
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localTimeWindow]);
+
+  // selectedChip 변경 시 explain 재조회
   useEffect(() => {
     if (selectedChip) fetchExplain(selectedChip);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localTimeWindow]);
+  }, [selectedChip, localTimeWindow]);
 
   const handleChipClick = useCallback(
     (symbol: string) => {
       const next = selectedChip === symbol ? null : symbol;
       setSelectedChip(next);
       if (next) {
+        fetchNetwork(next);
         fetchExplain(next);
       } else {
         setExplainData(null);
+        fetchNetwork();
       }
     },
-    [selectedChip, fetchExplain]
+    [selectedChip, fetchExplain, fetchNetwork]
   );
 
   const maxMentions = useMemo(
