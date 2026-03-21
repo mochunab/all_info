@@ -103,7 +103,7 @@ export default function BacktestReport({ language }: { language: Language }) {
             transitionTimingFunction: MD3_EASING,
           }}
         >
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-4 pt-2">
             {/* Lookup Window Chips */}
             <div className="flex flex-wrap gap-2 mb-4">
               {LOOKUP_OPTIONS.map((lw) => (
