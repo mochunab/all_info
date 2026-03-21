@@ -7,14 +7,15 @@
 ### 백엔드 라이브러리
 ```
 lib/crypto/
-  config.ts                 서브레딧 10개 + 텔레그램 23개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수 + KG_BOOST 상수
+  config.ts                 서브레딧 10개 + 텔레그램 23개 + Threads 키워드 10개 + Twitter 키워드 10개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수 + KG_BOOST 상수
+  coingecko-trending.ts     CoinGecko Trending API 크롤러 (무료, Top 15 코인, 3중 시그널 부스트)
   coin-sync.ts              CoinGecko /coins/list → crypto_coins 동기화
   price-fetcher.ts          CoinGecko /coins/markets → crypto_prices 가격 스냅샷 (30분 cron)
   reddit-auth.ts            Reddit OAuth2 토큰 관리 (cache.ts 활용)
   reddit-crawler.ts         Reddit API 크롤러 (hot+new, 중복 제거, upsert)
   telegram-crawler.ts       Telegram 웹 프리뷰 스크래핑 (t.me/s/, Cheerio 파싱)
   threads-crawler.ts        Threads API 키워드 검색 크롤러 (비활성화)
-  twitter-crawler.ts        Apify scrape.badger Actor 기반 X/Twitter 크롤러 (5키워드, 12시간 간격, sanitizeObject)
+  twitter-crawler.ts        Apify scrape.badger Actor 기반 X/Twitter 크롤러 (10키워드, 6시간 간격, sanitizeObject)
   coin-extractor.ts         3단계 코인 멘션 추출 — DB 기반 (extractCoinMentionsFromDB) + 하드코딩 fallback
   batch-sentiment.ts        배치 센티먼트 처리 (소스별 Edge Function 라우팅, 10건/배치)
   score-utils.ts            공유 스코어링 유틸 V2 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening, computeZScore, computeZScoreMultiplier, computeCrossPlatformMultiplier, computeContrarianWarning, computeEventModifier, computeKGBoost)

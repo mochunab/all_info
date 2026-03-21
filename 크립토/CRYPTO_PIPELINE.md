@@ -20,10 +20,13 @@ Phase 1 (crawl): 크롤링 → sentiment 트리거
   ├─ Telegram (✅ 23개 공개 채널, 매번 셔플 + 시간예산)
   │   → t.me/s/채널명 웹 프리뷰 스크래핑 (15초 fetch 타임아웃)
   │
+  ├─ CoinGecko Trending (✅ 무료 API, 매 크롤마다 실행)
+  │   → /api/v3/search/trending → Top 15 코인 → crypto_posts (source='coingecko')
+  │
   ├─ Threads (❌ 비활성화)
   │
-  └─ Twitter/X (✅ Apify, 12시간 간격, 자동 스킵)
-      → 5키워드 × 20결과 = 100트윗/크롤
+  └─ Twitter/X (✅ Apify, 6시간 간격, 자동 스킵)
+      → 10키워드 × 20결과 = 200트윗/크롤 (~$4.80/월, 무료 $5 내)
   ↓ triggerNextPhase('sentiment') — 5s await
 
 Phase 2 (sentiment): 센티먼트 — 미완료 시 자기 재호출
