@@ -297,10 +297,10 @@ export async function GET(req: NextRequest) {
       if (correlatedEntityIds.length > 0) {
         const { data: corrEntities } = await supabase
           .from('crypto_entities')
-          .select('name')
+          .select('symbol')
           .in('id', correlatedEntityIds);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const corrSymbols = ((corrEntities || []) as any[]).map(e => e.name as string);
+        const corrSymbols = ((corrEntities || []) as any[]).map(e => e.symbol as string).filter(Boolean);
         if (corrSymbols.length > 0) {
           const { data: corrSignals } = await supabase
             .from('crypto_signals')
@@ -328,9 +328,9 @@ export async function GET(req: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const peerEntityIds = [...new Set(((peerRels || []) as any[]).map(r => r.source_entity_id as string))];
         if (peerEntityIds.length > 0) {
-          const { data: peerEntities } = await supabase.from('crypto_entities').select('name').in('id', peerEntityIds);
+          const { data: peerEntities } = await supabase.from('crypto_entities').select('symbol').in('id', peerEntityIds);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const peerSymbols = ((peerEntities || []) as any[]).map(e => e.name as string);
+          const peerSymbols = ((peerEntities || []) as any[]).map(e => e.symbol as string).filter(Boolean);
           if (peerSymbols.length > 0) {
             const { data: peerSignals } = await supabase
               .from('crypto_signals')

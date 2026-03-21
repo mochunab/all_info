@@ -152,16 +152,16 @@ async function fetchWindowData(
   try {
     const { data: coinEntities } = await supabase
       .from('crypto_entities')
-      .select('id, name')
+      .select('id, symbol')
       .eq('entity_type', 'coin')
-      .in('name', allSymbols);
+      .in('symbol', allSymbols);
 
     if (coinEntities && coinEntities.length > 0) {
       const entityIdToSymbol = new Map<string, string>();
       const symbolToEntityId = new Map<string, string>();
       for (const e of coinEntities) {
-        entityIdToSymbol.set(e.id, e.name);
-        symbolToEntityId.set(e.name, e.id);
+        entityIdToSymbol.set(e.id, e.symbol);
+        symbolToEntityId.set(e.symbol, e.id);
       }
       const entityIds = coinEntities.map(e => e.id);
 
