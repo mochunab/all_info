@@ -2,7 +2,7 @@
 
 // ── DB Row Types ──
 
-export type CryptoSource = 'reddit' | 'telegram' | 'threads' | 'twitter' | 'coingecko';
+export type CryptoSource = 'reddit' | 'telegram' | 'threads' | 'twitter' | 'coingecko' | '4chan';
 
 export type CryptoPost = {
   id: string;

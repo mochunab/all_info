@@ -11,6 +11,11 @@ export const CRYPTO_SUBREDDITS: readonly SubredditConfig[] = [
   { name: 'solana', weight: 1.0, minScore: 5 },
   { name: 'Dogecoin', weight: 0.8, minScore: 5 },
   { name: 'wallstreetbetscrypto', weight: 1.0, minScore: 5 },
+  { name: 'defi', weight: 0.8, minScore: 5 },
+  { name: 'ethtrader', weight: 0.9, minScore: 5 },
+  { name: 'memecoins', weight: 1.1, minScore: 5 },
+  { name: 'CryptoMars', weight: 0.9, minScore: 5 },
+  { name: 'PepeCoin', weight: 0.8, minScore: 5 },
 ] as const;
 
 export const REDDIT_RATE_LIMIT_MS = 1000;
@@ -47,6 +52,12 @@ export const TELEGRAM_CHANNELS: readonly TelegramChannelConfig[] = [
   // 밈코인 특화
   { username: 'memecoinz', weight: 1.1, language: 'en' },
   { username: 'DEXTOOLSPUMPS', weight: 1.3, language: 'en' },
+  { username: 'Memecoins', weight: 1.2, language: 'en' },
+  // 온체인 알림
+  { username: 'whale_alert', weight: 1.2, language: 'en' },
+  // 뉴스/미디어
+  { username: 'CoinDeskGlobal', weight: 0.8, language: 'en' },
+  { username: 'CryptoNewsDaily', weight: 0.9, language: 'en' },
 ] as const;
 
 export const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
@@ -91,6 +102,14 @@ export const TWITTER_SEARCH_KEYWORDS: readonly TwitterSearchKeyword[] = [
 export const TWITTER_RESULTS_PER_KEYWORD = 20;
 export const TWITTER_APIFY_ACTOR = 'scrape.badger/twitter-tweets-scraper';
 export const TWITTER_APIFY_TIMEOUT_MS = 60_000;
+
+// ── 4chan /biz/ 설정 ──
+
+export const FOURCHAN_BOARD = 'biz';
+export const FOURCHAN_API_BASE = 'https://a.4cdn.org';
+export const FOURCHAN_RATE_LIMIT_MS = 1100; // API 규칙: 최소 1초 간격
+export const FOURCHAN_MAX_THREADS = 30; // 크립토 관련 쓰레드만 댓글 fetch
+export const FOURCHAN_MIN_REPLIES = 3; // 최소 댓글 수 (노이즈 필터)
 
 export const CRAWL_CONCURRENCY = 2;
 export const SENTIMENT_CONCURRENCY = 5;

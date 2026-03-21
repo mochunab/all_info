@@ -119,6 +119,17 @@ async function handleCrawl(request: NextRequest) {
         console.warn(`[CoinGecko] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
+      // 4chan /biz/ (무료, API 키 불필요)
+      try {
+        const { crawlFourchan } = await import('@/lib/crypto/fourchan-crawler');
+        const elapsed4ch = Date.now() - startTime;
+        const fourchanBudget = Math.max(200_000 - elapsed4ch, 30_000);
+        const { results: fourchanResults } = await crawlFourchan(supabase, fourchanBudget);
+        allResults.push(...fourchanResults);
+      } catch (e) {
+        console.warn(`[4chan] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
       if (process.env.APIFY_API_TOKEN) {
         const TWITTER_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6시간 간격 (10키워드 × 20결과 × 4회/일 = ~$4.80/월, Apify 무료 $5 내)
         const { data: lastTwitter } = await supabase

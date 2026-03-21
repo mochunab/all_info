@@ -66,29 +66,39 @@ async function loadCoinList(supabase?: SupabaseClient<any>): Promise<{ list: Coi
   return { list: COIN_LIST, map: COIN_MAP };
 }
 
-export function extractCoinMentions(title: string, body: string | null): MentionResult[] {
-  return extractWithMaps(title, body, COIN_LIST, COIN_MAP);
+export type ExtractOptions = {
+  strictMode?: boolean; // true: $TICKER 패턴 + 긴 alias(≥5자)만 매칭 (4chan 등 일반 대화 혼재 소스용)
+};
+
+export function extractCoinMentions(title: string, body: string | null, options?: ExtractOptions): MentionResult[] {
+  return extractWithMaps(title, body, COIN_LIST, COIN_MAP, options);
 }
 
 export async function extractCoinMentionsFromDB(
   title: string,
   body: string | null,
-  supabase: SupabaseClient<any>
+  supabase: SupabaseClient<any>,
+  options?: ExtractOptions
 ): Promise<MentionResult[]> {
   const { list, map } = await loadCoinList(supabase);
-  return extractWithMaps(title, body, list, map);
+  return extractWithMaps(title, body, list, map, options);
 }
+
+const STRICT_MIN_ALIAS_LEN = 8; // strict 모드: 매우 긴 alias만 (bitcoin, ethereum, dogecoin OK / 짧은 건 전부 제외)
 
 function extractWithMaps(
   title: string,
   body: string | null,
   coinList: CoinEntry[],
-  coinMap: Map<string, CoinEntry>
+  coinMap: Map<string, CoinEntry>,
+  options?: ExtractOptions
 ): MentionResult[] {
+  const strict = options?.strictMode ?? false;
   const text = `${title}\n${body || ''}`;
   const counts = new Map<string, number>();
   const contexts = new Map<string, string>();
 
+  // Pass 1: $TICKER / #TICKER — 항상 실행 (명시적 크립토 언급)
   let match: RegExpExecArray | null;
   TICKER_PATTERN.lastIndex = 0;
   while ((match = TICKER_PATTERN.exec(text)) !== null) {
@@ -103,10 +113,12 @@ function extractWithMaps(
     }
   }
 
+  // Pass 2: alias 매칭 — strict 모드에서는 긴 alias만 + 블랙리스트 제외
+  const minAliasLen = strict ? STRICT_MIN_ALIAS_LEN : 3;
   const lowerText = text.toLowerCase();
   for (const coin of coinList) {
     for (const alias of coin.aliases) {
-      if (alias.length < 3) continue;
+      if (alias.length < minAliasLen) continue;
       const aliasRegex = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       const aliasMatch = aliasRegex.exec(lowerText);
       if (aliasMatch) {
@@ -122,17 +134,20 @@ function extractWithMaps(
     }
   }
 
-  WORD_BOUNDARY_PATTERN.lastIndex = 0;
-  while ((match = WORD_BOUNDARY_PATTERN.exec(title)) !== null) {
-    const word = match[1];
-    if (word.length < 3 || word.length > 6) continue;
-    if (BLACKLIST.has(word)) continue;
-    if (coinMap.has(word)) {
-      if (!counts.has(word)) {
-        counts.set(word, 1);
-        const start = Math.max(0, match.index - 30);
-        const end = Math.min(title.length, match.index + word.length + 30);
-        contexts.set(word, title.slice(start, end).trim());
+  // Pass 3: 대문자 단어 매칭 — strict 모드에서는 비활성화
+  if (!strict) {
+    WORD_BOUNDARY_PATTERN.lastIndex = 0;
+    while ((match = WORD_BOUNDARY_PATTERN.exec(title)) !== null) {
+      const word = match[1];
+      if (word.length < 3 || word.length > 6) continue;
+      if (BLACKLIST.has(word)) continue;
+      if (coinMap.has(word)) {
+        if (!counts.has(word)) {
+          counts.set(word, 1);
+          const start = Math.max(0, match.index - 30);
+          const end = Math.min(title.length, match.index + word.length + 30);
+          contexts.set(word, title.slice(start, end).trim());
+        }
       }
     }
   }
