@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
+import { getCache, setCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { Header, Footer } from '@/components';
 import CryptoDashboard from './CryptoDashboard';
 
@@ -13,6 +14,20 @@ export default async function CryptoPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+
+  const cached = getCache<{ signals: unknown[] }>(CACHE_KEYS.CRYPTO_SSR);
+  if (cached) {
+    return (
+      <>
+        <Header language={locale as 'ko' | 'en' | 'vi' | 'zh' | 'ja'} />
+        <main className="min-h-screen bg-[var(--bg-primary)]">
+          <CryptoDashboard initialSignals={cached.signals as never[]} language={locale as 'ko' | 'en' | 'vi' | 'zh' | 'ja'} />
+        </main>
+        <Footer language={locale as 'ko' | 'en' | 'vi' | 'zh' | 'ja'} />
+      </>
+    );
+  }
+
   const supabase = await createClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,6 +52,8 @@ export default async function CryptoPage({
 
     initialSignals = signals || [];
   }
+
+  setCache(CACHE_KEYS.CRYPTO_SSR, { signals: initialSignals }, CACHE_TTL.CRYPTO_SIGNALS);
 
   return (
     <>

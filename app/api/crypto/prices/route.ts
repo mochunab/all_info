@@ -2,12 +2,19 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getCache, setCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const coin = searchParams.get('coin');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200);
+
+    const cacheKey = `${CACHE_KEYS.CRYPTO_PRICES}:${coin || 'all'}:${limit}`;
+    const cached = getCache<{ prices: unknown[]; fetched_at: string | null }>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
 
     const supabase = await createClient();
 
@@ -40,10 +47,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
+    const result = {
       prices: prices || [],
       fetched_at: latestRow?.fetched_at || null,
-    });
+    };
+    setCache(cacheKey, result, CACHE_TTL.CRYPTO_PRICES);
+
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

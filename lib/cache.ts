@@ -38,6 +38,9 @@ export const CACHE_KEYS = {
   CATEGORIES: 'api:categories', // + `:${userId}`
   ARTICLES_PREFIX: 'api:articles:', // + `u=${userId}&` query string
   SSR_HOME: 'ssr:home',
+  CRYPTO_SIGNALS_PREFIX: 'api:crypto:signals:',
+  CRYPTO_PRICES: 'api:crypto:prices',
+  CRYPTO_SSR: 'ssr:crypto',
 } as const;
 
 // TTLs
@@ -45,4 +48,6 @@ export const CACHE_TTL = {
   SOURCES: 60 * 1000,       // 60s — 소스는 자주 안 바뀌지만 저장 직후 반영 필요
   CATEGORIES: 5 * 60 * 1000, // 5min — 카테고리는 거의 안 바뀜
   ARTICLES: 30 * 1000,      // 30s — 아티클은 크롤링 시에만 변경, 짧게 유지
+  CRYPTO_SIGNALS: 60 * 1000, // 60s — 15분 크론 주기, 크롤 후 무효화
+  CRYPTO_PRICES: 5 * 60 * 1000, // 5min — 가격은 Phase 4에서만 갱신
 } as const;

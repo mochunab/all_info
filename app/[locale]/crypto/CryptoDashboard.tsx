@@ -28,6 +28,8 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [prices, setPrices] = useState<(CryptoPrice & { crypto_coins: any })[]>([]);
 
+  const isInitialMount = useRef(true);
+
   const fetchSignals = useCallback(async (window: TimeWindow, st: SignalType) => {
     setLoading(true);
     try {
@@ -54,8 +56,12 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
   }, [fetchPrices]);
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      if (initialSignals.length > 0 && timeWindow === '24h' && signalType === 'fomo') return;
+    }
     fetchSignals(timeWindow, signalType);
-  }, [timeWindow, signalType, fetchSignals]);
+  }, [timeWindow, signalType, fetchSignals, initialSignals.length]);
 
   const priceMap = useMemo(() => {
     const map = new Map<string, { price_usd: number; price_change_pct_24h: number | null; image_url: string | null }>();

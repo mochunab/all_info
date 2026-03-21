@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { invalidateCacheByPrefix, invalidateCache, CACHE_KEYS } from '@/lib/cache';
 import type { CryptoCrawlResult } from '@/types/crypto';
 
 export const maxDuration = 300;
@@ -226,6 +227,9 @@ async function handleCrawl(request: NextRequest) {
         console.warn(`[지식그래프] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
+      invalidateCacheByPrefix(CACHE_KEYS.CRYPTO_SIGNALS_PREFIX);
+      invalidateCache(CACHE_KEYS.CRYPTO_SSR);
+
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await triggerNextPhase('prices');
 
@@ -256,6 +260,9 @@ async function handleCrawl(request: NextRequest) {
       } catch (e) {
         console.warn(`[가격] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
+
+      invalidateCache(CACHE_KEYS.CRYPTO_PRICES);
+      invalidateCacheByPrefix(CACHE_KEYS.CRYPTO_SIGNALS_PREFIX);
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`[가격 완료] ${elapsed}초, 동기화: ${syncResult.synced}개, 가격: ${priceResult.stored}개`);

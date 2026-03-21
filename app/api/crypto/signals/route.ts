@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getCache, setCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +11,12 @@ export async function GET(request: NextRequest) {
     const coin = searchParams.get('coin');
     const signalType = searchParams.get('signal_type') || 'fomo';
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200);
+
+    const cacheKey = `${CACHE_KEYS.CRYPTO_SIGNALS_PREFIX}${window}:${signalType}:${coin || 'all'}:${limit}`;
+    const cached = getCache<{ signals: unknown[]; computed_at: string | null }>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
 
     const supabase = await createClient();
 
@@ -46,10 +53,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
+    const result = {
       signals: signals || [],
       computed_at: latestRow?.computed_at || null,
-    });
+    };
+    setCache(cacheKey, result, CACHE_TTL.CRYPTO_SIGNALS);
+
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

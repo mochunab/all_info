@@ -31,6 +31,7 @@ const SUBREDDITS = [
   { name: 'CryptoCurrencies', weight: 0.7 },
 ];
 
+const SORT_MODES = ['', 'new', 'rising'] as const;
 const RATE_LIMIT_MS = 1500;
 const USER_AGENT = 'InsightHub:MemePredictor:1.0 (by /u/insighthub)';
 
@@ -222,14 +223,15 @@ function parseAtomFeed(xml: string): RssPost[] {
 
 // ── Reddit RSS fetch ──
 
-async function fetchSubredditRss(subreddit: string): Promise<RssPost[]> {
-  const url = `https://www.reddit.com/r/${subreddit}/.rss`;
+async function fetchSubredditRss(subreddit: string, sort: string = ''): Promise<RssPost[]> {
+  const path = sort ? `${sort}/` : '';
+  const url = `https://www.reddit.com/r/${subreddit}/${path}.rss`;
   const response = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
   });
 
   if (!response.ok) {
-    throw new Error(`Reddit RSS ${response.status} for r/${subreddit}`);
+    throw new Error(`Reddit RSS ${response.status} for r/${subreddit}/${sort || 'hot'}`);
   }
 
   const xml = await response.text();
@@ -261,7 +263,30 @@ async function main() {
     console.log(`\n📌 r/${config.name}`);
 
     try {
-      const rssPosts = await fetchSubredditRss(config.name);
+      const allRssPosts: RssPost[] = [];
+      const seenIds = new Set<string>();
+
+      for (const sort of SORT_MODES) {
+        const label = sort || 'hot';
+        try {
+          const posts = await fetchSubredditRss(config.name, sort);
+          let added = 0;
+          for (const p of posts) {
+            const postId = p.link.match(/comments\/([a-z0-9]+)/)?.[1] || p.id;
+            if (!seenIds.has(postId)) {
+              seenIds.add(postId);
+              allRssPosts.push(p);
+              added++;
+            }
+          }
+          console.log(`  ${label}: ${posts.length}개 (신규 ${added}개)`);
+          await sleep(RATE_LIMIT_MS);
+        } catch (e) {
+          console.warn(`  ⚠️ ${label}: ${e instanceof Error ? e.message : 'unknown'}`);
+        }
+      }
+
+      const rssPosts = allRssPosts;
       totalFound += rssPosts.length;
 
       if (rssPosts.length === 0) {
@@ -360,8 +385,6 @@ async function main() {
       console.error(`  ❌ ${e instanceof Error ? e.message : 'unknown'}`);
       totalErrors++;
     }
-
-    await sleep(RATE_LIMIT_MS);
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
