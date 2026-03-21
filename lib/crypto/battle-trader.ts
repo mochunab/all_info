@@ -297,7 +297,16 @@ async function evaluateRobotExit(
 ): Promise<{ reason: BattleCloseReason; closeAll: boolean } | null> {
   const pnlPct = (currentPrice - pos.entry_price) / pos.entry_price;
 
-  // 손절 -8%
+  // peak_price 갱신
+  if (currentPrice > (pos.peak_price ?? pos.entry_price)) {
+    await supabase
+      .from('battle_positions')
+      .update({ peak_price: currentPrice })
+      .eq('id', pos.id);
+    pos.peak_price = currentPrice;
+  }
+
+  // 손절 -10%
   if (pnlPct <= -ROBOT.STOP_LOSS_PCT) {
     return { reason: 'stop_loss', closeAll: true };
   }
@@ -307,40 +316,60 @@ async function evaluateRobotExit(
     return { reason: 'stop_loss', closeAll: true };
   }
 
-  // TP1: +24% → 1/3 청산
+  // TP1: +20% → 1/3 청산
   if (pos.take_profit_stage === 0 && pnlPct >= ROBOT.TP1_PCT) {
     return { reason: 'take_profit_1', closeAll: false };
   }
 
-  // TP2: +50% → 1/3 청산
+  // TP2: +40% → 1/3 청산
   if (pos.take_profit_stage === 1 && pnlPct >= ROBOT.TP2_PCT) {
     return { reason: 'take_profit_2', closeAll: false };
   }
 
-  // 시그널 반전 체크 (24h 기준 — 단기 노이즈 방지)
-  const { data: currentSignal } = await supabase
+  // 트레일링 스탑: TP2 이후 고점 대비 -15% 하락 시 잔량 전부 청산
+  if (pos.take_profit_stage >= 2 && pos.peak_price) {
+    const dropFromPeak = (currentPrice - pos.peak_price) / pos.peak_price;
+    if (dropFromPeak <= -ROBOT.TRAILING_STOP_PCT) {
+      return { reason: 'trailing_stop', closeAll: true };
+    }
+  }
+
+  // 시그널 체크 (24h FOMO + FUD 모두 조회)
+  const { data: currentSignals } = await supabase
     .from('crypto_signals')
-    .select('signal_label, avg_sentiment, mention_velocity')
+    .select('signal_label, avg_sentiment, mention_velocity, signal_type, contrarian_warning')
     .eq('coin_symbol', pos.coin_symbol)
     .eq('time_window', '24h')
     .order('computed_at', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(2);
 
-  if (currentSignal) {
-    if (ROBOT.SIGNAL_REVERSAL_LABELS.includes(currentSignal.signal_label)) {
+  if (currentSignals && currentSignals.length > 0) {
+    const fomoSignal = currentSignals.find(s => s.signal_type === 'fomo') ?? currentSignals[0];
+    const fudSignal = currentSignals.find(s => s.signal_type === 'fud');
+
+    // FOMO 시그널 반전
+    if (ROBOT.SIGNAL_REVERSAL_LABELS.includes(fomoSignal.signal_label)) {
       return { reason: 'signal_reversal', closeAll: true };
     }
 
+    // contrarian_warning: potential_reversal → 과열 경고, 보유 중이면 익절
+    if (fomoSignal.contrarian_warning === 'potential_reversal' && pnlPct > 0) {
+      return { reason: 'contrarian_exit', closeAll: true };
+    }
+
     const entrySentiment = pos.signal_snapshot?.avg_sentiment ?? 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sentimentDrop = currentSignal.avg_sentiment - (entrySentiment as any as number);
+    const sentimentDrop = fomoSignal.avg_sentiment - entrySentiment;
     if (sentimentDrop <= ROBOT.SENTIMENT_DROP_THRESHOLD) {
       return { reason: 'sentiment_drop', closeAll: true };
     }
 
-    if (currentSignal.mention_velocity < ROBOT.VELOCITY_DEAD_THRESHOLD) {
+    if (fomoSignal.mention_velocity < ROBOT.VELOCITY_DEAD_THRESHOLD) {
       return { reason: 'velocity_dead', closeAll: true };
+    }
+
+    // FUD 급증: FUD 시그널이 hot 이상이면 위험 — 청산
+    if (fudSignal && ['extremely_hot', 'hot'].includes(fudSignal.signal_label)) {
+      return { reason: 'fud_surge', closeAll: true };
     }
   }
 
@@ -395,6 +424,7 @@ async function openPosition(
       stop_loss_price: stopLoss,
       signal_snapshot: entry.signal ?? null,
       hold_until: holdUntil,
+      peak_price: entryPrice,
     })
     .select('id')
     .single();
@@ -575,13 +605,19 @@ async function updateDailyPortfolioSnapshot(supabase: SupabaseClient, prices: Ma
 function evaluateRobotPriceExit(
   pos: BattlePosition,
   currentPrice: number,
-): { reason: BattleCloseReason; closeAll: boolean } | null {
+): { reason: BattleCloseReason; closeAll: boolean; updatePeak?: boolean } | null {
   const pnlPct = (currentPrice - pos.entry_price) / pos.entry_price;
 
   if (pnlPct <= -ROBOT.STOP_LOSS_PCT) return { reason: 'stop_loss', closeAll: true };
   if (pos.take_profit_stage >= 1 && currentPrice <= pos.entry_price) return { reason: 'stop_loss', closeAll: true };
   if (pos.take_profit_stage === 0 && pnlPct >= ROBOT.TP1_PCT) return { reason: 'take_profit_1', closeAll: false };
   if (pos.take_profit_stage === 1 && pnlPct >= ROBOT.TP2_PCT) return { reason: 'take_profit_2', closeAll: false };
+
+  // 트레일링 스탑 (lazy 평가에서도 작동)
+  if (pos.take_profit_stage >= 2 && pos.peak_price) {
+    const dropFromPeak = (currentPrice - pos.peak_price) / pos.peak_price;
+    if (dropFromPeak <= -ROBOT.TRAILING_STOP_PCT) return { reason: 'trailing_stop', closeAll: true };
+  }
 
   return null;
 }
@@ -597,6 +633,12 @@ export async function lazyEvaluateExits(supabase: SupabaseClient): Promise<numbe
     for (const pos of positions) {
       const currentPrice = prices.get(pos.coin_symbol);
       if (!currentPrice) continue;
+
+      // 로봇 peak_price 갱신 (lazy 평가에서도)
+      if (player === 'robot' && currentPrice > (pos.peak_price ?? pos.entry_price)) {
+        await supabase.from('battle_positions').update({ peak_price: currentPrice }).eq('id', pos.id);
+        pos.peak_price = currentPrice;
+      }
 
       const result = player === 'monkey'
         ? evaluateMonkeyExit(pos, currentPrice)
