@@ -32,26 +32,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'coin parameter required' }, { status: 400 });
   }
 
-  const windowMs = TIME_WINDOW_MS[window];
-  if (!windowMs) {
+  const FALLBACK_WINDOWS = ['1h', '6h', '24h', '7d'] as const;
+  const startIdx = FALLBACK_WINDOWS.indexOf(window as typeof FALLBACK_WINDOWS[number]);
+  if (startIdx === -1) {
     return NextResponse.json({ error: 'invalid window' }, { status: 400 });
   }
 
   const supabase = createServiceClient();
   const now = new Date();
-  const windowStart = new Date(now.getTime() - windowMs);
-  const prevWindowStart = new Date(windowStart.getTime() - windowMs);
 
-  // 1. Current window mentions → post_ids
-  const { data: mentions } = await supabase
-    .from('crypto_mentions')
-    .select('post_id, mention_count')
-    .eq('coin_symbol', coin)
-    .gte('created_at', windowStart.toISOString())
-    .lte('created_at', now.toISOString());
+  // 데이터 없으면 더 넓은 윈도우로 자동 폴백
+  let usedWindow = window;
+  let windowMs = TIME_WINDOW_MS[window]!;
+  let windowStart = new Date(now.getTime() - windowMs);
+  let prevWindowStart = new Date(windowStart.getTime() - windowMs);
+  let mentions: { post_id: string; mention_count: number }[] | null = null;
+
+  for (let i = startIdx; i < FALLBACK_WINDOWS.length; i++) {
+    const tw = FALLBACK_WINDOWS[i];
+    const ms = TIME_WINDOW_MS[tw]!;
+    const start = new Date(now.getTime() - ms);
+
+    const { data } = await supabase
+      .from('crypto_mentions')
+      .select('post_id, mention_count')
+      .eq('coin_symbol', coin)
+      .gte('created_at', start.toISOString())
+      .lte('created_at', now.toISOString());
+
+    if (data && data.length > 0) {
+      mentions = data;
+      usedWindow = tw;
+      windowMs = ms;
+      windowStart = start;
+      prevWindowStart = new Date(start.getTime() - ms);
+      break;
+    }
+  }
 
   if (!mentions || mentions.length === 0) {
-    return NextResponse.json({ error: 'no data for this coin/window' }, { status: 404 });
+    return NextResponse.json({ error: 'no data for this coin' }, { status: 404 });
   }
 
   const postIds = [...new Set(mentions.map((m: { post_id: string }) => m.post_id))];
@@ -254,8 +274,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const response: TrendingExplainResponse = {
+  const response: TrendingExplainResponse & { used_window?: string } = {
     coin_symbol: coin,
+    used_window: usedWindow !== window ? usedWindow : undefined,
     score_breakdown: {
       velocity: { normalized: Math.round(velNorm * 100) / 100, weight: 0.25 },
       sentiment: { normalized: Math.round(sentNorm * 100) / 100, weight: 0.30 },
