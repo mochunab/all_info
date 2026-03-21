@@ -19,9 +19,10 @@ export async function GET(request: NextRequest) {
 
   const priceMap = new Map<string, number>();
   for (const row of priceRows || []) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     const symbol = (row as any).crypto_coins?.symbol;
-    if (symbol && !priceMap.has(symbol)) priceMap.set(symbol, row.price_usd);
+    if (symbol && !priceMap.has(symbol)) priceMap.set(symbol, (row as any).price_usd);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 
   // 3. 포지션/포트폴리오/거래 데이터 조회 (lazy 평가 후이므로 최신 상태)

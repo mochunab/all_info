@@ -36,6 +36,7 @@ type TimelinePoint = {
   mentions: number;
   avg_sentiment: number | null;
   avg_fomo: number | null;
+  price_usd: number | null;
 };
 
 type EventPoint = {
@@ -99,7 +100,10 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
     mentions: p.mentions,
     sentiment: p.avg_sentiment != null ? Math.round(p.avg_sentiment * 100) : null,
     fomo: p.avg_fomo != null ? Math.round(p.avg_fomo * 100) : null,
+    price: p.price_usd,
   }));
+
+  const hasPrice = chartData.some((d) => d.price != null);
 
   const eventLabels = events.map((evt) => {
     const evtDate = new Date(evt.timestamp);
@@ -197,6 +201,15 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                           tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
                           hide
                         />
+                        {hasPrice && (
+                          <YAxis
+                            yAxisId="price"
+                            orientation="right"
+                            domain={['auto', 'auto']}
+                            tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                            hide
+                          />
+                        )}
                         <Tooltip
                           contentStyle={{
                             background: 'var(--bg-secondary)',
@@ -208,6 +221,11 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                           formatter={(value: any, name: any) => {
                             if (name === 'sentiment') return [`${value}%`, t(language, 'crypto.sentiment')];
                             if (name === 'fomo') return [`${value}%`, 'FOMO'];
+                            if (name === 'price') {
+                              const n = Number(value);
+                              const formatted = n >= 1 ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `$${n.toFixed(6)}`;
+                              return [formatted, t(language, 'crypto.price')];
+                            }
                             return [value, t(language, 'crypto.mentions').replace('{count}', '').trim()];
                           }}
                         />
@@ -235,6 +253,16 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                           dot={false}
                           connectNulls
                         />
+                        {hasPrice && (
+                          <Line
+                            yAxisId="price"
+                            dataKey="price"
+                            stroke="#eab308"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                          />
+                        )}
                         {eventLabels.map((evt, i) => (
                           <ReferenceLine
                             key={`evt-${i}`}
@@ -267,6 +295,12 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
                       <span className="inline-block w-3 h-0.5 bg-orange-500" style={{ borderTop: '1px dashed' }} />
                       FOMO
                     </span>
+                    {hasPrice && (
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block w-3 h-0.5 bg-yellow-500" />
+                        {t(language, 'crypto.price')}
+                      </span>
+                    )}
                     {eventLabels.length > 0 && (
                       <span className="flex items-center gap-1">
                         <span className="inline-block w-3 h-0.5 bg-neutral-400" style={{ borderTop: '1px dashed' }} />

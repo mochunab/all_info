@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
@@ -51,18 +53,42 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const timeline = [...buckets.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([ts, b]) => ({
-        timestamp: new Date(ts).toISOString(),
-        mentions: b.mentions,
-        avg_sentiment: b.sentiments.length > 0
-          ? Math.round((b.sentiments.reduce((a, c) => a + c, 0) / b.sentiments.length) * 1000) / 1000
-          : null,
-        avg_fomo: b.fomos.length > 0
-          ? Math.round((b.fomos.reduce((a, c) => a + c, 0) / b.fomos.length) * 1000) / 1000
-          : null,
-      }));
+    // Price history from crypto_prices (joined via crypto_coins.symbol)
+    const { data: priceRows } = await sb
+      .from('crypto_prices')
+      .select('price_usd, fetched_at, crypto_coins!inner(symbol)')
+      .eq('crypto_coins.symbol', coin)
+      .gte('fetched_at', since)
+      .order('fetched_at', { ascending: true });
+
+    const priceBuckets = new Map<number, number[]>();
+    for (const p of (priceRows || []) as { price_usd: number; fetched_at: string }[]) {
+      const ts = Math.floor(new Date(p.fetched_at).getTime() / BUCKET_MS) * BUCKET_MS;
+      if (!priceBuckets.has(ts)) priceBuckets.set(ts, []);
+      priceBuckets.get(ts)!.push(p.price_usd);
+    }
+
+    const allTimestamps = new Set([...buckets.keys(), ...priceBuckets.keys()]);
+    const timeline = [...allTimestamps]
+      .sort((a, b) => a - b)
+      .map((ts) => {
+        const b = buckets.get(ts);
+        const prices = priceBuckets.get(ts);
+        const avgPrice = prices && prices.length > 0
+          ? prices.reduce((a, c) => a + c, 0) / prices.length
+          : null;
+        return {
+          timestamp: new Date(ts).toISOString(),
+          mentions: b?.mentions ?? 0,
+          avg_sentiment: b && b.sentiments.length > 0
+            ? Math.round((b.sentiments.reduce((a, c) => a + c, 0) / b.sentiments.length) * 1000) / 1000
+            : null,
+          avg_fomo: b && b.fomos.length > 0
+            ? Math.round((b.fomos.reduce((a, c) => a + c, 0) / b.fomos.length) * 1000) / 1000
+            : null,
+          price_usd: avgPrice,
+        };
+      });
 
     return NextResponse.json({ coin, days, timeline });
   } catch (error) {

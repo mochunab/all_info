@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { TIME_WINDOWS } from '@/lib/crypto/config';
 
 const LOOKUP_WINDOWS = ['1h', '6h', '24h', '7d'] as const;
 
