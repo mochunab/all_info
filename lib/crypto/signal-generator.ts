@@ -307,11 +307,12 @@ export async function generateSignalsForWindow(
 
 export async function generateAllSignals(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any>
+  supabase: SupabaseClient<any>,
+  targetSignalType?: SignalType
 ): Promise<{ generated: number }> {
   let totalGenerated = 0;
   const computedAt = new Date().toISOString();
-  const signalTypes: SignalType[] = ['fomo', 'fud'];
+  const signalTypes: SignalType[] = targetSignalType ? [targetSignalType] : ['fomo', 'fud'];
 
   // On-chain: Whale Alert 데이터 수집 + 저장
   const whaleSignals = await fetchWhaleTransactions(35);

@@ -184,16 +184,40 @@ async function handleCrawl(request: NextRequest) {
       });
     }
 
-    // ── Phase 3: 시그널 + 지식그래프 ──
+    // ── Phase 3a: FOMO 시그널 ──
     if (phase === 'signals') {
       let signalResult = { generated: 0 };
 
       try {
         const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
-        signalResult = await generateAllSignals(supabase);
-        console.log(`[시그널] ${signalResult.generated}개 생성`);
+        signalResult = await generateAllSignals(supabase, 'fomo');
+        console.log(`[시그널/FOMO] ${signalResult.generated}개 생성`);
       } catch (e) {
-        console.warn(`[시그널] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+        console.warn(`[시그널/FOMO] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      await triggerNextPhase('signals_fud');
+
+      return NextResponse.json({
+        success: true,
+        phase: 'signals',
+        signals: signalResult,
+        elapsed: `${elapsed}s`,
+        nextPhase: 'signals_fud',
+      });
+    }
+
+    // ── Phase 3b: FUD 시그널 + 지식그래프 ──
+    if (phase === 'signals_fud') {
+      let signalResult = { generated: 0 };
+
+      try {
+        const { generateAllSignals } = await import('@/lib/crypto/signal-generator');
+        signalResult = await generateAllSignals(supabase, 'fud');
+        console.log(`[시그널/FUD] ${signalResult.generated}개 생성`);
+      } catch (e) {
+        console.warn(`[시그널/FUD] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
       }
 
       try {
@@ -205,13 +229,11 @@ async function handleCrawl(request: NextRequest) {
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`[시그널+KG 완료] ${elapsed}초`);
-
       await triggerNextPhase('prices');
 
       return NextResponse.json({
         success: true,
-        phase: 'signals',
+        phase: 'signals_fud',
         signals: signalResult,
         elapsed: `${elapsed}s`,
         nextPhase: 'prices',
