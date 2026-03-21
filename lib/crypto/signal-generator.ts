@@ -20,7 +20,6 @@ import {
   computeEventModifier,
 } from '@/lib/crypto/score-utils';
 import { ZSCORE_ROLLING_PERIODS } from '@/lib/crypto/config';
-import { fetchWhaleTransactions, aggregateWhaleSignals, storeWhaleEvents } from '@/lib/crypto/onchain-fetcher';
 
 type WindowRawData = {
   mentions: { coin_symbol: string; mention_count: number; post_id: string }[];
@@ -314,21 +313,6 @@ export async function generateAllSignals(
   const computedAt = new Date().toISOString();
   const signalTypes: SignalType[] = targetSignalType ? [targetSignalType] : ['fomo', 'fud'];
 
-  // On-chain: Whale Alert — FOMO phase에서만 (FUD에선 skip하여 시간 절약)
-  let whaleScores = new Map<string, { score: number; events: string[] }>();
-  if (!targetSignalType || targetSignalType === 'fomo') {
-    try {
-      const whaleSignals = await fetchWhaleTransactions(35);
-      whaleScores = aggregateWhaleSignals(whaleSignals);
-      if (whaleSignals.length > 0) {
-        const stored = await storeWhaleEvents(supabase, whaleSignals);
-        console.log(`   🐋 Whale 이벤트 ${stored}건 저장`);
-      }
-    } catch (e) {
-      console.warn(`[Whale] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
-    }
-  }
-
   // 2개씩 병렬 처리 (DB 부하 분산)
   const windowResults: number[] = [];
   for (let i = 0; i < TIME_WINDOWS.length; i += 2) {
@@ -341,17 +325,6 @@ export async function generateAllSignals(
 
         for (const signalType of signalTypes) {
           const signals = computeSignals(raw, signalType, window);
-
-          for (const s of signals) {
-            const whale = whaleScores.get(s.coin_symbol);
-            if (whale) {
-              const whaleModifier = signalType === 'fomo' ? Math.max(whale.score, 0) : Math.abs(Math.min(whale.score, 0));
-              s.weighted_score = clamp(s.weighted_score + whaleModifier, 0, 100);
-              s.signal_label = computeSignalLabel(s.weighted_score);
-              s.event_modifier = (s.event_modifier || 0) + whale.score;
-              s.detected_events = [...(s.detected_events || []), ...whale.events.map(e => e.split(':')[0].trim())];
-            }
-          }
 
           if (signals.length > 0) {
             const rows = signals.map((s) => ({

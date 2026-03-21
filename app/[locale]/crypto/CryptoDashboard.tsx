@@ -112,7 +112,7 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
                     : 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)]'
                 }`}
               >
-                {st.toUpperCase()}
+                {t(language, `crypto.${st}`)}
               </button>
             ))}
           </div>
@@ -150,7 +150,7 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
       )}
 
       {selectedCoin && (
-        <CoinDetail symbol={selectedCoin} onClose={() => setSelectedCoin(null)} language={language} />
+        <CoinDetail symbol={selectedCoin} onClose={() => setSelectedCoin(null)} language={language} signalType={signalType} />
       )}
     </div>
   );

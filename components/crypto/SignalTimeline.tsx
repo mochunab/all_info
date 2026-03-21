@@ -7,6 +7,7 @@ type SignalTimelineProps = {
   signals: CryptoSignal[];
   onSelect?: (symbol: string) => void;
   language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
+  signalType?: 'fomo' | 'fud';
 };
 
 const LABEL_EMOJI: Record<string, string> = {
@@ -17,7 +18,7 @@ const LABEL_EMOJI: Record<string, string> = {
   cold: '❄️',
 };
 
-export default function SignalTimeline({ signals, onSelect, language = 'ko' }: SignalTimelineProps) {
+export default function SignalTimeline({ signals, onSelect, language = 'ko', signalType = 'fomo' }: SignalTimelineProps) {
   if (signals.length === 0) {
     return (
       <div className="text-center text-sm text-[var(--text-tertiary)] py-8">
@@ -36,7 +37,10 @@ export default function SignalTimeline({ signals, onSelect, language = 'ko' }: S
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-semibold text-[var(--text-secondary)] px-1">
-        {trending.length > 0 ? `🔥 ${t(language, 'crypto.trending')}` : `📊 ${t(language, 'crypto.topSignals')}`}
+        {trending.length > 0
+          ? `${signalType === 'fud' ? '📉' : '🔥'} ${t(language, 'crypto.trending')}`
+          : `📊 ${t(language, 'crypto.topSignals')}`}
+        {signalType === 'fud' && <span className="ml-1 text-xs text-red-400 font-normal">FUD</span>}
       </h3>
       <div className="space-y-1">
         {displaySignals.map((signal) => (

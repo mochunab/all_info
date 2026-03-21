@@ -21,6 +21,7 @@ type CoinDetailProps = {
   symbol: string;
   onClose: () => void;
   language?: 'ko' | 'en' | 'vi' | 'zh' | 'ja';
+  signalType?: 'fomo' | 'fud';
 };
 
 type DetailData = {
@@ -47,7 +48,7 @@ type EventPoint = {
   coins: string[];
 };
 
-export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDetailProps) {
+export default function CoinDetail({ symbol, onClose, language = 'ko', signalType = 'fomo' }: CoinDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
@@ -59,7 +60,7 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
     try {
       const [coinsRes, signalsRes, postsRes, historyRes, eventsRes] = await Promise.all([
         fetch(`/api/crypto/coins?search=${symbol}&type=coin&limit=1`),
-        fetch(`/api/crypto/signals?coin=${symbol}&window=${timeWindow}`),
+        fetch(`/api/crypto/signals?coin=${symbol}&window=${timeWindow}&signal_type=${signalType}`),
         fetch(`/api/crypto/posts?coin=${symbol}&limit=10`),
         fetch(`/api/crypto/history?coin=${symbol}&days=7`),
         fetch(`/api/crypto/events?coin=${symbol}&days=7&limit=10`),
@@ -86,7 +87,7 @@ export default function CoinDetail({ symbol, onClose, language = 'ko' }: CoinDet
     } finally {
       setLoading(false);
     }
-  }, [symbol, timeWindow]);
+  }, [symbol, timeWindow, signalType]);
 
   useEffect(() => {
     fetchData();
