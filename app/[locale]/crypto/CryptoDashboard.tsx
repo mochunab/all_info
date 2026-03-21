@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { CryptoSignal, TimeWindow, CryptoPrice } from '@/types/crypto';
 import { t } from '@/lib/i18n';
 import CoinCard from '@/components/crypto/CoinCard';
-import SignalTimeline from '@/components/crypto/SignalTimeline';
+
 import SignalNetwork from '@/components/crypto/SignalNetwork';
 import CoinDetail from '@/components/crypto/CoinDetail';
 import TimeWindowSelector from '@/components/crypto/TimeWindowSelector';
@@ -97,48 +97,41 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
 
       <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} timeWindow={timeWindow} />
 
-      <div className="mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)] shrink-0">
+          🔥 {t(language, 'crypto.trending')}
+        </h2>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t(language, 'crypto.search')}
-          className="w-full max-w-md px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          className="w-full max-w-xs px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
         />
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1">
-          {loading ? (
-            <div className="text-center py-12 text-[var(--text-tertiary)]">{t(language, 'crypto.loading')}</div>
-          ) : filteredSignals.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-[var(--text-tertiary)]">
-                {search ? `"${search}" — ${t(language, 'crypto.noSignals')}` : t(language, 'crypto.noSignals')}
-              </p>
-              <p className="text-sm text-[var(--text-tertiary)] mt-1">{t(language, 'crypto.noSignalsHint')}</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredSignals.map((signal) => (
-                <CoinCard
-                  key={`${signal.coin_symbol}-${signal.time_window}`}
-                  signal={signal}
-                  price={priceMap.get(signal.coin_symbol)}
-                  onClick={setSelectedCoin}
-                  language={language}
-                />
-              ))}
-            </div>
-          )}
+      {loading ? (
+        <div className="text-center py-12 text-[var(--text-tertiary)]">{t(language, 'crypto.loading')}</div>
+      ) : filteredSignals.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-[var(--text-tertiary)]">
+            {search ? `"${search}" — ${t(language, 'crypto.noSignals')}` : t(language, 'crypto.noSignals')}
+          </p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">{t(language, 'crypto.noSignalsHint')}</p>
         </div>
-
-        <aside className="w-full lg:w-72 shrink-0">
-          <div className="sticky top-24 bg-[var(--bg-primary)] border border-[var(--border)] rounded-xl p-4">
-            <SignalTimeline signals={signals} onSelect={setSelectedCoin} language={language} />
-          </div>
-        </aside>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredSignals.map((signal) => (
+            <CoinCard
+              key={`${signal.coin_symbol}-${signal.time_window}`}
+              signal={signal}
+              price={priceMap.get(signal.coin_symbol)}
+              onClick={setSelectedCoin}
+              language={language}
+            />
+          ))}
+        </div>
+      )}
 
       {selectedCoin && (
         <CoinDetail symbol={selectedCoin} onClose={() => setSelectedCoin(null)} language={language} />
