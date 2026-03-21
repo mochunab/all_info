@@ -6,23 +6,24 @@ import type { BattlePlayer, BattlePosition, BattleCloseReason } from '@/types/cr
 const STARTING_BALANCE = 100;
 
 const ROBOT = {
-  MAX_POSITIONS: 3,
-  POSITION_SIZE_PCT: 0.25,
-  MIN_CASH_PCT: 0.30,
-  STOP_LOSS_PCT: 0.08,
-  TP1_PCT: 0.24,
+  MAX_POSITIONS: 5,
+  POSITION_SIZE_PCT: 0.12,
+  MIN_CASH_PCT: 0.20,
+  STOP_LOSS_PCT: 0.10,
+  TP1_PCT: 0.20,
   TP1_CLOSE_RATIO: 1 / 3,
-  TP2_PCT: 0.50,
+  TP2_PCT: 0.40,
   TP2_CLOSE_RATIO: 1 / 3,
-  MIN_WEIGHTED_SCORE: 50,
+  MIN_WEIGHTED_SCORE: 30,
   MIN_MENTION_COUNT: 3,
-  MIN_CONFIDENCE: 65,
-  VELOCITY_BONUS_THRESHOLD: 1.0,
-  SENTIMENT_BONUS_THRESHOLD: 0.3,
-  FOMO_BONUS_THRESHOLD: 0.5,
-  SIGNAL_REVERSAL_LABELS: ['cool', 'cold'] as string[],
-  SENTIMENT_DROP_THRESHOLD: -0.4,
-  VELOCITY_DEAD_THRESHOLD: 0.2,
+  MIN_CONFIDENCE: 55,
+  VELOCITY_BONUS_THRESHOLD: 0.5,
+  SENTIMENT_BONUS_THRESHOLD: 0.2,
+  FOMO_BONUS_THRESHOLD: 0.3,
+  SIGNAL_TIME_WINDOWS: ['24h', '6h', '1h'] as string[],
+  SIGNAL_REVERSAL_LABELS: ['cold'] as string[],
+  SENTIMENT_DROP_THRESHOLD: -0.5,
+  VELOCITY_DEAD_THRESHOLD: 0.05,
 } as const;
 
 const MONKEY = {
@@ -146,16 +147,25 @@ async function evaluateRobotEntry(
 
   if (cash - positionSize < minCash) return null;
 
-  const { data: signals } = await supabase
-    .from('crypto_signals')
-    .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity')
-    .eq('time_window', '1h')
-    .in('signal_label', ['extremely_hot', 'hot', 'warm'])
-    .gte('weighted_score', ROBOT.MIN_WEIGHTED_SCORE)
-    .gte('mention_count', ROBOT.MIN_MENTION_COUNT)
-    .order('weighted_score', { ascending: false });
+  type SignalRow = { coin_symbol: string; signal_label: string; weighted_score: number; mention_count: number; avg_sentiment: number; mention_velocity: number };
+  let signals: SignalRow[] = [];
+  for (const tw of ROBOT.SIGNAL_TIME_WINDOWS) {
+    const { data } = await supabase
+      .from('crypto_signals')
+      .select('coin_symbol, signal_label, weighted_score, mention_count, avg_sentiment, mention_velocity')
+      .eq('time_window', tw)
+      .in('signal_label', ['extremely_hot', 'hot', 'warm'])
+      .gte('weighted_score', ROBOT.MIN_WEIGHTED_SCORE)
+      .gte('mention_count', ROBOT.MIN_MENTION_COUNT)
+      .order('weighted_score', { ascending: false });
 
-  if (!signals || signals.length === 0) return null;
+    if (data && data.length > 0) {
+      signals = data as SignalRow[];
+      break;
+    }
+  }
+
+  if (signals.length === 0) return null;
 
   const openPositions = await getOpenPositions(supabase, 'robot');
   const openSymbols = new Set(openPositions.map(p => p.coin_symbol));
@@ -167,9 +177,10 @@ async function evaluateRobotEntry(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fomo = (sig as any).fomo_avg ?? 0;
-    let confidence = 60;
-    if (sig.mention_velocity > ROBOT.VELOCITY_BONUS_THRESHOLD) confidence += 20;
-    if (sig.avg_sentiment > ROBOT.SENTIMENT_BONUS_THRESHOLD) confidence += 15;
+    let confidence = 50;
+    if (sig.weighted_score >= 50) confidence += 15;
+    if (sig.mention_velocity > ROBOT.VELOCITY_BONUS_THRESHOLD) confidence += 15;
+    if (sig.avg_sentiment > ROBOT.SENTIMENT_BONUS_THRESHOLD) confidence += 10;
     if (fomo > ROBOT.FOMO_BONUS_THRESHOLD) confidence += 10;
 
     if (confidence < ROBOT.MIN_CONFIDENCE) continue;
@@ -218,12 +229,12 @@ async function evaluateRobotExit(
     return { reason: 'take_profit_2', closeAll: false };
   }
 
-  // 시그널 반전 체크
+  // 시그널 반전 체크 (24h 기준 — 단기 노이즈 방지)
   const { data: currentSignal } = await supabase
     .from('crypto_signals')
     .select('signal_label, avg_sentiment, mention_velocity')
     .eq('coin_symbol', pos.coin_symbol)
-    .eq('time_window', '1h')
+    .eq('time_window', '24h')
     .order('computed_at', { ascending: false })
     .limit(1)
     .single();
