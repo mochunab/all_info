@@ -314,16 +314,26 @@ export async function generateAllSignals(
   const computedAt = new Date().toISOString();
   const signalTypes: SignalType[] = targetSignalType ? [targetSignalType] : ['fomo', 'fud'];
 
-  // On-chain: Whale Alert 데이터 수집 + 저장
-  const whaleSignals = await fetchWhaleTransactions(35);
-  const whaleScores = aggregateWhaleSignals(whaleSignals);
-  if (whaleSignals.length > 0) {
-    const stored = await storeWhaleEvents(supabase, whaleSignals);
-    console.log(`   🐋 Whale 이벤트 ${stored}건 저장`);
+  // On-chain: Whale Alert — FOMO phase에서만 (FUD에선 skip하여 시간 절약)
+  let whaleScores = new Map<string, { score: number; events: string[] }>();
+  if (!targetSignalType || targetSignalType === 'fomo') {
+    try {
+      const whaleSignals = await fetchWhaleTransactions(35);
+      whaleScores = aggregateWhaleSignals(whaleSignals);
+      if (whaleSignals.length > 0) {
+        const stored = await storeWhaleEvents(supabase, whaleSignals);
+        console.log(`   🐋 Whale 이벤트 ${stored}건 저장`);
+      }
+    } catch (e) {
+      console.warn(`[Whale] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
   }
 
-  const windowResults = await Promise.all(
-    TIME_WINDOWS.map(async (window) => {
+  // 2개씩 병렬 처리 (DB 부하 분산)
+  const windowResults: number[] = [];
+  for (let i = 0; i < TIME_WINDOWS.length; i += 2) {
+    const batch = TIME_WINDOWS.slice(i, i + 2);
+    const batchResults = await Promise.all(batch.map(async (window) => {
       let count = 0;
       try {
         const raw = await fetchWindowData(supabase, window);
@@ -369,8 +379,9 @@ export async function generateAllSignals(
         console.error(`❌ [시그널] ${window} 처리 오류:`, e instanceof Error ? e.message : 'unknown');
       }
       return count;
-    })
-  );
+    }));
+    windowResults.push(...batchResults);
+  }
   totalGenerated = windowResults.reduce((a, b) => a + b, 0);
 
   return { generated: totalGenerated };
