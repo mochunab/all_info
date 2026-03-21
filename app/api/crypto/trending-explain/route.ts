@@ -32,46 +32,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'coin parameter required' }, { status: 400 });
   }
 
-  const FALLBACK_WINDOWS = ['1h', '6h', '24h', '7d'] as const;
-  const startIdx = FALLBACK_WINDOWS.indexOf(window as typeof FALLBACK_WINDOWS[number]);
-  if (startIdx === -1) {
+  const windowMs = TIME_WINDOW_MS[window];
+  if (!windowMs) {
     return NextResponse.json({ error: 'invalid window' }, { status: 400 });
   }
 
   const supabase = createServiceClient();
-  const now = new Date();
 
-  // 데이터 없으면 더 넓은 윈도우로 자동 폴백
-  let usedWindow = window;
-  let windowMs = TIME_WINDOW_MS[window]!;
-  let windowStart = new Date(now.getTime() - windowMs);
-  let prevWindowStart = new Date(windowStart.getTime() - windowMs);
-  let mentions: { post_id: string; mention_count: number }[] | null = null;
+  // 코인 카드와 동일한 시점 사용: crypto_signals의 최신 computed_at 기준
+  const { data: signalRow } = await supabase
+    .from('crypto_signals')
+    .select('computed_at')
+    .eq('coin_symbol', coin)
+    .eq('time_window', window)
+    .order('computed_at', { ascending: false })
+    .limit(1)
+    .single();
 
-  for (let i = startIdx; i < FALLBACK_WINDOWS.length; i++) {
-    const tw = FALLBACK_WINDOWS[i];
-    const ms = TIME_WINDOW_MS[tw]!;
-    const start = new Date(now.getTime() - ms);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const computedAt = (signalRow as any)?.computed_at;
+  const anchor = computedAt ? new Date(computedAt) : new Date();
+  const windowStart = new Date(anchor.getTime() - windowMs);
+  const prevWindowStart = new Date(windowStart.getTime() - windowMs);
 
-    const { data } = await supabase
-      .from('crypto_mentions')
-      .select('post_id, mention_count')
-      .eq('coin_symbol', coin)
-      .gte('created_at', start.toISOString())
-      .lte('created_at', now.toISOString());
+  // 1. Current window mentions → post_ids
+  const { data: mentionsData } = await supabase
+    .from('crypto_mentions')
+    .select('post_id, mention_count')
+    .eq('coin_symbol', coin)
+    .gte('created_at', windowStart.toISOString())
+    .lte('created_at', anchor.toISOString());
 
-    if (data && data.length > 0) {
-      mentions = data;
-      usedWindow = tw;
-      windowMs = ms;
-      windowStart = start;
-      prevWindowStart = new Date(start.getTime() - ms);
-      break;
-    }
-  }
+  const mentions = mentionsData || [];
 
-  if (!mentions || mentions.length === 0) {
-    return NextResponse.json({ error: 'no data for this coin' }, { status: 404 });
+  if (mentions.length === 0) {
+    return NextResponse.json({ error: 'no data for this coin/window' }, { status: 404 });
   }
 
   const postIds = [...new Set(mentions.map((m: { post_id: string }) => m.post_id))];
@@ -112,10 +107,6 @@ export async function GET(req: NextRequest) {
   const sentiments = (sentimentsRes.data || []) as any as SentimentRow[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const prevMentions = (prevMentionsRes.data || []) as any as MentionRow[];
-
-  // Build maps
-  const postMap = new Map<string, (typeof posts)[0]>();
-  for (const p of posts) postMap.set(p.id, p);
 
   const sentMap = new Map<string, (typeof sentiments)[0]>();
   for (const s of sentiments) sentMap.set(s.post_id, s);
@@ -274,9 +265,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const response: TrendingExplainResponse & { used_window?: string } = {
+  const response: TrendingExplainResponse = {
     coin_symbol: coin,
-    used_window: usedWindow !== window ? usedWindow : undefined,
     score_breakdown: {
       velocity: { normalized: Math.round(velNorm * 100) / 100, weight: 0.25 },
       sentiment: { normalized: Math.round(sentNorm * 100) / 100, weight: 0.30 },
