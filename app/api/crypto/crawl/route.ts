@@ -80,7 +80,9 @@ async function handleCrawl(request: NextRequest) {
 
       try {
         const { crawlAllTelegramChannels } = await import('@/lib/crypto/telegram-crawler');
-        const { results } = await crawlAllTelegramChannels(supabase);
+        const elapsed = Date.now() - startTime;
+        const telegramBudget = Math.max(200_000 - elapsed, 30_000);
+        const { results } = await crawlAllTelegramChannels(supabase, telegramBudget);
         allResults.push(...results);
       } catch (e) {
         console.warn(`[Telegram] 스킵: ${e instanceof Error ? e.message : 'unknown'}`);

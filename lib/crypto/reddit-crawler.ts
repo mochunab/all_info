@@ -14,11 +14,24 @@ const MAX_429_RETRIES = 3;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    .replace(/\uFFFD/g, '')
-    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = i + 1 < text.length ? text.charCodeAt(i + 1) : 0;
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        result += text[i] + text[i + 1];
+        i++;
+      }
+    } else if (code >= 0xDC00 && code <= 0xDFFF) {
+      // orphan low surrogate — skip
+    } else if (code <= 0x08 || code === 0x0B || code === 0x0C || (code >= 0x0E && code <= 0x1F) || code === 0x7F || code === 0xFFFD) {
+      // control char / replacement char — skip
+    } else {
+      result += text[i];
+    }
+  }
+  return result;
 }
 
 async function fetchSubredditPosts(
@@ -166,7 +179,7 @@ export async function crawlSubreddit(
           coin_symbol: m.symbol,
           coin_name: m.name,
           mention_count: m.count,
-          context: m.context,
+          context: m.context ? sanitizeText(m.context) : null,
         });
       }
     }

@@ -337,6 +337,8 @@ async function closePosition(
   reason: BattleCloseReason,
   closeAll: boolean,
 ) {
+  if (pos.status === 'closed' || pos.remaining_size <= 0.01) return;
+
   let closeSize: number;
 
   if (closeAll) {
@@ -360,10 +362,10 @@ async function closePosition(
     : reason === 'take_profit_2' ? 2
     : pos.take_profit_stage;
 
-  // TP1 이후 손절 라인을 진입가로 이동 (stop_loss_price 업데이트)
   const newStopLoss = newStage >= 1 && !isClosed ? pos.entry_price : pos.stop_loss_price;
 
-  await supabase
+  // Atomic: status='open' 조건으로 업데이트 — 이미 closed면 0건 반환
+  const { data: updated } = await supabase
     .from('battle_positions')
     .update({
       remaining_size: isClosed ? 0 : newRemaining,
@@ -374,7 +376,15 @@ async function closePosition(
       close_reason: isClosed ? reason : pos.close_reason,
       closed_at: isClosed ? new Date().toISOString() : null,
     })
-    .eq('id', pos.id);
+    .eq('id', pos.id)
+    .gt('remaining_size', 0.01)
+    .select('id');
+
+  // 업데이트 0건 = 이미 다른 호출이 청산함 → trade insert 스킵
+  if (!updated || updated.length === 0) {
+    console.log(`[배틀] SKIP close — ${pos.player} ${pos.coin_symbol} already closed (atomic)`);
+    return;
+  }
 
   await supabase.from('battle_trades').insert({
     trade_date: new Date().toISOString().slice(0, 10),
@@ -397,21 +407,20 @@ async function closePosition(
 // ── 포트폴리오 ──
 
 async function getCashBalance(supabase: SupabaseClient, player: BattlePlayer): Promise<number> {
-  const { data: latest } = await supabase
-    .from('battle_portfolio')
-    .select('cash_balance, portfolio_value')
-    .eq('player', player)
-    .order('snapshot_date', { ascending: false })
-    .limit(1)
-    .single();
+  const { data: trades } = await supabase
+    .from('battle_trades')
+    .select('action, trade_size, pnl')
+    .eq('player', player);
 
-  if (latest?.cash_balance != null) return latest.cash_balance;
-
-  // 레거시 또는 첫 실행: portfolio_value에서 오픈 포지션 크기 차감
-  const portfolioValue = latest?.portfolio_value ?? STARTING_BALANCE;
-  const openPositions = await getOpenPositions(supabase, player);
-  const investedAmount = openPositions.reduce((sum, p) => sum + p.remaining_size, 0);
-  return Math.max(0, portfolioValue - investedAmount);
+  let cash = STARTING_BALANCE;
+  for (const tr of trades || []) {
+    if (tr.action === 'buy') {
+      cash -= tr.trade_size;
+    } else if (tr.action === 'sell') {
+      cash += tr.trade_size + (tr.pnl ?? 0);
+    }
+  }
+  return Math.max(0, cash);
 }
 
 async function getPortfolioValue(

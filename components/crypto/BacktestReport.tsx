@@ -59,7 +59,7 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
   }, [isOpen, lookupWindow, signalType, fetchData]);
 
   return (
-    <div className="mb-6">
+    <div className="mb-3">
       <div className="border border-[var(--border)] rounded-xl bg-[var(--bg-primary)] overflow-hidden">
         {/* Accordion Header */}
         <button
@@ -130,6 +130,13 @@ export default function BacktestReport({ language, signalType = 'fomo' }: { lang
             ) : (
               <>
                 <div className="space-y-3 mb-5">
+                  <div className="flex items-center gap-3 text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider">
+                    <span className="w-20">{t(language, 'crypto.backtest.label')}</span>
+                    <span className="flex-1 text-center">{t(language, 'crypto.backtest.winRate')}</span>
+                    <span className="w-12 text-right" />
+                    <span className="w-16 text-right">{t(language, 'crypto.backtest.avgReturn')}</span>
+                    <span className="w-8 text-right">{t(language, 'crypto.backtest.total')}</span>
+                  </div>
                   {data.summary.map((s) => (
                     <div key={s.signal_label} className="flex items-center gap-3">
                       <span className={`text-xs font-mono w-20 ${LABEL_COLORS[s.signal_label] || 'text-[var(--text-secondary)]'}`}>

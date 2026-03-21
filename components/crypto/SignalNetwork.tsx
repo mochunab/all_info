@@ -418,7 +418,7 @@ export default function SignalNetwork({ signals, onCoinSelect, language = 'ko', 
   if (signals.length === 0) return null;
 
   return (
-    <div className="mb-6">
+    <div className="mb-3">
       <div className="border border-[var(--border)] rounded-xl bg-[var(--bg-primary)] overflow-hidden">
         {/* Accordion Header */}
         <button

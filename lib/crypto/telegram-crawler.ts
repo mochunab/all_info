@@ -86,16 +86,38 @@ async function fetchChannelPage(channelUsername: string, before?: number): Promi
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-    .replace(/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/g, '')
-    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = i + 1 < text.length ? text.charCodeAt(i + 1) : 0;
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        result += text[i] + text[i + 1];
+        i++;
+      }
+    } else if (code >= 0xDC00 && code <= 0xDFFF) {
+      // orphan low surrogate — skip
+    } else if (code <= 0x08 || code === 0x0B || code === 0x0C || (code >= 0x0E && code <= 0x1F)) {
+      // control char — skip
+    } else {
+      result += text[i];
+    }
+  }
+  return result;
+}
+
+function safeTruncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  let end = maxLen;
+  const code = text.charCodeAt(end - 1);
+  if (code >= 0xD800 && code <= 0xDBFF) end--;
+  return text.slice(0, end);
 }
 
 function telegramWebPostToRow(post: TelegramWebPost, channelUsername: string) {
   const cleanText = sanitizeText(post.text);
-  const title = cleanText.slice(0, 200);
-  const body = cleanText.length > 200 ? cleanText.slice(0, POST_BODY_TRUNCATE_LENGTH) : null;
+  const title = safeTruncate(cleanText, 200);
+  const body = cleanText.length > 200 ? safeTruncate(cleanText, POST_BODY_TRUNCATE_LENGTH) : null;
   const score = post.views;
 
   return {
@@ -181,7 +203,7 @@ export async function crawlTelegramChannel(
           coin_symbol: m.symbol,
           coin_name: m.name,
           mention_count: m.count,
-          context: m.context,
+          context: m.context ? sanitizeText(m.context) : null,
         });
       }
     }
@@ -210,17 +232,27 @@ export async function crawlTelegramChannel(
   return result;
 }
 
+function shuffleArray<T>(arr: readonly T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 export async function crawlAllTelegramChannels(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  timeBudgetMs?: number
+  timeBudgetMs: number = 120_000
 ): Promise<{ results: CryptoCrawlResult[]; completed: boolean }> {
   const results: CryptoCrawlResult[] = [];
   const callStart = Date.now();
+  const channels = shuffleArray(TELEGRAM_CHANNELS);
 
-  for (const config of TELEGRAM_CHANNELS) {
-    if (timeBudgetMs && (Date.now() - callStart) > timeBudgetMs) {
-      console.log(`⏰ [Telegram] 시간 제한 도달 — 남은 ${TELEGRAM_CHANNELS.length - results.length}개 채널 다음 실행으로 연기`);
+  for (const config of channels) {
+    if ((Date.now() - callStart) > timeBudgetMs) {
+      console.log(`⏰ [Telegram] 시간 제한(${Math.round(timeBudgetMs / 1000)}s) 도달 — ${results.length}/${channels.length}채널 완료, 나머지 다음 실행`);
       return { results, completed: false };
     }
 

@@ -3,6 +3,20 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { lazyEvaluateExits } from '@/lib/crypto/battle-trader';
 import type { BattleResponse, BattlePortfolio, BattleTrade, BattlePosition } from '@/types/crypto';
 
+const STARTING_BALANCE = 100;
+
+function calcCashFromTrades(trades: { action: string; trade_size: number; pnl: number | null }[]): number {
+  let cash = STARTING_BALANCE;
+  for (const tr of trades) {
+    if (tr.action === 'buy') {
+      cash -= tr.trade_size;
+    } else if (tr.action === 'sell') {
+      cash += tr.trade_size + (tr.pnl ?? 0);
+    }
+  }
+  return Math.max(0, cash);
+}
+
 export async function GET(request: NextRequest) {
   const days = parseInt(new URL(request.url).searchParams.get('days') || '30', 10);
   const supabase = await createServiceClient();
@@ -26,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. 포지션/포트폴리오/거래 데이터 조회 (lazy 평가 후이므로 최신 상태)
-  const [portfolioRes, tradesRes, historyRes, monkeyPosRes, robotPosRes] = await Promise.all([
+  const [portfolioRes, tradesRes, historyRes, monkeyPosRes, robotPosRes, monkeyTradesAll, robotTradesAll] = await Promise.all([
     supabase
       .from('battle_portfolio')
       .select('*')
@@ -54,6 +68,14 @@ export async function GET(request: NextRequest) {
       .eq('player', 'robot')
       .eq('status', 'open')
       .order('opened_at', { ascending: false }),
+    supabase
+      .from('battle_trades')
+      .select('action, trade_size, pnl')
+      .eq('player', 'monkey'),
+    supabase
+      .from('battle_trades')
+      .select('action, trade_size, pnl')
+      .eq('player', 'robot'),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,7 +88,10 @@ export async function GET(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const robotPositions = (robotPosRes.data || []) as any as BattlePosition[];
 
-  // 4. 실시간 포트폴리오 가치 = 현금 + Σ(포지션 × 현재가격/진입가격)
+  // 4. 거래 내역 기반 현금 + 실시간 포트폴리오 가치
+  const monkeyCash = calcCashFromTrades((monkeyTradesAll.data || []) as { action: string; trade_size: number; pnl: number | null }[]);
+  const robotCash = calcCashFromTrades((robotTradesAll.data || []) as { action: string; trade_size: number; pnl: number | null }[]);
+
   function calcRealTimeValue(positions: BattlePosition[], cash: number): number {
     let value = cash;
     for (const pos of positions) {
@@ -79,11 +104,6 @@ export async function GET(request: NextRequest) {
     }
     return value;
   }
-
-  const monkeyCash = monkeyPortfolio?.cash_balance
-    ?? (monkeyPortfolio?.portfolio_value ?? 100) - monkeyPositions.reduce((s, p) => s + p.remaining_size, 0);
-  const robotCash = robotPortfolio?.cash_balance
-    ?? (robotPortfolio?.portfolio_value ?? 100) - robotPositions.reduce((s, p) => s + p.remaining_size, 0);
 
   const monkeyCurrent = calcRealTimeValue(monkeyPositions, monkeyCash);
   const robotCurrent = calcRealTimeValue(robotPositions, robotCash);

@@ -89,16 +89,12 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
 
       <MonkeyVsRobot language={language} />
 
-      <BacktestReport language={language} signalType={signalType} />
-
-      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} signalType={signalType} />
-
+      {/* Global filter bar — applies to all sections below */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-[var(--text-primary)] shrink-0">
             🔥 {t(language, 'crypto.trending')}
           </h2>
-          <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
           <div className="flex gap-1">
             {(['fomo', 'fud'] as const).map((st) => (
               <button
@@ -117,14 +113,21 @@ export default function CryptoDashboard({ initialSignals, language }: CryptoDash
             ))}
           </div>
         </div>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t(language, 'crypto.search')}
-          className="w-full max-w-xs px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-        />
+        <div className="flex items-center gap-3">
+          <TimeWindowSelector selected={timeWindow} onChange={handleWindowChange} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t(language, 'crypto.search')}
+            className="w-full max-w-xs px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          />
+        </div>
       </div>
+
+      <BacktestReport language={language} signalType={signalType} />
+
+      <SignalNetwork signals={signals} onCoinSelect={setSelectedCoin} language={language} signalType={signalType} />
 
       {loading ? (
         <div className="text-center py-12 text-[var(--text-tertiary)]">{t(language, 'crypto.loading')}</div>

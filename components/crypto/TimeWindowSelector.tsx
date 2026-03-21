@@ -18,7 +18,7 @@ export default function TimeWindowSelector({ selected, onChange, language = 'ko'
         <button
           key={w}
           onClick={() => onChange(w)}
-          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
             selected === w
               ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
