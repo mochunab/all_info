@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 작업 인계 문서
 
-> 최종 작업일: 2026-03-21 (센티먼트 배치+필터링, AI 배틀 전략 완화, UI 정리)
+> 최종 작업일: 2026-03-21 (Signal Scoring V2 — Z-score/크로스플랫폼/역행감지/이벤트, 3D 그래프 nodeThreeObject)
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -18,7 +18,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 
 ### 핵심 기능 4개
 1. **멀티소스 센티먼트 추적** — X/Twitter(Apify) + Reddit + Telegram + Threads → 코인 멘션 추출 → LLM 센티먼트 분석
-2. **가중 시그널 스코어** — 언급 속도 × 25% + 센티먼트 × 30% + 트렌드 × 15% + 참여도 × 20% + FOMO × 10% → 0~100점 + signal_label (Heat 스케일: 🔥 Extremely Hot / 🟠 Hot / 🟡 Warm / 🔵 Cool / ❄️ Cold)
+2. **가중 시그널 스코어 (V2)** — 기본 5요소(velocity 25% + sentiment 30% + trend 15% + engagement 20% + FOMO 10%) × mentionConfidence × marketCapDampening × **zScoreMultiplier** × **crossPlatformMultiplier** + **eventModifier** → 0~100점 + signal_label (Heat 스케일) + **contrarianWarning**
 3. **지식그래프** — 코인/인플루언서/내러티브/이벤트 엔티티 + 5종 관계(correlates_with/mentions/recommends/part_of/impacts) → LLM 동적 감지 + 점진적 감쇠
 4. **Signal Network 시각화** — Force-directed 3D 그래프 + WHY Trending 추론 패널 (점수 분해·AI 근거·소스 분포·키워드·내러티브·이벤트 타임라인) + 노드 클릭 경로 하이라이트
 
@@ -270,6 +270,39 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 89. **Reddit 공개 JSON 확인** — OAuth 미사용, `reddit.com/r/{sub}/{sort}.json` 직접 호출로 이미 동작 중
 90. **Threads 비활성화** — 자기 게시물만 반환, 실질 데이터 없어 크롤링에서 제외
 
+**Phase G — Signal Scoring V2 + 3D 그래프 수정 (2026-03-21)**
+91. **DB 마이그레이션 `031_signal_scoring_v2.sql`** — `crypto_signals`에 6개 컬럼 추가
+    - `z_score` (numeric 6,3): 멘션 볼륨 Z-score
+    - `source_count` (integer): 소스 플랫폼 수
+    - `contrarian_warning` (text): 'potential_reversal' | 'potential_bounce' | null
+    - `sentiment_skew` (numeric 5,2): bullish 비율 (0-100%)
+    - `detected_events` (text[]): 감지된 이벤트 타입 배열
+    - `event_modifier` (numeric 5,2): 이벤트 기반 점수 보정값
+92. **Z-score 볼륨 이상치 감지** — `score-utils.ts: computeZScore() + computeZScoreMultiplier()`
+    - 과거 10개 윈도우 히스토리 대비 현재 멘션 수 Z-score 계산
+    - z > 2.0 → 1.0~1.5배 부스트 (비정상 급증 감지)
+    - `signal-generator.ts: fetchWindowData()`에 historical mentions 쿼리 추가
+93. **크로스 플랫폼 시그널 확인** — `computeCrossPlatformMultiplier()`
+    - 1 소스 = ×0.7 (약한 시그널), 2 소스 = ×1.0, 3+ 소스 = ×1.3 (강한 시그널)
+    - `crypto_posts.source` 기반 distinct count per coin per window
+94. **역행 센티먼트 감지 (Contrarian)** — `computeContrarianWarning()`
+    - bullish 비율 > 85% → `potential_reversal` (과열 경고)
+    - bullish 비율 < 15% → `potential_bounce` (반등 시그널)
+    - 스코어에 직접 반영 안 함, 별도 경고 지표
+95. **이벤트 타입 키워드 스코어링** — `computeEventModifier()`
+    - `key_phrases`에서 이벤트 키워드 매칭 → 점수 가감
+    - `exchange_listing` +15, `security_incident` -20, `whale_buy` +10, `whale_sell` -10, `regulatory_positive` +10, `regulatory_negative` -15, `partnership` +8, `airdrop` +5
+    - 총합 clamp(-30, +25)
+96. **3D 그래프 nodeThreeObject 커스텀 렌더링** — `SignalNetwork.tsx`
+    - `react-force-graph-3d`의 `dynamic()` → lazy import으로 전환 (ref 전달 문제 해결)
+    - `nodeThreeObject` 콜백: THREE.SphereGeometry + MeshPhongMaterial (shininess, specular, emissive) + glow halo + SpriteText 라벨
+    - 커스텀 라이팅: AmbientLight + DirectionalLight×2 + PointLight
+    - d3 force 튜닝: charge=-300, link=60, center=2
+    - zoomToFit 반복 호출 + onEngineStop 콜백
+    - 칩 전환 시 깜빡임 방지: nodeThreeObject에서 selectedChip 의존성 제거
+97. **CoinCard 에러 수정** — `badge.bg` undefined fallback 추가 (signal_label이 DB에 구 라벨로 남아있을 때 대응)
+98. **온체인 데이터** — Whale Alert API 검토 → 유료($29.95/월) 확인 → **기존 텔레그램 `whale_alert_io` 채널로 대체** (추가 비용 없음, 이벤트 키워드로 자동 매칭)
+
 ### 미완료 (To-Do)
 
 #### 우선순위 높음 (기능 동작에 필수)
@@ -390,7 +423,7 @@ Header "밈코인 예측기" (master 계정만 노출, i18n 적용)
 ### 새로 생성한 파일
 ```
 lib/crypto/
-  config.ts                 서브레딧 10개 + 텔레그램 25개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치
+  config.ts                 서브레딧 10개 + 텔레그램 25개 + Threads 키워드 10개 + Twitter 키워드 5개, 코인 목록(73개 하드코딩 fallback), 상수/가중치 + V2 상수(ZSCORE_*, CROSS_PLATFORM_*, CONTRARIAN_*, EVENT_TYPE_PATTERNS)
   coin-sync.ts              CoinGecko /coins/list → crypto_coins 동기화 (1일 1회 or Phase 4)
   price-fetcher.ts          CoinGecko /coins/markets → crypto_prices 가격 스냅샷 (30분 cron)
   reddit-auth.ts            Reddit OAuth2 토큰 관리 (cache.ts 활용)
@@ -400,8 +433,8 @@ lib/crypto/
   twitter-crawler.ts        Apify scrape.badger Actor 기반 X/Twitter 크롤러 (5개 키워드, 12시간 간격, sanitizeObject)
   coin-extractor.ts         3단계 코인 멘션 추출 ($TICKER, 풀네임, ALL-CAPS) — DB 기반 (extractCoinMentionsFromDB) + 하드코딩 fallback
   batch-sentiment.ts        배치 센티먼트 처리 (소스별 Edge Function 라우팅, 5 concurrent)
-  score-utils.ts             공유 스코어링 유틸 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening)
-  signal-generator.ts       시간 윈도우별 가중 시그널 계산 (score-utils import)
+  score-utils.ts             공유 스코어링 유틸 V2 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening, computeZScore, computeZScoreMultiplier, computeCrossPlatformMultiplier, computeContrarianWarning, computeEventModifier)
+  signal-generator.ts       시간 윈도우별 가중 시그널 계산 V2 (Z-score 히스토리 쿼리, 크로스플랫폼/이벤트/역행 감지 통합)
   knowledge-graph.ts        엔티티/관계 자동 생성 — LLM 내러티브/이벤트 통합, 점진적 감쇠, recommends 관계
   backtester.ts             백테스팅 — 시그널 vs 가격 비교, 적중 평가, 미평가 건 재평가
 
@@ -415,6 +448,7 @@ supabase/migrations/021_crypto_prices.sql    crypto_coins + crypto_prices 테이
 supabase/migrations/026_add_sentiments_metadata.sql  crypto_sentiments.metadata JSONB 컬럼 추가
 supabase/migrations/027_crypto_backtest.sql          crypto_backtest_results 테이블 + crypto_backtest_summary 뷰
 supabase/migrations/028_signal_label_heat.sql        signal_label buy/sell → heat 스케일 전환 (CHECK 제약 + 데이터 + 뷰)
+supabase/migrations/031_signal_scoring_v2.sql        Signal V2 컬럼 추가 (z_score, source_count, contrarian_warning, sentiment_skew, detected_events, event_modifier)
 supabase/functions/analyze-crypto-sentiment/index.ts   Reddit/Telegram 센티먼트 분석 — narratives/events 필드 포함
 supabase/functions/analyze-threads-sentiment/index.ts  Threads 전용 센티먼트 분석 — narratives/events 필드 포함
 
@@ -631,7 +665,7 @@ supabase functions deploy analyze-crypto-sentiment --project-ref tcpvxihjswauwrm
 - **DOGE** (저신뢰): ALL-CAPS 단어 매칭, 80+ 단어 블랙리스트 (THE, BUY, HODL, FOMO 등)
 - 문맥 추출: 멘션 전후 30자 캡처 → crypto_mentions.context
 
-### 시그널 가중치 공식 (2026-03-17 보정)
+### 시그널 가중치 공식 V2 (2026-03-21)
 ```
 rawScore (0~100) =
   mention_velocity_norm × 25% +
@@ -640,15 +674,25 @@ rawScore (0~100) =
   engagement_norm × 20% +
   fomo_avg_norm × 10%
 
-mentionConfidence = clamp(mention_count / MIN_MENTION_CONFIDENCE, 0, 1)
-  → MIN_MENTION_CONFIDENCE = 5 (config.ts)
-  → 1회 언급 = ×0.2, 3회 = ×0.6, 5회+ = ×1.0
+mentionConfidence = clamp(mention_count / 5, 0, 1)
+marketCapDampening = log10(rank) / log10(200), clamp(0.3, 1.0)
 
-weighted_score = rawScore × mentionConfidence
+# V2 추가 (2026-03-21)
+zScoreMultiplier = z_score > 2.0 ? 1.0 + (z-2)*0.25 : 1.0, max 1.5
+crossPlatformMultiplier = sources==1 ? 0.7 : sources==2 ? 1.0 : 1.3
+eventModifier = sum of matched event keywords, clamp(-30, +25)
 
-velocity: 이전 윈도우 데이터 없으면 0 (신규 코인 과대평가 방지)
+weighted_score = clamp(
+  rawScore × mentionConfidence × marketCapDampening
+           × zScoreMultiplier × crossPlatformMultiplier
+           + eventModifier
+  , 0, 100)
 
-signal_label (Heat 스케일, 2026-03-21 전환):
+contrarianWarning = bullish% > 85% → 'potential_reversal'
+                  | bullish% < 15% → 'potential_bounce'
+                  | null (별도 지표, 스코어 미반영)
+
+signal_label (Heat 스케일):
   ≥80 → extremely_hot  (🔥 Extremely Hot)
   ≥60 → hot             (🟠 Hot)
   ≥40 → warm            (🟡 Warm)
@@ -659,19 +703,21 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 ```
 
 ### Signal Network 시각화 + WHY Trending 패널 (2026-03-21)
-- **라이브러리**: `react-force-graph-3d` (dynamic import, SSR 비활성화)
-- **아코디언**: 초기 닫힘, 클릭 시 300ms MD3 easing 트랜지션으로 펼침
+- **라이브러리**: `react-force-graph-3d` (lazy import via useState, `dynamic()` 사용 안 함 — ref 전달 문제 해결)
+- **nodeThreeObject 커스텀 렌더링**: THREE.SphereGeometry + MeshPhongMaterial (shininess 80, specular, emissive) + glow halo (SphereGeometry ×1.3, opacity 0.06) + SpriteText 라벨 (three-spritetext)
+- **커스텀 라이팅**: 기본 조명 제거 → AmbientLight(0.6) + DirectionalLight×2(0.8/0.3) + PointLight(0.4)
+- **아코디언**: 초기 닫힘, 300ms MD3 easing
 - **레이아웃**: 좌측 60% 3D Force Graph + 우측 40% WHY Trending Panel (모바일: 상하 스택)
-- **노드**: 코인(구, 센티먼트 색상) + 인플루언서(보라) + 내러티브(amber) + 이벤트(rose)
-- **크기**: mention_count 비례 (nodeRelSize=5)
+- **노드 크기**: `getNodeSize(mentions, max) * 0.8` — 센티먼트 색상, 타입별 색상 (influencer=보라, narrative=amber, event=rose)
 - **엣지**: correlates_with(파란) / part_of(amber) / impacts(rose) / recommends(초록) / mentions(보라), weight 비례 굵기
-- **인터랙션**: orbit 회전/줌, 노드 hover HTML 툴팁, 코인 클릭 → CoinDetail 모달, **narrative/event 클릭 → 소속 코인 하이라이트** (focusedNode)
-- **필터**: 코인 칩 클릭 시 neighborSet 하이라이트 + trending-explain API fetch
-- **WHY 패널**: ScoreBreakdown + AiReasoningQuotes + SourceBreakdown + PhraseCloud + NarrativeContext + **EventTimeline**
+- **d3 force**: charge=-300, link=60, center=2, warmupTicks=150, cooldownTicks=0
+- **zoomToFit**: useEffect 500ms/2000ms + onEngineStop 200ms 후 호출 (3중 보장)
+- **graphWidth 변경 대응**: selectedChip 변경 시 zoomToFit 100ms 지연 호출 (깜빡임 방지)
+- **칩 전환 깜빡임 방지**: nodeThreeObject에서 selectedChip/activeNeighborSet 의존성 제거 → THREE 오브젝트 재생성 없이 하이라이트 전환
+- **자체 시간 필터**: SignalNetwork 내부에 TimeWindowSelector 배치 (코인 칩 우측)
+- **WHY 패널**: ScoreBreakdown + AiReasoningQuotes + SourceBreakdown + PhraseCloud + NarrativeContext + EventTimeline
 - **Lazy fetch**: 코인 칩 클릭 시에만 API 호출, coin+window 키로 결과 캐시
-- **테마**: `useIsDark()` 공유 훅 (`lib/hooks/useIsDark.ts`)
-- **카메라**: cameraPosition z=250, FOV 25도, 1.5초 후 zoomToFit
-- **⚠️ 그래프 크기 이슈**: react-force-graph-3d 내부 카메라 관리로 FOV/zoom 외부 제어 제한적. `nodeThreeObject` 커스텀 렌더링 필요 → `GRAPH_ZOOM_FIX_HANDOFF.md` 참조
+- **테마**: `useIsDark()` 공유 훅
 
 ### DB 스키마 요약
 | 테이블 | PK | UNIQUE | 주요 FK |
@@ -679,7 +725,7 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | crypto_posts | id (uuid) | source_id | — |
 | crypto_mentions | id | — | post_id → crypto_posts |
 | crypto_sentiments | id | post_id | post_id → crypto_posts | metadata JSONB (narratives/events) |
-| crypto_signals | id | (coin_symbol, time_window, computed_at) | — |
+| crypto_signals | id | (coin_symbol, time_window, computed_at) | — | V2: z_score, source_count, contrarian_warning, sentiment_skew, detected_events[], event_modifier |
 | crypto_entities | id | (entity_type, name) | — |
 | crypto_relations | id | — | source/target_entity_id → crypto_entities |
 | crypto_coins | id (uuid) | coingecko_id | — |
