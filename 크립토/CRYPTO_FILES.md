@@ -16,7 +16,9 @@ lib/crypto/
   telegram-crawler.ts       Telegram 웹 프리뷰 스크래핑 (t.me/s/, Cheerio 파싱)
   threads-crawler.ts        Threads API 키워드 검색 크롤러 (비활성화)
   twitter-crawler.ts        Apify scrape.badger Actor 기반 X/Twitter 크롤러 (10키워드, 6시간 간격, sanitizeObject)
-  coin-extractor.ts         3단계 코인 멘션 추출 — DB 기반 (extractCoinMentionsFromDB) + 하드코딩 fallback
+  fourchan-crawler.ts       4chan /biz/ JSON API 크롤러 (카탈로그 → 크립토 쓰레드 필터 → 댓글 fetch, strictMode 멘션)
+  dexscreener.ts            DexScreener 온체인 시그널 (boosted 토큰, volume/liquidity/sell 이벤트)
+  coin-extractor.ts         3단계 코인 멘션 추출 — DB 기반 (extractCoinMentionsFromDB) + strictMode(4chan용) + context 검증(AMBIGUOUS_SYMBOLS)
   batch-sentiment.ts        배치 센티먼트 처리 (소스별 Edge Function 라우팅, 10건/배치)
   score-utils.ts            공유 스코어링 유틸 V2 (clamp, normalize*, computeSignalLabel, computeMentionConfidence, computeMarketCapDampening, computeZScore, computeZScoreMultiplier, computeCrossPlatformMultiplier, computeContrarianWarning, computeEventModifier, computeKGBoost)
   signal-generator.ts       시간 윈도우별 가중 시그널 계산 V2 (2-pass: 기본 점수 → KG 부스트)
@@ -108,6 +110,7 @@ scripts/
 ```
 .github/workflows/
   crypto-crawl.yml          15분마다 Reddit RSS + Vercel crawl POST 호출
+  crypto-sentiment.yml      5분마다 센티먼트 + 시그널 (크롤과 독립 실행)
   crypto-battle.yml         5분마다 prices + battle (독립 갱신)
 ```
 

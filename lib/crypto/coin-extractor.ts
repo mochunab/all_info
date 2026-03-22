@@ -26,7 +26,24 @@ const BLACKLIST = new Set([
   'API', 'SDK', 'GPU', 'CPU', 'RAM', 'SSD', 'HDD', 'USB', 'URL',
   'PSA', 'TIL', 'ELI', 'AMA', 'CMV', 'JUST', 'LONG', 'SHORT',
   'PUMP', 'DUMP', 'MOON', 'BEAR', 'BULL', 'WHALE', 'RUG', 'GAS',
+  'ACT',
 ]);
+
+// 짧은 alias가 일반 영단어와 충돌하는 심볼 → Pass 2/3에서 context 검증 필요
+const AMBIGUOUS_SYMBOLS = new Set([
+  'UNI', 'FIL', 'COMP', 'NEAR', 'LINK', 'ATOM', 'CAKE',
+  'OCEAN', 'RENDER', 'BLAST', 'BASE', 'TURBO', 'GIGA', 'TRUMP',
+  'MELANIA', 'VIRTUAL', 'MEME', 'MOG', 'MEW',
+]);
+
+const CRYPTO_CONTEXT_PATTERN = /\b(?:crypto|coin|token|blockchain|defi|nft|swap|dex|cex|chain|pump|dump|moon|hodl|bullish|bearish|airdrop|staking|yield|listing|delist|burn|whale|memecoin|sol|eth|btc|binance|coinbase|uniswap|raydium|jupiter|market\s?cap|trading|wallet|mint|liquidity|presale|buy|sell|long|short|leverage|price|volume|rally|breakout|resistance|support|chart|altcoin|degen|rug\s?pull|onchain|on-chain|\$[A-Z]{2,10}|#[A-Z]{2,10})\b/i;
+
+function hasCryptoContext(text: string, matchIndex: number, matchLength: number): boolean {
+  const windowStart = Math.max(0, matchIndex - 80);
+  const windowEnd = Math.min(text.length, matchIndex + matchLength + 80);
+  const window = text.slice(windowStart, windowEnd);
+  return CRYPTO_CONTEXT_PATTERN.test(window);
+}
 
 // DB 코인 목록 캐시 (프로세스 수명 동안 유지, 최대 1시간)
 let cachedCoinList: CoinEntry[] | null = null;
@@ -113,7 +130,7 @@ function extractWithMaps(
     }
   }
 
-  // Pass 2: alias 매칭 — strict 모드에서는 긴 alias만 + 블랙리스트 제외
+  // Pass 2: alias 매칭 — strict 모드에서는 긴 alias만 + 애매한 심볼은 context 검증
   const minAliasLen = strict ? STRICT_MIN_ALIAS_LEN : 3;
   const lowerText = text.toLowerCase();
   for (const coin of coinList) {
@@ -123,6 +140,10 @@ function extractWithMaps(
       const aliasMatch = aliasRegex.exec(lowerText);
       if (aliasMatch) {
         const sym = coin.symbol;
+        // 짧은 alias(≤4자) + 애매한 심볼 → 주변에 crypto 키워드 없으면 스킵
+        if (alias.length <= 4 && AMBIGUOUS_SYMBOLS.has(sym) && !counts.has(sym)) {
+          if (!hasCryptoContext(lowerText, aliasMatch.index, alias.length)) continue;
+        }
         counts.set(sym, (counts.get(sym) || 0) + 1);
         if (!contexts.has(sym)) {
           const idx = aliasMatch.index;
@@ -134,7 +155,7 @@ function extractWithMaps(
     }
   }
 
-  // Pass 3: 대문자 단어 매칭 — strict 모드에서는 비활성화
+  // Pass 3: 대문자 단어 매칭 (title only) — strict 모드에서는 비활성화
   if (!strict) {
     WORD_BOUNDARY_PATTERN.lastIndex = 0;
     while ((match = WORD_BOUNDARY_PATTERN.exec(title)) !== null) {
@@ -143,6 +164,8 @@ function extractWithMaps(
       if (BLACKLIST.has(word)) continue;
       if (coinMap.has(word)) {
         if (!counts.has(word)) {
+          // 애매한 심볼 → title+body 전체에서 crypto context 검증
+          if (AMBIGUOUS_SYMBOLS.has(word) && !hasCryptoContext(text.toLowerCase(), match.index, word.length)) continue;
           counts.set(word, 1);
           const start = Math.max(0, match.index - 30);
           const end = Math.min(title.length, match.index + word.length + 30);

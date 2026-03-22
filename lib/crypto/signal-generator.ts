@@ -22,6 +22,8 @@ import {
 } from '@/lib/crypto/score-utils';
 import type { KGContext } from '@/lib/crypto/score-utils';
 import { ZSCORE_ROLLING_PERIODS } from '@/lib/crypto/config';
+import { fetchOnchainSignals } from '@/lib/crypto/dexscreener';
+import type { OnchainEvent } from '@/lib/crypto/dexscreener';
 
 type WindowRawData = {
   mentions: { coin_symbol: string; mention_count: number; post_id: string }[];
@@ -310,7 +312,8 @@ async function fetchWindowData(
 function computeSignals(
   raw: WindowRawData,
   signalType: SignalType,
-  window: TimeWindow
+  window: TimeWindow,
+  onchainMap?: Map<string, OnchainEvent[]>
 ): SignalComputeResult[] {
   type CoinAgg = {
     mentions: number;
@@ -434,6 +437,16 @@ function computeSignals(
       detectedEvents.push('coingecko_trending');
     }
 
+    // DexScreener on-chain events
+    let onchainModifier = 0;
+    const onchainEvents = onchainMap?.get(symbol);
+    if (onchainEvents) {
+      for (const evt of onchainEvents) {
+        onchainModifier += evt.modifier;
+        detectedEvents.push(`dex:${evt.type}`);
+      }
+    }
+
     // V2: Contrarian detection
     const allSentimentScores = agg.sentiments;
     const { warning: contrarianWarning, skew: sentimentSkew } = computeContrarianWarning(allSentimentScores);
@@ -450,7 +463,7 @@ function computeSignals(
       engagementNorm * SIGNAL_WEIGHTS.ENGAGEMENT +
       fomoFudNorm * SIGNAL_WEIGHTS.FOMO_AVG;
 
-    const totalEventModifier = clamp(eventModifier + cgTrendingModifier, -30, 25);
+    const totalEventModifier = clamp(eventModifier + cgTrendingModifier + onchainModifier, -30, 25);
     const baseWeightedScore =
       rawScore * adjustedMentionConfidence * marketCapDampening * zScoreMultiplier * crossPlatformMultiplier + totalEventModifier;
 
@@ -524,11 +537,12 @@ export async function generateSignalsForWindow(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   window: TimeWindow,
-  signalType: SignalType = 'fomo'
+  signalType: SignalType = 'fomo',
+  onchainMap?: Map<string, OnchainEvent[]>
 ): Promise<SignalComputeResult[]> {
   const raw = await fetchWindowData(supabase, window);
   if (!raw) return [];
-  return computeSignals(raw, signalType, window);
+  return computeSignals(raw, signalType, window, onchainMap);
 }
 
 export async function generateAllSignals(
@@ -541,17 +555,43 @@ export async function generateAllSignals(
   const signalTypes: SignalType[] = targetSignalType ? [targetSignalType] : ['fomo', 'fud'];
 
   // 2개씩 병렬 처리 (DB 부하 분산)
+  // 1차 패스: 데이터 fetch + 멘션 코인 수집
+  const windowDataMap = new Map<TimeWindow, WindowRawData>();
+  const mentionedSymbols = new Set<string>();
+
+  for (let i = 0; i < TIME_WINDOWS.length; i += 2) {
+    const batch = TIME_WINDOWS.slice(i, i + 2);
+    await Promise.all(batch.map(async (window) => {
+      const raw = await fetchWindowData(supabase, window);
+      if (raw) {
+        windowDataMap.set(window, raw);
+        for (const m of raw.mentions) mentionedSymbols.add(m.coin_symbol);
+      }
+    }));
+  }
+
+  // DexScreener 온체인 시그널 — 멘션 있는 코인만 조회
+  let onchainMap = new Map<string, OnchainEvent[]>();
+  if (mentionedSymbols.size > 0) {
+    try {
+      onchainMap = await fetchOnchainSignals([...mentionedSymbols]);
+    } catch (e) {
+      console.warn(`[DexScreener] 조회 실패 (무시): ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  // 2차 패스: 시그널 계산 + 저장
   const windowResults: number[] = [];
   for (let i = 0; i < TIME_WINDOWS.length; i += 2) {
     const batch = TIME_WINDOWS.slice(i, i + 2);
     const batchResults = await Promise.all(batch.map(async (window) => {
       let count = 0;
       try {
-        const raw = await fetchWindowData(supabase, window);
+        const raw = windowDataMap.get(window);
         if (!raw) return 0;
 
         for (const signalType of signalTypes) {
-          const signals = computeSignals(raw, signalType, window);
+          const signals = computeSignals(raw, signalType, window, onchainMap);
 
           if (signals.length > 0) {
             const rows = signals.map((s) => ({

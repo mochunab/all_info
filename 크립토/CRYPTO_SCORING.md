@@ -34,7 +34,9 @@ eventModifier = sum of matched event keywords, clamp(-30, +25)
 // CoinGecko Trending 부스트
 cgTrendingModifier = rank 1~3 → +12, 4~7 → +8, 8~15 → +5 (없으면 0)
 adjustedMentionConfidence = trending ? max(mentionConfidence, 0.4) : mentionConfidence
-totalEventModifier = clamp(eventModifier + cgTrendingModifier, -30, +25)
+// DexScreener 온체인 이벤트 (DEX_EXCLUDE 대형 코인 제외, tokenAddress 기반 매칭)
+onchainModifier = sum of DexScreener events (volume_spike, liquidity_drain, sell_pressure, token_boosted)
+totalEventModifier = clamp(eventModifier + cgTrendingModifier + onchainModifier, -30, +25)
 
 baseWeightedScore = rawScore × adjustedMentionConfidence × marketCapDampening
                             × zScoreMultiplier × crossPlatformMultiplier
@@ -82,6 +84,10 @@ trending 조건: velocity > 0.5 AND weighted_score ≥ 50
 | regulatory_negative | -15 |
 | security_incident | -20 |
 | coingecko_trending | +5~12 (rank 1~3: +12, 4~7: +8, 8~15: +5) |
+| dex:volume_spike | +7 (h1 vol > h6 avg × 5) |
+| dex:liquidity_drain | -12 (유동성 < 24h vol × 50%) |
+| dex:sell_pressure | -5 (sells/buys > 3x) |
+| dex:token_boosted | -3 (DexScreener 유료 프로모션) |
 
 총합 clamp(-30, +25)
 

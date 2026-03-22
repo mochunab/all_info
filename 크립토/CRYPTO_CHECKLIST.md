@@ -36,3 +36,6 @@
 | G | V2 스코어링, Z-score, 크로스플랫폼, 역행감지, 3D nodeThreeObject | 2026-03-21 |
 | H | FOMO/FUD 분리, CoinDetail 가격 차트, 4개 API signal_type | 2026-03-21 |
 | I | KG Boost, 2-pass 시그널, ScoreBreakdown UI, 프로덕션 검증 | 2026-03-21 |
+| L | DexScreener 온체인 시그널, tokenAddress 매칭, DEX_EXCLUDE 대형코인 제외, modifier 밸런스 조정 | 2026-03-22 |
+| K | 4chan /biz/ 크롤러, strictMode 멘션 추출, context 검증(AMBIGUOUS_SYMBOLS), dry-run 품질 검증 | 2026-03-22 |
+| M | 센티먼트 독립 크론 분리 (crypto-sentiment.yml, 5분), 크롤 route에서 triggerNextPhase 제거 | 2026-03-22 |

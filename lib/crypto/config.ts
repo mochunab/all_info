@@ -199,7 +199,7 @@ export const COIN_LIST: CoinEntry[] = [
   { symbol: 'NEIRO', name: 'Neiro', aliases: ['neiro'] },
   { symbol: 'GOAT', name: 'Goatseus Maximus', aliases: ['goat', 'goatseus'] },
   { symbol: 'PNUT', name: 'Peanut the Squirrel', aliases: ['pnut', 'peanut'] },
-  { symbol: 'ACT', name: 'Act I', aliases: ['act'] },
+  { symbol: 'ACT', name: 'Act I', aliases: ['act i'] },
   { symbol: 'FARTCOIN', name: 'Fartcoin', aliases: ['fartcoin'] },
   { symbol: 'SPX', name: 'SPX6900', aliases: ['spx6900', 'spx'] },
   { symbol: 'GIGA', name: 'Giga Chad', aliases: ['giga', 'gigachad'] },

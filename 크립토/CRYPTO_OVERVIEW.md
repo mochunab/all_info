@@ -1,6 +1,6 @@
 # 밈코인 예측기 — 프로젝트 오버뷰
 
-> 최종 업데이트: 2026-03-21
+> 최종 업데이트: 2026-03-22
 > 경로: `/{locale}/crypto` (Header "밈코인 예측기" 메뉴 **master 계정만 노출**, URL 직접 접근은 누구나 가능)
 > 프로덕션: https://aca-info.com/en/crypto
 
@@ -24,7 +24,7 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 - 기존 Insight Hub 인프라 최대 활용 — Reddit API + Apify(X/Twitter) + Telegram 스크래핑 + 기존 AI 파이프라인 재활용
 
 ### 핵심 기능 4개
-1. **멀티소스 센티먼트 추적** — X/Twitter(Apify) + Reddit(RSS) + Telegram + CoinGecko Trending → 코인 멘션 추출 → LLM 센티먼트 분석 (15분 크론)
+1. **멀티소스 센티먼트 추적** — X/Twitter(Apify) + Reddit(RSS) + Telegram + 4chan /biz/ + CoinGecko Trending → 코인 멘션 추출 → LLM 센티먼트 분석 (5분 독립 크론)
 2. **가중 시그널 스코어 (V2)** — 5요소 가중치 × mentionConfidence × marketCapDampening × zScoreMultiplier × crossPlatformMultiplier + eventModifier + KG Boost → 0~100점 + signal_label (Heat 스케일) + contrarianWarning
 3. **지식그래프** — 코인/인플루언서/내러티브/이벤트 엔티티 + 5종 관계 → LLM 동적 감지 + 점진적 감쇠 + 시그널 피드백 루프
 4. **Signal Network 시각화** — Force-directed 3D 그래프 + WHY Trending 추론 패널 (점수 분해·AI 근거·소스 분포·키워드·내러티브·이벤트 타임라인)
@@ -53,6 +53,9 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 | G | Signal Scoring V2 + 3D 그래프 | ✅ 완료 |
 | H | FOMO/FUD 시그널 분리 + CoinDetail 가격 차트 | ✅ 완료 |
 | I | 온톨로지 → 시그널 피드백 루프 + KG Boost UI | ✅ 완료 |
+| L | DexScreener 온체인 시그널 (교차검증) | ✅ 완료 |
+| K | 4chan /biz/ 크롤러 + coin-extractor strictMode | ✅ 완료 |
+| M | 센티먼트 파이프라인 독립 크론 분리 (5분 주기) | ✅ 완료 |
 
 ### 미완료 (To-Do)
 
@@ -82,6 +85,6 @@ Insight Hub의 크롤링 인프라(Reddit → DB → AI 분석)를 활용해 밈
 | "왜 이렇게 했지?" 설계 결정 복기 | [CRYPTO_DECISIONS.md](./CRYPTO_DECISIONS.md) |
 | 배포 전 검증 | [CRYPTO_CHECKLIST.md](./CRYPTO_CHECKLIST.md) |
 | 문서 작성/관리 규칙 | [CRYPTO_GUIDE.md](./CRYPTO_GUIDE.md) |
-| 온톨로지 아키텍처 심화 | [ONTOLOGY_GUIDE.md](./참고문서/ONTOLOGY_GUIDE.md) |
+| 온톨로지 아키텍처 심화 | [ONTOLOGY_GUIDE.md](./진행중/ONTOLOGY_GUIDE.md) |
 | AI 배틀 트레이딩 룰 | [BATTLE_TRADING_RULES.md](./참고문서/BATTLE_TRADING_RULES.md) |
-| 프로젝트 타당성 / 학술 근거 | [PROJECT_VALIDITY.md](./참고문서/PROJECT_VALIDITY.md) |
+| 프로젝트 타당성 / 학술 근거 | [PROJECT_VALIDITY.md](./비즈니스/PROJECT_VALIDITY.md) |

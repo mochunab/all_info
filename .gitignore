@@ -46,3 +46,4 @@ supabase/.temp/
 # Local tool configs
 .claude/
 .serena/
+discord-bot/node_modules/

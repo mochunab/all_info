@@ -41,6 +41,21 @@
   3. 조기 감지 — trending이면 `mentionConfidence` 최소 0.4 보장 (소셜 멘션 적어도 시그널 억제 방지)
 - `source_id`: `cg_trending_{coingecko_id}_{시간}` (시간 단위 중복 방지)
 
+### DexScreener 온체인 (✅ 동작 중)
+- **방식**: DexScreener 무료 API — DEX 거래 데이터로 온체인 이벤트 감지
+- API 키 불필요, 시그널 생성 Phase에서 1회 fetch (전체 윈도우/signalType 공유)
+- **파일**: `lib/crypto/dexscreener.ts`
+- **API 엔드포인트**:
+  - `GET /token-boosts/latest/v1` — 프로모션 토큰 주소 수집
+  - `GET /latest/dex/search?q={symbol}` — 심볼별 최대 유동성 pair 조회 (5 병렬, 250ms 딜레이)
+- **DEX_EXCLUDE**: BTC, ETH, BNB, SOL, XRP, ADA 등 21개 CEX 중심 대형 코인 제외 (DEX 거래량 비대표적)
+- **4종 이벤트 → eventModifier에 합산**:
+  - `volume_spike` (+7): h1 거래량 > h6 평균의 5배
+  - `liquidity_drain` (-12): 유동성 < 24h 거래량의 50%
+  - `sell_pressure` (-5): sells/buys > 3배
+  - `token_boosted` (-3): DexScreener 유료 프로모션 (tokenAddress 매칭)
+- **시그널 연동**: `detected_events`에 `dex:` prefix로 추가 → WHY Trending 패널 EventTimeline에 표시
+
 ---
 
 ## 비활성화 소스
@@ -51,9 +66,15 @@
 - Meta App: `acainfo` (App ID: `949873810905349`), Threads 앱 ID: `744117611965629`
 - 토큰 발급 완료 (만료: ~2026-05-18), 앱 라이브 모드
 
-### 4chan /biz/ (보류)
-- 크립토 비율 ~28%, 나머지는 노이즈
-- 익명(인플루언서 감지 불가), score 없음, NSFW → 보류
+### 4chan /biz/ (✅ 동작 중)
+- **방식**: 4chan JSON API (`a.4cdn.org/biz/`) — 무료, API 키 불필요
+- **파일**: `lib/crypto/fourchan-crawler.ts`
+- catalog.json → 크립토 쓰레드 필터 (`isCryptoRelated`) → 상위 30개 쓰레드 댓글 fetch (1.1초 간격)
+- **coin-extractor strictMode**: `$TICKER` + 긴 alias(≥8자)만 매칭 → 일반 영단어 오탐 방지
+- 나머지 코인 감지는 LLM 센티먼트 분석이 `mentioned_coins`로 보완
+- **볼륨**: 1회 크롤 ~500건, 일 ~1,000건 (중복 제거 후)
+- **비용**: $0
+- **주의**: /biz/는 일반 금융 게시판이라 크립토 비율 ~21%. 필터링 필수
 
 ---
 

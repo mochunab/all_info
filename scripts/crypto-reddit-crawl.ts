@@ -29,6 +29,11 @@ const SUBREDDITS = [
   { name: 'solana', weight: 1.0 },
   { name: 'Dogecoin', weight: 0.8 },
   { name: 'CryptoCurrencies', weight: 0.7 },
+  { name: 'defi', weight: 0.8 },
+  { name: 'ethtrader', weight: 0.9 },
+  { name: 'memecoins', weight: 1.1 },
+  { name: 'CryptoMars', weight: 0.9 },
+  { name: 'PepeCoin', weight: 0.8 },
 ];
 
 const SORT_MODES = ['', 'new', 'rising'] as const;
