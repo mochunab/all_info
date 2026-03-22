@@ -163,8 +163,7 @@ async function handleCrawl(request: NextRequest) {
       const totalMentions = allResults.reduce((s, r) => s + r.mentionsExtracted, 0);
       console.log(`[크롤링 완료] ${elapsed}초, 신규: ${totalNew}개, 멘션: ${totalMentions}개`);
 
-      // 크롤링 끝나면 센티먼트 페이즈 트리거
-      await triggerNextPhase('sentiment');
+      // 센티먼트 + 시그널은 독립 크론(crypto-sentiment.yml, 5분 주기)이 처리
 
       return NextResponse.json({
         success: true,
@@ -183,28 +182,20 @@ async function handleCrawl(request: NextRequest) {
           })),
         },
         elapsed: `${elapsed}s`,
-        nextPhase: 'sentiment',
       });
     }
 
     // ── Phase 2: 센티먼트 분석 ──
+    // ── Phase 2: 센티먼트 분석 (독립 크론 crypto-sentiment.yml, 5분 주기) ──
     if (phase === 'sentiment') {
       let sentimentResult = { processed: 0, success: 0, failed: 0 };
 
       try {
         const { processCryptoSentiments } = await import('@/lib/crypto/batch-sentiment');
-        const result = await processCryptoSentiments(supabase, 200, 200_000);
+        const result = await processCryptoSentiments(supabase, 200, 250_000);
         sentimentResult = { processed: result.processed, success: result.success, failed: result.failed };
-
-        if (!result.completed) {
-          console.log(`[센티먼트] 시간 제한 — 추가 호출 트리거`);
-          await triggerNextPhase('sentiment');
-        } else {
-          await triggerNextPhase('signals');
-        }
       } catch (e) {
         console.warn(`[센티먼트] 오류: ${e instanceof Error ? e.message : 'unknown'}`);
-        await triggerNextPhase('signals');
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
